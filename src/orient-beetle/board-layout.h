@@ -2,20 +2,20 @@
 #define _BOARD_LAYOUT_H
 
 /**
- * Orient Display Pinout:
+ * Orient Display Pinout: */
 #define PIN_TFT_RESET 4
 #define PIN_TFT_DC    16
 #define PIN_TFT_CS    17
 #define PIN_TFT_BL 13
- */
+/* */
 
 /**
- * DFRobot Display Pinout (GDI Cable) */
+ * DFRobot Display Pinout (GDI Cable)
 #define PIN_TFT_RESET 26
 #define PIN_TFT_DC    25
 #define PIN_TFT_CS    14
 #define PIN_TFT_BL    12
-/* */
+*/
 
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 2
