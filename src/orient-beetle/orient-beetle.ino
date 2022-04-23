@@ -15,7 +15,7 @@ unsigned int MAX_CLIENT_BLANK_READS = 10;
 unsigned int MAX_HEADER_SIZE = 512;
 
 unsigned long MIN_SLEEP_TIME_DELAY = 10000;
-unsigned long MIN_FRAME_DELAY = 50;
+unsigned long MIN_FRAME_DELAY = 60;
 unsigned long MIN_DISPLAY_DELAY = 100;
 unsigned int LINE_HEIGHT = 30;
 
@@ -100,6 +100,7 @@ void loop(void) {
   unsigned long now = millis();
 
   if (now - last_frame < MIN_FRAME_DELAY) {
+    delay(20);
     return;
   }
 
