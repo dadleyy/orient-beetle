@@ -3,17 +3,23 @@
 
 /**
  * Orient Display Pinout:
- */
 #define PIN_TFT_RESET 4
 #define PIN_TFT_DC    16
 #define PIN_TFT_CS    17
+#define PIN_TFT_BL 13
+ */
 
 /**
- * DFRobot Display Pinout (GDI Cable)
-#define PIN_TFT_RESET 4
-#define PIN_TFT_DC    16
-#define PIN_TFT_CS    17
-*/
+ * DFRobot Display Pinout (GDI Cable) */
+#define PIN_TFT_RESET 26
+#define PIN_TFT_DC    25
+#define PIN_TFT_CS    14
+#define PIN_TFT_BL    12
+/* */
+
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2
+#endif
 
 //  A4 15 - check
 //  A3 35 - no check
@@ -32,6 +38,5 @@
 // D7 13 - check
 // D9 02 - check
 
-#define PIN_TFT_BL 13
 
 #endif

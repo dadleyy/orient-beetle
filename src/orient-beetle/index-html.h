@@ -1,0 +1,1 @@
+const char* PROGMEM INDEX_HTML = "HTTP/1.1 200 Ok\r\nContent-Length: 217\r\n\r\n<!doctype html><html lang='en'><head><title>...</title></head><body><form action='/' method='post'><input type='text' name='ssid' /><input type='password' name='password' /><input type='submit' /></form></body></html>";

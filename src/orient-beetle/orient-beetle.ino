@@ -1,26 +1,39 @@
 #include <Arduino.h>
 #include <SPI.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <WiFiAP.h>
 
 // #include "Adafruit_VCNL4010.h"
 #include "DFRobot_GDL.h"
 #include "board-layout.h"
 #include "lcd-boot.h"
+#include "index-html.h"
+
+unsigned int SERVER_BUFFER_CAPACITY = 1024;
+unsigned int MAX_CLIENT_BLANK_READS = 10;
+unsigned int MAX_HEADER_SIZE = 512;
 
 unsigned long MIN_SLEEP_TIME_DELAY = 10000;
 unsigned long MIN_FRAME_DELAY = 50;
 unsigned long MIN_DISPLAY_DELAY = 100;
 unsigned int LINE_HEIGHT = 30;
 
+const char* PROGMEM HEADER_DELIM = "\r\n\r\n";
+const char* PROGMEM AP_SSID = "ESP32-Access-Point";
+const char* PROGMEM AP_PASSWORD = "123456789";
+
 DFRobot_ILI9341_240x320_HW_SPI tft(PIN_TFT_DC, PIN_TFT_CS, PIN_TFT_RESET);
 // Adafruit_VCNL4010 vcnl;
 
-unsigned long last_read = 0;
+WiFiServer server(80);
+
+unsigned long last_frame = 0;
 unsigned long last_state = false;
-unsigned long sleep_start = 0;
+
 unsigned long last_display = 0;
 unsigned long last_x_position = 0;
 unsigned long last_y_position = 0;
-unsigned int last_rotation = 0;
 unsigned int last_count = 1;
 
 void setup(void) {
@@ -74,17 +87,88 @@ void setup(void) {
 
   tft.setRotation(2);
   tft.fillRect(230, 0, 10, 320, COLOR_RGB565_BLUE);
+
+  WiFi.softAP(AP_SSID, AP_PASSWORD);
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+
+  server.begin();
 }
 
 void loop(void) {
   unsigned long now = millis();
 
-  if (now - last_read < MIN_FRAME_DELAY) {
+  if (now - last_frame < MIN_FRAME_DELAY) {
     return;
   }
 
-  last_read = now;
-  auto prox = 10000;
+  WiFiClient client = server.available();
+
+  if (client) {
+    Serial.println("has client, yay");
+
+    // Smol delay to help make sure we have bytes on first read
+    delay(20);
+
+    unsigned int cursor = 0;
+    unsigned char noreads = 0;
+    bool reading = true;
+    bool head = false;
+
+    char buffer [SERVER_BUFFER_CAPACITY] = {'\0'};
+    memset(buffer, '\0', SERVER_BUFFER_CAPACITY);
+
+    while (reading) {
+      reading = client.connected()
+        && cursor < SERVER_BUFFER_CAPACITY - 1
+        && noreads < MAX_CLIENT_BLANK_READS
+        && (head ? true : cursor < MAX_HEADER_SIZE);
+
+      if (!reading) {
+        break;
+      }
+
+      if (!client.available()) {
+        noreads += 1;
+        delay(50);
+        continue;
+      }
+
+      noreads = 0;
+      char c = client.read();
+      buffer[cursor] = c;
+
+      if (cursor >= 3 && head == false) {
+        char header [5] = {'\0'};
+
+        for (unsigned char i = 0; i < 4; i++) {
+          header[i] = buffer[cursor - (3 - i)];
+        }
+
+        if (strcmp(header, HEADER_DELIM) == 0) {
+          memset(buffer, '\0', SERVER_BUFFER_CAPACITY);
+          head = true;
+          cursor = 0;
+          continue;
+        }
+      }
+
+      cursor += 1;
+    }
+
+    if (strlen(buffer) == 0) {
+      Serial.println("responding with index");
+      client.println(INDEX_HTML);
+    } else {
+      Serial.println("had body - using for ssid/password");
+      Serial.println(buffer);
+    }
+
+    client.stop();
+  }
+
+  last_frame = now;
 
   if (last_state && now - last_display > MIN_DISPLAY_DELAY) {
     tft.fillRect(230, 0, 10, 320, COLOR_RGB565_BLUE);
@@ -103,65 +187,13 @@ void loop(void) {
     // Reset at bound
     if (last_y_position + 20 > 320) {
       last_y_position = 0;
-      last_count = last_count + 1;
+      last_count = last_count + 2;
 
       if (last_count > 9) {
         last_count = 1;
       }
     }
 
-    /*
-    tft.setRotation(last_rotation);
-
-    last_rotation = last_rotation + 1;
-    if (last_rotation > 3) {
-      last_rotation = 0;
-    }
-
-    tft.fillScreen(COLOR_RGB565_BLACK);
-    tft.setCursor(0, 0);
-    tft.setTextColor(COLOR_RGB565_WHITE);
-    tft.setTextSize(3);
-
-    tft.print("p[");
-    tft.print(prox);
-    tft.println("]");
-
-    for (unsigned int i = 0; i < 10; i++) {
-      tft.setCursor(0, (i * LINE_HEIGHT) + LINE_HEIGHT);
-      tft.print("line num [");
-      tft.print(i);
-      tft.println("]");
-    }
-    */
-
-    // delay(1000);
     last_display = now;
-  }
-
-  return;
-
-  if (prox > 5000) {
-    sleep_start = 0;
-  }
-
-  if (prox > 5000 && !last_state) {
-    Serial.println("activating display");
-    digitalWrite(PIN_TFT_BL, HIGH);
-    last_state = true;
-  }
-
-  if (prox <= 5000 && last_state) {
-    if (sleep_start == 0) {
-      Serial.println("scheduling display sleep");
-      sleep_start = millis();
-      return;
-    }
-
-    if (now - sleep_start > MIN_SLEEP_TIME_DELAY) {
-      Serial.println("going to sleep");
-      digitalWrite(PIN_TFT_BL, LOW);
-      last_state = false;
-    }
   }
 }
