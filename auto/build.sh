@@ -7,16 +7,24 @@ fi
 
 if [[ -z "${SEEDUINO_XIAO}" ]]; then
   echo "target: dfrobot esp32"
-  sleep 2
+  sleep 1
 
   arduino-cli compile \
     -v \
     -b DFRobot:esp32:esp32-e \
+    --clean \
     --output-dir ./target/arduino/debug \
     src/orient-beetle
+
+  if [[ $? -eq 0 ]]; then
+    echo "compile complete"
+  else
+    echo "compile failed"
+    exit 1
+  fi
 else
   echo "target: seeduino xiao"
-  sleep 2
+  sleep 1
 
   arduino-cli compile \
     -v \

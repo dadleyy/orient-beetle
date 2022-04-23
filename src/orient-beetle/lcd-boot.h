@@ -1,14 +1,19 @@
+#include <Arduino.h>
+#include <SPI.h>
+
+SPIClass SPI3(VSPI);
+
 void SPI_WriteCom(byte byInst, unsigned int cs, unsigned int dc) {
   digitalWrite(cs, LOW);
   digitalWrite(dc, LOW);
-  SPI.transfer(byInst);
+  SPI3.transfer(byInst);
   digitalWrite(cs, HIGH);
 }
 
 void SPI_WriteData(word byData, unsigned int cs, unsigned int dc) {
   digitalWrite(cs, LOW);
   digitalWrite(dc, HIGH);
-  SPI.transfer(byData);
+  SPI3.transfer(byData);
   digitalWrite(cs, HIGH);
 }
 
