@@ -1,21 +1,19 @@
 #include <Arduino.h>
+
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <WiFiAP.h>
+
 #include <tft_spi.hpp>
-#include <ili9341.hpp>
-#include <gfx_cpp14.hpp>
+#include <gfx.hpp>
 
-#define LCD_SS_PIN    14
-#define PIN_NUM_DC    25
-#define PIN_NUM_RST   26
-#define PIN_NUM_BCKL  12
+#include "ili9341v.hpp"
+#include "board-layout.hpp"
+#include "index-html.hpp"
+#include "wifi-manager.hpp"
 
-#define LCD_ROTATION 2
-#define LCD_BACKLIGHT_HIGH true
-
-using namespace arduino;
-using namespace gfx;
-
-using bus_type = tft_spi<3, LCD_SS_PIN, SPI_MODE0>;
-using lcd_type = ili9341<
+using bus_type = arduino::tft_spi_ex<3, 17, 23, -1, 18>;
+using lcd_type = arduino::ili9341v<
   PIN_NUM_DC,
   PIN_NUM_RST,
   PIN_NUM_BCKL,
@@ -24,13 +22,22 @@ using lcd_type = ili9341<
   LCD_BACKLIGHT_HIGH
 >;
 
+const char * AP_SSID PROGMEM = "redink";
+const char * AP_PASSWORD PROGMEM = "password";
+
 lcd_type lcd;
+wifimanager::Manager wi(INDEX_HTML, std::make_pair(AP_SSID, AP_PASSWORD));
 
-using lcd_color = color<typename lcd_type::pixel_type>;
+using lcd_color = gfx::color<typename lcd_type::pixel_type>;
 
+unsigned char MAX_FRAME_COUNT = 15;
+unsigned char MIN_FRAME_DELAY = 200;
+
+unsigned long last_frame = 0;
 unsigned char frame = 0;
 
 void setup(void) {
+  Serial.begin(9600);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(PIN_NUM_RST, OUTPUT);
   pinMode(PIN_NUM_DC, OUTPUT);
@@ -51,27 +58,48 @@ void setup(void) {
   digitalWrite(PIN_NUM_RST, HIGH);
   delay(50);
 
-  draw::filled_rectangle(lcd, (srect16)lcd.bounds(), lcd_color::black);
+  gfx::draw::filled_rectangle(lcd, (gfx::srect16)lcd.bounds(), lcd_color::black);
+
+  wi.begin();
 }
 
 void loop(void) {
-  switch (frame) {
-    case 0:
-      frame = frame + 1;
-      draw::filled_rectangle(lcd, (srect16)lcd.bounds(), lcd_color::green);
-      break;
-    case 1:
-      frame = frame + 1;
-      draw::filled_rectangle(lcd, (srect16)lcd.bounds(), lcd_color::red);
-      break;
-    case 2:
-      frame = frame + 1;
-      draw::filled_rectangle(lcd, (srect16)lcd.bounds(), lcd_color::yellow);
-      break;
-    default:
-      draw::filled_rectangle(lcd, (srect16)lcd.bounds(), lcd_color::black);
-      frame = 0;
-      break;
+  auto now = millis();
+
+  if (now - last_frame < MIN_FRAME_DELAY) {
+    delay(20);
+    return;
+  }
+
+  wi.frame(now);
+
+#ifndef RELEASE
+  Serial.print("frame at [");
+  Serial.print(now);
+  Serial.println("]");
+#endif
+
+  last_frame = now;
+
+  frame += 1;
+  if (frame > MAX_FRAME_COUNT) {
+    frame = 0;
+  }
+
+  for (unsigned char i = 0; i < 5; i++) {
+    gfx::rect16 r(0, 0, 19, 19);
+    r = r.offset(i * 50, 0);
+
+    if (frame > 0) {
+      gfx::rect16 last = r.offset(0, (frame - 1) * 20);
+      gfx::draw::filled_rectangle(lcd, last, lcd_color::black);
+    } else {
+      gfx::rect16 last = r.offset(0, MAX_FRAME_COUNT * 20);
+      gfx::draw::filled_rectangle(lcd, last, lcd_color::black);
+    }
+
+    r = r.offset(0, frame * 20);
+    gfx::draw::filled_rectangle(lcd, r, lcd_color::purple);
   }
 
   delay(1000);
