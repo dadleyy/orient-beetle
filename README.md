@@ -15,7 +15,6 @@ $ pio run -t upload             <- will attempt to compile + upload to device
 $ pio run -t upload -e release  <- builds without Serial logs
 ```
 
-
 ### Hardware
 
 For a list of harware involved, see [`.docs/hardware.md`](/.docs/hardware.md).

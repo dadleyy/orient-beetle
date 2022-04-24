@@ -6,7 +6,7 @@
 #define PIN_NUM_RST   4
 #define PIN_NUM_BCKL  13
 
-#define LCD_ROTATION 2
+#define LCD_ROTATION 0
 #define LCD_BACKLIGHT_HIGH true
 
 #endif

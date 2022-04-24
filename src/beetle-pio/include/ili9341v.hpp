@@ -45,6 +45,8 @@ namespace arduino {
                     bus::set_speed_multiplier(write_speed_multiplier);
                     bus::begin_write();
                     bus::begin_transaction();
+                    driver::send_command(0x01);
+
                     driver::send_command(0xEF);
                     driver::send_data8(0x03);
                     driver::send_data8(0x80);
@@ -93,7 +95,7 @@ namespace arduino {
                     driver::send_data8(0x86);  //--
 
                     driver::send_command(0x36);    // Memory Access Control
-                    driver::send_data8(0x40 | 0x08); // Rotation 0 (portrait mode)
+                    driver::send_data8(0x08); // Rotation 0 (portrait mode)
 
                     driver::send_command(0x3A);
                     driver::send_data8(0x55);
@@ -150,12 +152,15 @@ namespace arduino {
                     driver::send_command(0x11);    //Exit Sleep
                     bus::end_transaction();
                     bus::end_write();
+
                     delay(120);
+
                     bus::begin_write();
                     bus::begin_transaction();
                     driver::send_command(0x29);    //Display on
                     bus::end_transaction();
                     bus::end_write();
+
                     bus::begin_write();
                     bus::begin_transaction();
                     driver::send_command(0xCF);
@@ -743,6 +748,7 @@ namespace arduino {
         }
         
         static void apply_rotation() {   
+          /*
             bus::begin_write();       
             driver::send_command(0x36);
             switch (rotation) {
@@ -767,6 +773,7 @@ namespace arduino {
             delayMicroseconds(10);
 
             bus::end_write();
+            */
         }
         
     };

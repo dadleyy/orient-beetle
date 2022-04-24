@@ -14,9 +14,11 @@ namespace wifimanager {
     constexpr static const char * CONFIG_REDIRECT PROGMEM = "HTTP/1.1 301 Redirect\r\nLocation: https://google.com\r\n\r\n";
     constexpr static unsigned int SERVER_BUFFER_CAPACITY = 1024;
     constexpr static unsigned char MAX_CLIENT_BLANK_READS = 5;
+    constexpr static unsigned char MAX_PENDING_CONNECTION_ATTEMPTS = 60;
+    constexpr static unsigned char MIN_FRAME_DELAY = 100;
     constexpr static unsigned int MAX_HEADER_SIZE = 512;
-    constexpr static unsigned int MAX_SSID_LENGTH = 60;
-    constexpr static unsigned int MAX_PASSWORD_LENGTH  = 30;
+    constexpr static unsigned char MAX_SSID_LENGTH = 60;
+    constexpr static unsigned char MAX_PASSWORD_LENGTH  = 30;
 
     Manager(const char *, std::tuple<const char *, const char *>);
     ~Manager();

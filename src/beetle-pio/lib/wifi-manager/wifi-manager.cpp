@@ -25,7 +25,7 @@ namespace wifimanager {
   void Manager::frame(unsigned long now) {
     unsigned int modi = _mode.index();
 
-    if (now - _last_frame < 100) {
+    if (now - _last_frame < MIN_FRAME_DELAY) {
       return;
     }
 
@@ -35,9 +35,9 @@ namespace wifimanager {
       case 0: {
 #ifndef RELEASE
         if (ready()) {
-          Serial.println("wifi manager connected");
+          Serial.println("wifi manager: connected");
         } else {
-          Serial.println("wifi manager not connected");
+          Serial.println("wifi manager: not connected");
         }
 #endif
         // Continue to verify our wifi connection status.
@@ -52,6 +52,7 @@ namespace wifimanager {
        * load the index html page and enter in the wifi credentials.
        */
       case 1: {
+        Serial.println("wifi manager: configuration");
         WiFiServer * server = std::get_if<1>(&_mode);
         WiFiClient client = server->available();
 
@@ -132,9 +133,12 @@ namespace wifimanager {
 
         // Attempt to parse our form data into individual ssid + password buffers.
         for (unsigned int i = 0; i < cursor; i++) {
+          // TODO: Anyime we encounter an unescaped '&' we're going to assume that what follows should be parsed as a
+          // password. This relies on the ssid being sent before the password.
           if (buffer[i] == '&' & !stage) {
             stage = true;
             point = 0;
+            memset(password, MAX_PASSWORD_LENGTH, '\0');
             continue;
           }
 
@@ -180,11 +184,14 @@ namespace wifimanager {
         Serial.println(password);
 #endif
 
-        if (failed) {
+        if (failed || strlen(ssid) == 0) {
 #ifndef RELEASE
-          Serial.println("FAILED INPUT PARSING");
+          Serial.println("[warning] failed user input parsing");
 #endif
-          client.println(F("HTTP/1.1 400 Bad Request\r\n\r\n"));
+          client.println(F("HTTP/1.1 301 Redirect\r\nLocation: http://192.168.4.1\r\n\r\n"));
+          client.stop();
+
+          return;
         } else {
           // Respond with a redirect to avoid the double-form refresh issue.
           client.println(CONFIG_REDIRECT);
@@ -209,6 +216,9 @@ namespace wifimanager {
        * to boot the wifi module and wait for it to be connected.
        */
       case 2: {
+#ifndef RELEASE
+        Serial.println("wifi manager: pending connection");
+#endif
         PendingConnection * pending = std::get_if<2>(&_mode);
 
 #ifndef RELEASE
@@ -218,14 +228,16 @@ namespace wifimanager {
 #endif
 
         if (pending->_attempts == 0) {
+#ifndef RELEASE
           Serial.print("connecting to wifi");
+#endif
           WiFi.begin(pending->_ssid, pending->_password);
         }
 
         // If we have a connection, move out of this mode
         if (WiFi.status() == WL_CONNECTED) {
 #ifndef RELEASE
-          Serial.println("yay, connected");
+          Serial.println("wifi connection established, moving mode to connected");
 #endif
 
           _mode.emplace<bool>(true);
@@ -236,9 +248,9 @@ namespace wifimanager {
 
         // If we have seen too many frames without establishing a connection to the 
         // network provided by the user, move back into the AP/configuration mode.
-        if (pending->_attempts > 10) {
+        if (pending->_attempts > MAX_PENDING_CONNECTION_ATTEMPTS) {
 #ifndef RELEASE
-          Serial.println("Too many pending connection attempts, moving back to ap");
+          Serial.println("too many pending connection attempts, moving back to ap");
 #endif
 
           // Clear out our connection attempt garbage.
@@ -253,13 +265,16 @@ namespace wifimanager {
         break;
       }
       default:
+#ifndef RELEASE
+        Serial.println("wifi manager: unknown mode");
+#endif
         break;
     }
   }
 
   void Manager::begin(void) {
     if (_mode.index() == 1) {
-      WiFi.softAP(std::get<0>(_ap_config), std::get<1>(_ap_config));
+      WiFi.softAP(std::get<0>(_ap_config), std::get<1>(_ap_config), 7, 0, 1);
 
 #ifndef RELEASE
       IPAddress IP = WiFi.softAPIP();
