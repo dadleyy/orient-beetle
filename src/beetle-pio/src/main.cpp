@@ -22,8 +22,15 @@ using lcd_type = arduino::ili9341v<
   LCD_BACKLIGHT_HIGH
 >;
 
-const char * AP_SSID PROGMEM = "redink";
-const char * AP_PASSWORD PROGMEM = "password";
+#ifndef WIFI_SSID
+#define WIFI_SSID "orient-beetle setup"
+#endif
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD "password"
+#endif
+
+const char * AP_SSID PROGMEM = WIFI_SSID;
+const char * AP_PASSWORD PROGMEM = WIFI_PASSWORD;
 
 lcd_type lcd;
 wifimanager::Manager wi(INDEX_HTML, std::make_pair(AP_SSID, AP_PASSWORD));
