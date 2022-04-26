@@ -2,18 +2,34 @@
 
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <WiFiClientSecure.h>
 #include <WiFiAP.h>
 
 #include <tft_spi.hpp>
 #include <gfx.hpp>
 
+// Internal libraries
 #include "ili9341v.hpp"
-#include "board-layout.hpp"
-#include "wifi-config.hpp"
-#include "index-html.hpp"
-#include "jellee_ttf.hpp"
-
 #include "wifi-manager.hpp"
+
+// Configuration files
+#include "board_layout.hpp"
+#include "wifi_config.hpp"
+#include "index_html.hpp"
+#include "jellee_ttf.hpp"
+#include "redis_config.hpp"
+
+extern const char * index_html;
+
+extern const char * ap_ssid;
+extern const char * ap_password;
+
+extern const char * redis_host;
+extern const char * redis_port;
+extern const char * redis_auth;
+
+extern const uint8_t redis_root_ca_pem_start[] asm("_binary_certs_redis_host_root_ca_pem_start");
+extern const uint8_t redis_root_ca_pem_end[] asm("_binary_certs_redis_host_root_ca_pem_end");
 
 using bus_type = arduino::tft_spi_ex<3, 17, 23, -1, 18>;
 using lcd_type = arduino::ili9341v<
@@ -27,12 +43,14 @@ using lcd_type = arduino::ili9341v<
 using lcd_color = gfx::color<typename lcd_type::pixel_type>;
 
 lcd_type lcd;
-wifimanager::Manager wi(INDEX_HTML, std::make_pair(AP_SSID, AP_PASSWORD));
+wifimanager::Manager wi(index_html, std::make_pair(ap_ssid, ap_password));
+WiFiClientSecure client;
 
 unsigned char MAX_FRAME_COUNT = 15;
 unsigned char MIN_FRAME_DELAY = 200;
 unsigned long last_frame = 0;
 unsigned char part = 0;
+bool certified = false;
 
 void setup(void) {
   Serial.begin(9600);
@@ -46,11 +64,21 @@ void setup(void) {
 
   unsigned char i = 0;
 
-  while (i < 6) {
+  while (i < 12) {
     digitalWrite(LED_BUILTIN, i % 2 == 0 ? HIGH : LOW);
     delay(500);
     i += 1;
   }
+
+#ifndef RELEASE
+  Serial.println("boot complete, redis-config:");
+  Serial.println("  certificate:");
+  Serial.println((char *) redis_root_ca_pem_start);
+  Serial.println("  host:");
+  Serial.println(redis_host);
+  Serial.println("  port:");
+  Serial.println(redis_port);
+#endif
 
   digitalWrite(PIN_NUM_RST, HIGH);
   delay(10);
@@ -73,6 +101,25 @@ void loop(void) {
 
   wi.frame(now);
 
+  if (wi.ready()) {
+    if (!certified) {
+      certified = true;
+      client.setCACert((char *) redis_root_ca_pem_start);
+      int port = atoi(redis_port);
+
+      if (port > 0 && client.connect(redis_host, port)) {
+#ifdef RELEASE
+        Serial.println("connected :)");
+#endif
+      } else {
+#ifdef RELEASE
+        Serial.println("not connected :)");
+#endif
+      }
+    }
+  }
+
+  certified = false;
   const gfx::open_font & f = Jellee_Bold_ttf;
   float scale = f.scale(30);
 

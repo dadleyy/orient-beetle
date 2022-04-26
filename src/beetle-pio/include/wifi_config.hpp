@@ -8,7 +8,7 @@
 #define WIFI_PASSWORD "password"
 #endif
 
-const char * AP_SSID PROGMEM = WIFI_SSID;
-const char * AP_PASSWORD PROGMEM = WIFI_PASSWORD;
+const char * ap_ssid PROGMEM = WIFI_SSID;
+const char * ap_password PROGMEM = WIFI_PASSWORD;
 
 #endif
