@@ -21,7 +21,7 @@
 | CS | D10 | this is pin `7` when using `digitalWrite(...)` |
 | BLK | D7 | this is pin `13` when using `digitalWrite(...)` |
 
-[← README](/README.md)
+[← README](./README.md)
 
 [display]: https://www.digikey.com/en/products/detail/orient-display/AFL240320A0-2-4N12NTM-ANO/13916615
 [beetle]: https://www.digikey.com/en/products/detail/dfrobot/DFR0654/13978504
