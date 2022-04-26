@@ -33,6 +33,9 @@ file.
 _For more information on how to prepare the ssl/tls components for our redis
 connection, refer to [`.docs/redis-help.md`](.docs/redis-help.md)_.
 
+Once your environment and certificate file have been prepared, the firmware can
+be compiled from the `beetle-pio` directory:
+
 ```
 $ cd src/beetle-pio
 $ pio run -t upload             <- will attempt to compile + upload to device
@@ -43,5 +46,11 @@ $ pio run -t upload -e release  <- builds without Serial logs
 
 For a list of harware involved and other documentation, see [`.docs/README.md`](/.docs/README.md).
 
+### Tools
+
+1. [WiFi Configuration HTML Generator][wchgen] - This tiny rust application is used to generate the
+contents of the `src/beetle-pio/include/index_html.hpp` file from and `index.html` file input.
+
 [pio]: https://docs.platformio.org/en/stable/core/index.html
 [dotenv]: https://github.com/ohmyzsh/ohmyzsh/blob/master/plugins/dotenv/dotenv.plugin.zsh
+[wchgen]: ./tools/wchgen/README.md
