@@ -33,13 +33,6 @@ namespace wifimanager {
 
     switch (modi) {
       case 0: {
-#ifndef RELEASE
-        if (ready()) {
-          Serial.println("wifi manager: connected");
-        } else {
-          Serial.println("wifi manager: not connected");
-        }
-#endif
         // Continue to verify our wifi connection status.
         _mode.emplace<bool>(WiFi.status() == WL_CONNECTED);
         break;

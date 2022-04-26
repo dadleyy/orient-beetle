@@ -25,7 +25,7 @@ extern const char * ap_ssid;
 extern const char * ap_password;
 
 extern const char * redis_host;
-extern const char * redis_port;
+extern const unsigned int redis_port;
 extern const char * redis_auth;
 
 extern const uint8_t redis_root_ca_pem_start[] asm("_binary_certs_redis_host_root_ca_pem_start");
@@ -72,11 +72,11 @@ void setup(void) {
 
 #ifndef RELEASE
   Serial.println("boot complete, redis-config:");
-  Serial.println("  certificate:");
-  Serial.println((char *) redis_root_ca_pem_start);
-  Serial.println("  host:");
+  Serial.println("-certificate:");
+  Serial.print((char *) redis_root_ca_pem_start);
+  Serial.println("-host:");
   Serial.println(redis_host);
-  Serial.println("  port:");
+  Serial.println("-port:");
   Serial.println(redis_port);
 #endif
 
@@ -99,35 +99,73 @@ void loop(void) {
     return;
   }
 
+  last_frame = now;
+
   wi.frame(now);
 
-  if (wi.ready()) {
-    if (!certified) {
-      certified = true;
-      client.setCACert((char *) redis_root_ca_pem_start);
-      int port = atoi(redis_port);
+  if (wi.ready() && !certified) {
+#ifndef RELEASE
+    Serial.println("not yet certified, starting now");
+#endif
+    // Small delay
+    delay(100);
+    certified = true;
 
-      if (port > 0 && client.connect(redis_host, port)) {
-#ifdef RELEASE
-        Serial.println("connected :)");
+#ifndef RELEASE
+    Serial.println("setting root ca cert");
 #endif
-      } else {
-#ifdef RELEASE
-        Serial.println("not connected :)");
+
+    client.setCACert((char *) redis_root_ca_pem_start);
+
+#ifndef RELEASE
+    Serial.println("attempting connection");
 #endif
-      }
+
+    int result = client.connect(redis_host, redis_port);
+
+    // If we were unable to establish the connection, bail early.
+    if (result != 1) {
+      client.stop();
+      certified = false;
     }
+
+#ifndef RELEASE
+    Serial.print("connection to port[");
+    Serial.print(redis_port);
+    Serial.print("] = ");
+    Serial.print(result);
+    Serial.println("");
+#endif
   }
 
-  certified = false;
+  if (wi.ready() == false && certified) {
+#ifndef RELEASE
+      Serial.print("wifi disconnected, clearing secure client");
+#endif
+
+    client.stop();
+    certified = false;
+  }
+
   const gfx::open_font & f = Jellee_Bold_ttf;
   float scale = f.scale(30);
+
+  gfx::draw::filled_rectangle(lcd, (gfx::srect16) lcd.bounds(), lcd_color::black);
+
+  if (certified) {
+    const char * text = "connected";
+    gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
+    gfx::draw::text(lcd, text_rect.offset(0, 50), {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
+  } else {
+    const char * text = "disconnected";
+    gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
+    gfx::draw::text(lcd, text_rect.offset(0, 50), {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
+  }
 
   switch (part) {
     case 0: {
       const char * text = "1: the quick brown";
       gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
-      gfx::draw::filled_rectangle(lcd, (gfx::srect16) lcd.bounds(), lcd_color::black);
       gfx::draw::text(lcd, text_rect, {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
       delay(1000);
       part += 1;
@@ -136,7 +174,6 @@ void loop(void) {
     case 1: {
       const char * text = "2. fox jumps over";
       gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
-      gfx::draw::filled_rectangle(lcd, (gfx::srect16) lcd.bounds(), lcd_color::black);
       gfx::draw::text(lcd, text_rect, {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
       delay(1000);
       part += 1;
@@ -145,7 +182,6 @@ void loop(void) {
     case 2: {
       const char * text = "3. the lazy dog";
       gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
-      gfx::draw::filled_rectangle(lcd, (gfx::srect16) lcd.bounds(), lcd_color::black);
       gfx::draw::text(lcd, text_rect, {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
       delay(1000);
       part += 1;
@@ -161,6 +197,4 @@ void loop(void) {
   Serial.print(last_frame);
   Serial.println("]");
 #endif
-
-  last_frame = now;
 }
