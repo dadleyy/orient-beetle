@@ -38,7 +38,9 @@ using lcd_type = arduino::ili9341v<
   PIN_NUM_BCKL,
   bus_type,
   LCD_ROTATION,
-  LCD_BACKLIGHT_HIGH
+  LCD_BACKLIGHT_HIGH,
+  400,
+  200
 >;
 using lcd_color = gfx::color<typename lcd_type::pixel_type>;
 
@@ -188,6 +190,10 @@ void loop(void) {
       break;
     }
     default:
+      const char * text = "4. fin.";
+      gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
+      gfx::draw::text(lcd, text_rect, {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
+      delay(1000);
       part = 0;
       break;
   }
