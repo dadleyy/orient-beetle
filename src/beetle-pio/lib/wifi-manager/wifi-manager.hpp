@@ -17,7 +17,7 @@ namespace wifimanager {
 
     constexpr static unsigned int SERVER_BUFFER_CAPACITY = 1024;
     constexpr static unsigned char MAX_CLIENT_BLANK_READS = 5;
-    constexpr static unsigned char MAX_PENDING_CONNECTION_ATTEMPTS = 60;
+    constexpr static unsigned char MAX_PENDING_CONNECTION_ATTEMPTS = 10;
     constexpr static unsigned char MIN_FRAME_DELAY = 100;
     constexpr static unsigned int MAX_HEADER_SIZE = 512;
     constexpr static unsigned char MAX_SSID_LENGTH = 60;
