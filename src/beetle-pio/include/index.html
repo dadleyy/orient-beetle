@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="en" style="font-size: 20px">
   <head>
-    <title>orient-beetle: wifi setup</title>
     <meta charset="utf-8" />
+    <link rel="icon" href="data:,">
     <meta name="viewport" content="width=device-width, user-scalable=no" />
+    <title>orient-beetle: wifi setup</title>
     <style>
       html, body, form, input {
         margin: 0;
@@ -12,11 +13,11 @@
         background: rgba(0, 0, 0, 0.55);
         box-sizing: border-box;
         color: rgba(0, 155, 200, 0.97);
-        text-transform: uppercase;
      }
 
       ::placeholder {
         color: rgba(0, 105, 150, 0.77);
+        text-transform: uppercase;
       }
 
       html, body, form {
@@ -56,6 +57,7 @@
         background-color: rgba(0, 155, 200, 1.0);
         color: rgba(255, 255, 255, 0.9);
         text-shadow: 0px 0px 1px black;
+        text-transform: uppercase;
       }
 
       input:focus {
@@ -70,7 +72,7 @@
     </style>
   </head>
   <body>
-    <form action="/" method="post">
+    <form action="/connect" method="get">
       <label>&#128225;</label>
       <input type="text" name="ssid" placeholder="ssid" />
       <input type="text" name="password" placeholder="password" />

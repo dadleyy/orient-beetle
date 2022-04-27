@@ -74,11 +74,9 @@ void setup(void) {
 
 #ifndef RELEASE
   Serial.println("boot complete, redis-config:");
-  Serial.println("-certificate:");
-  Serial.print((char *) redis_root_ca_pem_start);
-  Serial.println("-host:");
+  Serial.print("-host: ");
   Serial.println(redis_host);
-  Serial.println("-port:");
+  Serial.print("-port: ");
   Serial.println(redis_port);
 #endif
 
@@ -197,10 +195,4 @@ void loop(void) {
       part = 0;
       break;
   }
-
-#ifndef RELEASE
-  Serial.print("frame at [");
-  Serial.print(last_frame);
-  Serial.println("]");
-#endif
 }
