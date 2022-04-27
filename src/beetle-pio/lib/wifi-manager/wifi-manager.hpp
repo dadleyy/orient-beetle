@@ -12,8 +12,7 @@
 namespace wifimanager {
 
   struct Manager final {
-    constexpr static const char * HEADER_DELIM PROGMEM = "\r\n\r\n";
-    constexpr static const char * CONFIG_REDIRECT PROGMEM = "HTTP/1.1 301 Redirect\r\nLocation: https://google.com\r\n\r\n";
+    constexpr static const char * CONNECTION_PREFIX PROGMEM = "GET /connect?";
 
     constexpr static unsigned int SERVER_BUFFER_CAPACITY = 1024;
     constexpr static unsigned char MAX_CLIENT_BLANK_READS = 5;
@@ -65,29 +64,31 @@ namespace wifimanager {
       };
 
       struct PendingConfiguration {
-        PendingConfiguration(): _server(80) {}
-        ~PendingConfiguration() {
+        public:
+          PendingConfiguration(const char * index): _index(index), _server(80) {}
+          ~PendingConfiguration() {
 #ifndef RELEASE
-          Serial.println("[wifi_manager] exiting pending configuration");
+            Serial.println("[wifi_manager] exiting pending configuration");
 #endif
 
-          _server.stop();
-          _dns.stop();
-        }
+            _server.stop();
+            _dns.stop();
+          }
 
-        WiFiClient available(void) {
-          _dns.processNextRequest();
+          bool frame(char *, char *);
 
-          return _server.available();
-        }
+          void begin(IPAddress addr) {
+            _server.begin();
+            _dns.start(53, "*", addr);
+          }
 
-        void begin(IPAddress addr) {
-          _server.begin();
-          _dns.start(53, "*", addr);
-        }
+        private:
+          WiFiClient available(void);
+          inline static char termination(ERequestParsingMode);
 
-        WiFiServer _server;
-        DNSServer _dns;
+          const char * _index;
+          WiFiServer _server;
+          DNSServer _dns;
       };
 
       // Note: the additional `bool` at the start of this variant type helps ensure
