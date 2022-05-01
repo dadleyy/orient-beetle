@@ -1,37 +1,30 @@
 #include <Arduino.h>
 
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <WiFiClientSecure.h>
-#include <WiFiAP.h>
-
+#include "Adafruit_VCNL4010.h"
 #include <tft_spi.hpp>
 #include <gfx.hpp>
 
 // Internal libraries
 #include "ili9341v.hpp"
 #include "wifi-manager.hpp"
+#include "redis-manager.hpp"
 
 // Configuration files
 #include "board_layout.hpp"
 #include "wifi_config.hpp"
-#include "index_html.hpp"
 #include "jellee_ttf.hpp"
 #include "redis_config.hpp"
 
-extern const char * index_html;
+#include "engine.hpp"
 
 extern const char * ap_ssid;
 extern const char * ap_password;
 
 extern const char * redis_host;
-extern const unsigned int redis_port;
+extern const uint32_t redis_port;
 extern const char * redis_auth;
 
-extern const uint8_t redis_root_ca_pem_start[] asm("_binary_certs_redis_host_root_ca_pem_start");
-extern const uint8_t redis_root_ca_pem_end[] asm("_binary_certs_redis_host_root_ca_pem_end");
-
-using bus_type = arduino::tft_spi_ex<3, 17, 23, -1, 18>;
+using bus_type = arduino::tft_spi<VSPI, LCD_SS_PIN, SPI_MODE0, (240 * 320) * 2 + 8>;
 using lcd_type = arduino::ili9341v<
   PIN_NUM_DC,
   PIN_NUM_RST,
@@ -43,19 +36,27 @@ using lcd_type = arduino::ili9341v<
   200
 >;
 using lcd_color = gfx::color<typename lcd_type::pixel_type>;
-
+using bmp_type = gfx::bitmap<typename lcd_type::pixel_type>;
 lcd_type lcd;
-wifimanager::Manager wi(index_html, std::make_pair(ap_ssid, ap_password));
-WiFiClientSecure client;
 
-unsigned char MAX_FRAME_COUNT = 15;
-unsigned char MIN_FRAME_DELAY = 200;
+wifimanager::Manager wi(std::make_pair(ap_ssid, ap_password));
+redismanager::Manager red(redis_host, redis_port, redis_auth);
+Engine eng;
+Adafruit_VCNL4010 vcnl;
+
+#ifndef RELEASE
+uint16_t heap_debug_tick = 0;
+#endif
+
+unsigned long MIN_FRAME_DELAY = 200;
 unsigned long last_frame = 0;
-unsigned char part = 0;
-bool certified = false;
+bool failed = false;
 
 void setup(void) {
-  Serial.begin(9600);
+#ifndef RELEASE
+  Serial.begin(115200);
+#endif
+
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(PIN_NUM_RST, OUTPUT);
   pinMode(PIN_NUM_DC, OUTPUT);
@@ -72,12 +73,17 @@ void setup(void) {
     i += 1;
   }
 
+  if (!vcnl.begin()) {
 #ifndef RELEASE
-  Serial.println("boot complete, redis-config:");
-  Serial.print("-host: ");
-  Serial.println(redis_host);
-  Serial.print("-port: ");
-  Serial.println(redis_port);
+    log_d("unable to detect vcnl proximity sensor");
+#endif
+
+    failed = true;
+    return;
+  }
+
+#ifndef RELEASE
+  log_d("boot complete, redis-config. host: %s | port: %d", redis_host, redis_port);
 #endif
 
   digitalWrite(PIN_NUM_RST, HIGH);
@@ -94,105 +100,62 @@ void setup(void) {
 void loop(void) {
   auto now = millis();
 
-  if (now - last_frame < MIN_FRAME_DELAY) {
+  if (now - last_frame < MIN_FRAME_DELAY || failed) {
     delay(MIN_FRAME_DELAY - (now - last_frame));
     return;
   }
 
+#ifndef RELEASE
+  heap_debug_tick += 1;
+  if (heap_debug_tick > 50) {
+    log_d("free memory before malloc: %d", ESP.getFreeHeap());
+    uint16_t prox = vcnl.readProximity();
+    log_d("proximity: %d", prox);
+  }
+#endif
+
   last_frame = now;
 
-  wi.frame(now);
+  // Apply updates.
+  eng.update(wi, red);
 
-  if (wi.ready() && !certified) {
-#ifndef RELEASE
-    Serial.println("not yet certified, starting now");
-#endif
-    // Small delay
-    delay(100);
-    certified = true;
-
-#ifndef RELEASE
-    Serial.println("setting root ca cert");
-#endif
-
-    client.setCACert((char *) redis_root_ca_pem_start);
-
-#ifndef RELEASE
-    Serial.println("attempting connection");
-#endif
-
-    int result = client.connect(redis_host, redis_port);
-
-    // If we were unable to establish the connection, bail early.
-    if (result != 1) {
-      client.stop();
-      certified = false;
-    }
-
-#ifndef RELEASE
-    Serial.print("connection to port[");
-    Serial.print(redis_port);
-    Serial.print("] = ");
-    Serial.print(result);
-    Serial.println("");
-#endif
-  }
-
-  if (wi.ready() == false && certified) {
-#ifndef RELEASE
-      Serial.print("wifi disconnected, clearing secure client");
-#endif
-
-    client.stop();
-    certified = false;
-  }
-
+  // Prepare our drawing buffer.
   const gfx::open_font & f = Jellee_Bold_ttf;
   float scale = f.scale(30);
+  gfx::size16 bmp_size(240, 30);
+  uint8_t * buf = (uint8_t*) malloc(bmp_type::sizeof_buffer(bmp_size));
 
-  gfx::draw::filled_rectangle(lcd, (gfx::srect16) lcd.bounds(), lcd_color::black);
+  if(buf == nullptr) {
+#ifndef RELEASE
+    log_d("[warning] no memory space available, wanted: %d", bmp_type::sizeof_buffer(bmp_size));
+    heap_debug_tick = 0;
+#endif
 
-  if (certified) {
-    const char * text = "connected";
-    gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
-    gfx::draw::text(lcd, text_rect.offset(0, 50), {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
-  } else {
-    const char * text = "disconnected";
-    gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
-    gfx::draw::text(lcd, text_rect.offset(0, 50), {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
+    delay(1000);
+    return;
   }
 
-  switch (part) {
-    case 0: {
-      const char * text = "1: the quick brown";
-      gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
-      gfx::draw::text(lcd, text_rect, {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
-      delay(1000);
-      part += 1;
-      break;
-    }
-    case 1: {
-      const char * text = "2. fox jumps over";
-      gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
-      gfx::draw::text(lcd, text_rect, {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
-      delay(1000);
-      part += 1;
-      break;
-    }
-    case 2: {
-      const char * text = "3. the lazy dog";
-      gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
-      gfx::draw::text(lcd, text_rect, {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
-      delay(1000);
-      part += 1;
-      break;
-    }
-    default:
-      const char * text = "4. fin.";
-      gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, text, scale).bounds();
-      gfx::draw::text(lcd, text_rect, {0, 0}, text, f, scale, lcd_color::white, lcd_color::black, false);
-      delay(1000);
-      part = 0;
-      break;
+  bmp_type tmp(bmp_size, buf);
+  gfx::draw::filled_rectangle(tmp, (gfx::srect16) lcd.bounds(), lcd_color::black);
+
+#ifndef RELEASE
+  if (heap_debug_tick > 50) {
+    log_d("free memory after malloc: %d", ESP.getFreeHeap());
+    heap_debug_tick = 0;
   }
+#endif
+
+  // Write the actual text.
+  char view [256];
+  memset(view, '\0', 256);
+
+  eng.view(view, 256);
+
+  gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, view, scale).bounds();
+  gfx::draw::text(tmp, text_rect.offset(0, 0), {0, 0}, view, f, scale, lcd_color::white, lcd_color::black, false);
+
+  // Draw our buffer to the display
+  gfx::draw::bitmap(lcd, (gfx::srect16) lcd.bounds(), tmp, tmp.bounds());
+
+  free(buf);
 }

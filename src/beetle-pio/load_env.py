@@ -3,18 +3,30 @@ Import("env")
 import os
 
 redis_port = None
+redis_auth = None
 redis_host = None
+
+def get_value(line):
+    return line.split("=")[1].lstrip('"').rstrip().rstrip('"')
+
+if os.path.isfile("./embeds/redis_host_root_ca.pem") != True:
+    raise Exception("Missing 'redis_host_root_ca.pem' file, please see README.md")
 
 if os.path.exists(".env") and os.path.isfile(".env"):
     print("loading dotenv file")
     env_file = open(".env")
     lines = env_file.readlines()
     for line in lines:
+        if line.startswith("REDIS_AUTH="):
+            redis_auth = get_value(line)
+            print("found redis auth - '%s'" % redis_auth)
+
         if line.startswith("REDIS_HOST="):
-            redis_host = line.lstrip("REDIS_HOST=\"").strip().rstrip('"')
+            redis_host = get_value(line)
             print("found redis host - '%s'" % redis_host)
+
         elif line.startswith("REDIS_PORT="):
-            redis_port = line.lstrip("REDIS_PORT=\"").strip().rstrip('"')
+            redis_port = get_value(line)
             print("found port '%s'" % redis_port)
 
 if "REDIS_PORT" in os.environ:
@@ -24,8 +36,11 @@ if "REDIS_HOST" in os.environ:
     redis_host = os.environ["REDIS_HOST"]
 
 if redis_port is None or redis_host is None:
-    raise Exception("Missing 'REDIS_PORT' or 'REDIS_HOST'")
+    raise Exception("Unable to find 'REDIS_HOST' or 'REDIS_PORT' in environment. Please create a '.env' file")
 
-print("environment ready - redis %s:%s" % (redis_host, redis_port))
+if redis_auth is None:
+    raise Exception("Unable to find 'REDIS_AUTH' in environment (or .env file)")
 
-env.ProcessFlags("-DREDIS_PORT=%s -DREDIS_HOST=\\\"%s\\\"" % (redis_port, redis_host))
+print("environment ready - redis %s:%s (auth %s)" % (redis_host, redis_port, redis_auth))
+
+env.ProcessFlags("-DREDIS_PORT=%s -DREDIS_HOST=\\\"%s\\\" -DREDIS_AUTH=\\\"%s\\\"" % (redis_port, redis_host, redis_auth))

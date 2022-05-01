@@ -5,9 +5,8 @@ a proximity sensor.
 
 ## I. Building: Firmware
 
-The firmware for the application lives in `src/beetle-pio` and can be compiled
+The firmware for the application lives in [`src/beetle-pio`][fm-rd] and can be compiled
 using the [platformIO cli][pio]. 
-
 
 ### I.I Environment Setup: Redis Environment Variables
 
@@ -34,7 +33,7 @@ In order for the esp32 module to connect over tls to your redis host, you will n
 to download the root ca certificate for the host and save it to:
 
 ```
-src/beetle-pio/certs/redis_host_root_ca.pem
+src/beetle-pio/embeds/redis_host_root_ca.pem
 ```
 
 The contents of this file are loaded into flash memory via the
@@ -64,10 +63,11 @@ For a list of harware involved and other documentation, see [`.docs/README.md`](
 ## III Miscellaneous Tools
 
 1. [WiFi Configuration HTML Generator][wchgen] - This tiny rust application is used to generate the
-contents of the `src/beetle-pio/include/index_html.hpp` file from and `index.html` file input.
+contents of the `src/beetle-pio/embed/index.html` file from an `index.html` file input.
 
 [pio]: https://docs.platformio.org/en/stable/core/index.html
 [dotenv]: https://github.com/ohmyzsh/ohmyzsh/blob/master/plugins/dotenv/dotenv.plugin.zsh
 [wchgen]: ./tools/wchgen/README.md
 [extra_scripts]: https://docs.platformio.org/en/latest/scripting/actions.html
-[lenv]: ./src/beetle-io/load_env.py
+[lenv]: ./src/beetle-pio/load_env.py
+[fm-rd]: ./src/beetle-pio/README.md

@@ -1,46 +1,28 @@
 #include "wifi-manager.hpp"
 
 namespace wifimanager {
-  Manager::Manager(const char * index, std::tuple<const char *, const char *> ap):
-    _last_frame(0),
+  Manager::Manager(std::tuple<const char *, const char *> ap):
     _last_mode(0),
-    _index(index),
     _ap_config(ap),
     _mode(false)
   {
-    _mode.emplace<PendingConfiguration>(_index);
+    _mode.emplace<PendingConfiguration>();
   }
 
-  Manager::~Manager() {
-  }
-
-  bool Manager::ready(void) {
-    if (_mode.index() == 0) {
-      bool connected = *std::get_if<0>(&_mode);
-      return connected;
-    }
-
-    return false;
-  }
-
-  void Manager::frame(unsigned long now) {
+  std::optional<Manager::EManagerMessage> Manager::frame() {
     unsigned int modi = _mode.index();
-
-    if (now - _last_frame < MIN_FRAME_DELAY) {
-      return;
-    }
 
 #ifndef RELEASE
     if (_last_mode != modi) {
       switch (modi) {
         case 0:
-          Serial.println("[wifi_manager]: active");
+          log_d("active");
           break;
         case 1:
-          Serial.println("[wifi_manager]: waiting for user configuration");
+          log_d("waiting for configration");
           break;
         case 2:
-          Serial.println("[wifi_manager]: waiting for connection to network");
+          log_d("connecting to network");
           break;
       }
 
@@ -48,12 +30,34 @@ namespace wifimanager {
     }
 #endif
 
-    _last_frame = now;
-
     switch (modi) {
       case 0: {
-        // Continue to verify our wifi connection status.
-        _mode.emplace<bool>(WiFi.status() == WL_CONNECTED);
+        ActiveConnection * active = std::get_if<0>(&_mode);
+        uint8_t previous = active->_disconnected;
+
+        active->_disconnected = WiFi.status() == WL_CONNECTED
+          ? 0
+          : active->_disconnected + 1;
+
+        // If we're now disconnected, sent an interruption message.
+        if (active->_disconnected == 1) {
+          return Manager::EManagerMessage::ConnectionInterruption;
+        }
+
+        // If we're no longer disconnected, but were previously, we've been resumed.
+        if (active->_disconnected == 0 && previous != 0) {
+          return Manager::EManagerMessage::ConnectionResumed;
+        }
+
+        if (active->_disconnected > MAX_PENDING_CONNECTION_ATTEMPTS) {
+#ifndef RELEASE
+          log_e("wifi manager disonncted after %d attempts", active->_disconnected);
+#endif
+
+          _mode.emplace<PendingConfiguration>();
+          return Manager::EManagerMessage::Disconnected;
+        }
+
         break;
       }
 
@@ -82,7 +86,7 @@ namespace wifimanager {
         _mode.emplace<PendingConnection>(ssid, password);
 
         WiFi.mode(WIFI_STA);
-        break;
+        return Manager::EManagerMessage::Connecting;
       }
 
       /**
@@ -95,14 +99,12 @@ namespace wifimanager {
         PendingConnection * pending = std::get_if<2>(&_mode);
 
 #ifndef RELEASE
-        Serial.print("[wifi_manager] attempting to connect to wifi [");
-        Serial.print(pending->_attempts);
-        Serial.println("]");
+        log_d("attempting to connect to wifi [%d]", pending->_attempts);
 #endif
 
         if (pending->_attempts == 0) {
 #ifndef RELEASE
-          Serial.print("connecting to wifi");
+          log_d("connecting to wifi");
 #endif
           WiFi.begin(pending->_ssid, pending->_password);
         }
@@ -110,11 +112,11 @@ namespace wifimanager {
         // If we have a connection, move out of this mode
         if (WiFi.status() == WL_CONNECTED) {
 #ifndef RELEASE
-          Serial.println("[wifi_manager] wifi connection established, moving mode to connected");
+          log_d("wifi is connected");
 #endif
 
-          _mode.emplace<bool>(true);
-          break;
+          _mode.emplace<ActiveConnection>(0);
+          return Manager::EManagerMessage::Connected;
         }
 
         pending->_attempts += 1;
@@ -123,26 +125,30 @@ namespace wifimanager {
         // network provided by the user, move back into the AP/configuration mode.
         if (pending->_attempts > MAX_PENDING_CONNECTION_ATTEMPTS) {
 #ifndef RELEASE
-          Serial.println("[wifi_manager] too many pending connection attempts, moving back to ap");
+          log_d("too many connections failed, resetting");
 #endif
 
           // Clear out our connection attempt garbage.
           WiFi.disconnect(true, true);
 
           // Prepare the wifi server.
-          _mode.emplace<PendingConfiguration>(_index);
+          _mode.emplace<PendingConfiguration>();
 
           // Enter into AP mode and start the server.
           begin();
+          return Manager::EManagerMessage::FailedConnection;
         }
+
         break;
       }
       default:
 #ifndef RELEASE
-        Serial.println("[wifi_manager] wifi manager: unknown mode");
+        log_d("unknown state");
 #endif
         break;
     }
+
+    return std::nullopt;
   }
 
   void Manager::begin(void) {
@@ -151,9 +157,7 @@ namespace wifimanager {
       IPAddress address = WiFi.softAPIP();
 
 #ifndef RELEASE
-      Serial.print("[wifi_manager] AP IP address: ");
-      Serial.println(address);
-      Serial.println("--- boot complete ---");
+      log_d("AP IP address: %s", address);
 #endif
 
       std::get_if<1>(&_mode)->begin(address);
@@ -161,18 +165,24 @@ namespace wifimanager {
     }
 
 #ifndef RELEASE
-    Serial.println("[wifi_manager] soft ap not started");
+    log_d("soft ap not started");
 #endif
   }
 
   bool Manager::PendingConfiguration::frame(char * ssid, char * password) {
       WiFiClient client = available();
 
-      // If we are running in AP mode and have no http connection to our server,
-      // move right along.
+      // If we are running in AP mode and have no http connection to our server, move right along.
       if (!client) {
         return false;
       }
+
+      // TODO: figure out how to decouple this so that consumers can provide their own index html.
+      // Currently, this is used to avoid the RAM cost associated with carrying around the char[]
+      extern const char index_html[] asm("_binary_embeds_index_http_start");
+      extern const char index_end[] asm("_binary_embeds_index_http_end");
+
+      log_d("loaded index (%d bytes)", index_end - index_html);
 
       unsigned int cursor = 0, field = 0;
       unsigned char noreads = 0;
@@ -211,7 +221,7 @@ namespace wifimanager {
 
         if (method == ERequestParsingMode::None && strcmp(buffer, CONNECTION_PREFIX) == 0) {
 #ifndef RELEASE
-          Serial.println("[wifi_manager] found connection request, preparing for ssid parsing");
+          log_d("found connection request, preparing for ssid parsing");
 #endif
 
           method = ERequestParsingMode::Network;
@@ -252,25 +262,21 @@ namespace wifimanager {
 
       if (method != ERequestParsingMode::Done) {
 #ifndef RELEASE
-        Serial.print("[wifi_manager] non-connect request:\n");
-        Serial.println(buffer);
+        log_d("non-connect request:\n%s", buffer);
 #endif
 
-        client.println(_index);
+        client.write(index_html, index_end - index_html);
+        delay(10);
         client.stop();
         return false;
       }
 
 #ifndef RELEASE
-      Serial.print("[wifi_manager] ssid: '");
-      Serial.print(ssid);
-      Serial.println("'");
-      Serial.print("[wifi_manager] password: '");
-      Serial.print(password);
-      Serial.println("'");
+      log_d("[wifi_manager] ssid: %s | password %s", ssid, password);
 #endif
 
-      client.println(_index);
+      client.write(index_html, index_end - index_html);
+      delay(10);
       client.stop();
 
       return true;
@@ -291,8 +297,22 @@ namespace wifimanager {
     }
   }
 
+  void Manager::PendingConfiguration::begin(IPAddress addr) {
+    _server.begin();
+    _dns.start(53, "*", addr);
+  }
+
   WiFiClient Manager::PendingConfiguration::available(void) {
     _dns.processNextRequest();
     return _server.available();
+  }
+
+  Manager::PendingConfiguration::~PendingConfiguration() {
+#ifndef RELEASE
+    log_d("wifi_manager::pending_configuration", "exiting pending configuration");
+#endif
+
+    _server.stop();
+    _dns.stop();
   }
 }

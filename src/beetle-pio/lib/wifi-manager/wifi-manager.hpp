@@ -2,6 +2,7 @@
 #define _WIFI_MANAGER_H 1
 
 #include <variant>
+#include <optional>
 
 #include <WiFi.h>
 #include <DNSServer.h>
@@ -12,33 +13,37 @@
 namespace wifimanager {
 
   struct Manager final {
-    constexpr static const char * CONNECTION_PREFIX PROGMEM = "GET /connect?";
+    constexpr static const char * CONNECTION_PREFIX = "GET /connect?";
 
     constexpr static unsigned int SERVER_BUFFER_CAPACITY = 1024;
     constexpr static unsigned char MAX_CLIENT_BLANK_READS = 5;
-    constexpr static unsigned char MAX_PENDING_CONNECTION_ATTEMPTS = 10;
-    constexpr static unsigned char MIN_FRAME_DELAY = 100;
+    constexpr static unsigned char MAX_PENDING_CONNECTION_ATTEMPTS = 200;
     constexpr static unsigned int MAX_HEADER_SIZE = 512;
     constexpr static unsigned char MAX_SSID_LENGTH = 60;
     constexpr static unsigned char MAX_PASSWORD_LENGTH  = 30;
 
-    Manager(const char *, std::tuple<const char *, const char *>);
-    ~Manager();
+    Manager(std::tuple<const char *, const char *>);
+    ~Manager() = default;
+
+    enum EManagerMessage {
+      Connecting,
+      Connected,
+      FailedConnection,
+      Disconnected,
+      ConnectionInterruption,
+      ConnectionResumed,
+    };
 
     void begin(void);
-    void frame(unsigned long);
-    bool ready(void);
+    std::optional<EManagerMessage> frame();
 
     private:
-      // It is not clear now what copy move and move assignment look like. Better to
-      // prevent them for the time being.
+      // It is not clear now what copy move and move assignment look like. Disable for now.
       Manager(const Manager &) = default;
       Manager(Manager &&) = default;
       Manager & operator=(const Manager &) = default;
 
-      unsigned long _last_frame;
       unsigned char _last_mode;
-      const char * _index;
       std::tuple<const char *, const char *> _ap_config;
 
       enum ERequestParsingMode {
@@ -49,8 +54,33 @@ namespace wifimanager {
         Failed = 4,
       };
 
+      /**
+       * `PendingConfiguration` represents the initial "resting" state of the device. During
+       * this state, we are running an http server _and_ a dns server. As devices connect to
+       * the network,
+       */
+      struct PendingConfiguration {
+        public:
+          PendingConfiguration(): _server(80) {}
+          ~PendingConfiguration();
+
+          bool frame(char *, char *);
+          void begin(IPAddress addr);
+
+        private:
+          WiFiClient available(void);
+          inline static char termination(ERequestParsingMode);
+
+          WiFiServer _server;
+          DNSServer _dns;
+      };
+
+      /**
+       * The `PendingConnection` variant is used as the state immediately after a user has
+       * submitted the network ssid and password.
+       */
       struct PendingConnection {
-        unsigned char _attempts = 0;
+        uint8_t _attempts = 0;
         char _ssid [MAX_SSID_LENGTH] = {'\0'};
         char _password [MAX_PASSWORD_LENGTH] = {'\0'};
 
@@ -63,32 +93,9 @@ namespace wifimanager {
         }
       };
 
-      struct PendingConfiguration {
-        public:
-          PendingConfiguration(const char * index): _index(index), _server(80) {}
-          ~PendingConfiguration() {
-#ifndef RELEASE
-            Serial.println("[wifi_manager] exiting pending configuration");
-#endif
-
-            _server.stop();
-            _dns.stop();
-          }
-
-          bool frame(char *, char *);
-
-          void begin(IPAddress addr) {
-            _server.begin();
-            _dns.start(53, "*", addr);
-          }
-
-        private:
-          WiFiClient available(void);
-          inline static char termination(ERequestParsingMode);
-
-          const char * _index;
-          WiFiServer _server;
-          DNSServer _dns;
+      struct ActiveConnection {
+        ActiveConnection(uint8_t d): _disconnected(d) {}
+        uint8_t _disconnected = 0;
       };
 
       // Note: the additional `bool` at the start of this variant type helps ensure
@@ -96,7 +103,7 @@ namespace wifimanager {
       // 
       // During this class's constructor, the variant is `.emplace`-ed immediately with
       // a wifi server.
-      std::variant<bool, PendingConfiguration, PendingConnection> _mode;
+      std::variant<ActiveConnection, PendingConfiguration, PendingConnection> _mode;
   };
 }
 
