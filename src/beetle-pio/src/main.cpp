@@ -13,9 +13,21 @@
 #include "board_layout.hpp"
 #include "wifi_config.hpp"
 #include "jellee_ttf.hpp"
+#include "glyphter_ttf.hpp"
 #include "redis_config.hpp"
 
 #include "engine.hpp"
+
+// TODO: the header files were generated from this directory using:
+//
+// ```
+// fontgen ../../.resources/Glyphter-font/Glyphter.ttf > ./include/glyphter_ttf.hpp
+// fontgen ../../.resources/Jellee_1223/TTF/Jellee-Bold.ttf > ./include/jellee_ttf.hpp
+// ```
+//
+// The generated symbols aren't particularly nice, so we'll macro them away for now.
+#define ICON_FONT _______resources_Glyphter_font_Glyphter_ttf
+#define TEXT_FONT _______resources_Jellee_1223_TTF_Jellee_Bold_ttf
 
 extern const char * ap_ssid;
 extern const char * ap_password;
@@ -51,6 +63,19 @@ uint16_t heap_debug_tick = 0;
 unsigned long MIN_FRAME_DELAY = 200;
 unsigned long last_frame = 0;
 bool failed = false;
+
+void gly_render(void) {
+  const gfx::open_font & gly = ICON_FONT;
+  float scale = gly.scale(20);
+  gfx::size16 bmp_size(240, 30);
+  uint8_t * buf = (uint8_t*) malloc(bmp_type::sizeof_buffer(bmp_size));
+  bmp_type tmp(bmp_size, buf);
+  gfx::draw::filled_rectangle(tmp, (gfx::srect16) lcd.bounds(), lcd_color::black);
+  gfx::srect16 text_rect = gly.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, "ABCDEFG", scale).bounds();
+  gfx::draw::text(tmp, text_rect, {0, 0}, "ABCDEFG", gly, scale, lcd_color::white, lcd_color::black, false);
+  gfx::draw::bitmap(lcd, (gfx::srect16) lcd.bounds().offset(0, 50), tmp, tmp.bounds().offset(0, 0));
+  free(buf);
+}
 
 void setup(void) {
 #ifndef RELEASE
@@ -132,7 +157,8 @@ void loop(void) {
   eng.update(wi, red);
 
   // Prepare our drawing buffer.
-  const gfx::open_font & f = Jellee_Bold_ttf;
+  const gfx::open_font & f = TEXT_FONT;
+
   float scale = f.scale(30);
   gfx::size16 bmp_size(240, 30);
   uint8_t * buf = (uint8_t*) malloc(bmp_type::sizeof_buffer(bmp_size));
@@ -160,14 +186,13 @@ void loop(void) {
   // Write the actual text.
   char view [256];
   memset(view, '\0', 256);
-
   eng.view(view, 256);
-
   gfx::srect16 text_rect = f.measure_text((gfx::ssize16) lcd.dimensions(), {0, 0}, view, scale).bounds();
   gfx::draw::text(tmp, text_rect.offset(0, 0), {0, 0}, view, f, scale, lcd_color::white, lcd_color::black, false);
-
   // Draw our buffer to the display
   gfx::draw::bitmap(lcd, (gfx::srect16) lcd.bounds(), tmp, tmp.bounds());
-
   free(buf);
+
+  gly_render();
 }
+
