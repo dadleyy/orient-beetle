@@ -15,12 +15,13 @@ namespace wifimanager {
   struct Manager final {
     constexpr static const char * CONNECTION_PREFIX = "GET /connect?";
 
-    constexpr static unsigned int SERVER_BUFFER_CAPACITY = 1024;
-    constexpr static unsigned char MAX_CLIENT_BLANK_READS = 5;
-    constexpr static unsigned char MAX_PENDING_CONNECTION_ATTEMPTS = 200;
-    constexpr static unsigned int MAX_HEADER_SIZE = 512;
-    constexpr static unsigned char MAX_SSID_LENGTH = 60;
-    constexpr static unsigned char MAX_PASSWORD_LENGTH  = 30;
+    constexpr static uint16_t SERVER_BUFFER_CAPACITY = 1024;
+    constexpr static uint8_t MAX_CLIENT_BLANK_READS = 5;
+    constexpr static uint16_t MAX_PENDING_CONNECTION_ATTEMPTS = 200;
+    constexpr static uint16_t MAX_CONNECTION_INTERRUPTS = 500;
+    constexpr static uint16_t MAX_HEADER_SIZE = 512;
+    constexpr static uint8_t MAX_SSID_LENGTH = 60;
+    constexpr static uint8_t MAX_PASSWORD_LENGTH  = 30;
 
     Manager(std::tuple<const char *, const char *>);
     ~Manager() = default;
@@ -38,13 +39,11 @@ namespace wifimanager {
     std::optional<EManagerMessage> frame();
 
     private:
-      // It is not clear now what copy move and move assignment look like. Disable for now.
+      // It is not clear now what copy move and move assignment look like.
+      // Disable for now.
       Manager(const Manager &) = default;
       Manager(Manager &&) = default;
       Manager & operator=(const Manager &) = default;
-
-      unsigned char _last_mode;
-      std::tuple<const char *, const char *> _ap_config;
 
       enum ERequestParsingMode {
         None = 0,
@@ -54,11 +53,9 @@ namespace wifimanager {
         Failed = 4,
       };
 
-      /**
-       * `PendingConfiguration` represents the initial "resting" state of the device. During
-       * this state, we are running an http server _and_ a dns server. As devices connect to
-       * the network,
-       */
+      // Initially, we do not have the necessary information to connect to a
+      // wifi network. While in this state, we will run both an http server
+      // as well as a dns server to create a "captive portal"
       struct PendingConfiguration {
         public:
           PendingConfiguration(): _server(80) {}
@@ -75,10 +72,9 @@ namespace wifimanager {
           DNSServer _dns;
       };
 
-      /**
-       * The `PendingConnection` variant is used as the state immediately after a user has
-       * submitted the network ssid and password.
-       */
+      // Once the user submits their wifi network configuration settings, we'll
+      // attempt to connect via `WiFi.begin(...)` and wait a defined number of
+      // frames before aborting back to configuration.
       struct PendingConnection {
         uint8_t _attempts = 0;
         char _ssid [MAX_SSID_LENGTH] = {'\0'};
@@ -93,16 +89,18 @@ namespace wifimanager {
         }
       };
 
+
+      // After we're connected via `WiFi.status(...)` returns a connected state,
+      // we'll move into this active connection state where each frame checks
+      // the current connection information and disconnects after some number of
+      // frames.
       struct ActiveConnection {
         ActiveConnection(uint8_t d): _disconnected(d) {}
         uint8_t _disconnected = 0;
       };
 
-      // Note: the additional `bool` at the start of this variant type helps ensure
-      // that the constructor of our WiFiServer is called explicitly when we want to.
-      // 
-      // During this class's constructor, the variant is `.emplace`-ed immediately with
-      // a wifi server.
+      uint8_t _last_mode;
+      std::tuple<const char *, const char *> _ap_config;
       std::variant<ActiveConnection, PendingConfiguration, PendingConnection> _mode;
   };
 }

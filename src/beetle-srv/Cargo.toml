@@ -4,10 +4,19 @@ version = "0.0.0"
 edition = "2021"
 publish = false
 
+[[bin]]
+name = "beetle-registrar"
+path = "src/bin/beetle-registrar.rs"
+
+[[bin]]
+name = "beetle-web"
+path = "src/bin/beetle-web.rs"
+
 [dependencies]
 dotenv = { version = "^0.15" }
 env_logger = { version = "^0.9" }
 log = { version = "^0.4" }
+uuid = { version = "^1.0", features = ["v4"] }
 tide = { version = "^0.16" }
 async-std = { version = "^1.0", features = ["attributes"] }
 async-tls = { version = "^0.10" }

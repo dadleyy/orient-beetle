@@ -73,6 +73,16 @@ void setup(void) {
     i += 1;
   }
 
+  if (strlen(redis_auth) > 60) {
+    failed = true;
+
+#ifndef RELEASE
+    log_e("redis authentication too large");
+#endif
+
+    return;
+  }
+
   if (!vcnl.begin()) {
 #ifndef RELEASE
     log_d("unable to detect vcnl proximity sensor");
@@ -101,7 +111,9 @@ void loop(void) {
   auto now = millis();
 
   if (now - last_frame < MIN_FRAME_DELAY || failed) {
+    digitalWrite(LED_BUILTIN, HIGH);
     delay(MIN_FRAME_DELAY - (now - last_frame));
+    digitalWrite(LED_BUILTIN, LOW);
     return;
   }
 

@@ -30,26 +30,52 @@ namespace redismanager {
       Manager(Manager &&) = default;
       Manager & operator=(const Manager &) = default;
 
-      constexpr static const uint32_t framebuffer_size = 1024;
-      constexpr static const char redis_pop [] = "*2\r\n$4\r\nLPOP\r\n$4\r\nob:m\r\n";
+      constexpr static const uint32_t FRAMEBUFFER_SIZE = 1024;
+      constexpr static const uint32_t MAX_ID_SIZE = 36;
+
+      // registration queues:
+      // - `ob:r` -> device pulls its id down
+      // - `ob:i` -> device notifies it is online
+      constexpr static const char REDIS_REGISTRATION_POP [] = "*2\r\n$4\r\nLPOP\r\n$4\r\nob:r\r\n";
 
       enum ECertificationStage {
-        NotRequested,
-        CerificationRequested,
-        Certified,
+        NotRequested,             // <- connects + writes auth
+        CerificationRequested,    // <- reads `+OK`
+        Certified,                // <- writes registrar-pop
+        IdentificationRequested,  // <- reads id
+        Identified,               // <- reads messages
       };
 
-      struct Connected {
-        ECertificationStage certified = ECertificationStage::NotRequested;
-        WiFiClientSecure client;
-        uint16_t cursor = 0;
-        char framebuffer[framebuffer_size];
+      // Once our wifi manager has established connection, we will open up a tls-backed tcp
+      // connection with our redis host and attempt authentication + "streaming".
+      struct Connected final {
+        public:
+          Connected();
+          ~Connected();
 
-        uint16_t copy(char *, uint16_t);
-        std::optional<EManagerMessage> update(const char *, const char *, uint32_t);
+          uint16_t copy(char *, uint16_t);
+          std::optional<EManagerMessage> update(const char *, const char *, uint32_t);
+
+        private:
+          Connected(const Connected &) = default;
+          Connected(Connected &&) = default;
+          Connected & operator=(const Connected &) = default;
+
+          inline uint16_t write_pop(void);
+
+          ECertificationStage _certified;
+
+          // The `_cursor` represents the last index of our framebuffer we have pushed into.
+          uint16_t _cursor;
+          char _framebuffer[FRAMEBUFFER_SIZE];
+
+          uint8_t _write_delay;
+          char _device_id [MAX_ID_SIZE + 1];
+          WiFiClientSecure _client;
       };
 
-      struct Disconnected {
+      // Until our wifi manager is connected, this state represents doing nothing.
+      struct Disconnected final {
         uint8_t tick = 0;
 
         bool update(std::optional<wifimanager::Manager::EManagerMessage> &message);

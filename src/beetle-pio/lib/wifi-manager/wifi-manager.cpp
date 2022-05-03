@@ -49,7 +49,7 @@ namespace wifimanager {
           return Manager::EManagerMessage::ConnectionResumed;
         }
 
-        if (active->_disconnected > MAX_PENDING_CONNECTION_ATTEMPTS) {
+        if (active->_disconnected > MAX_CONNECTION_INTERRUPTS) {
 #ifndef RELEASE
           log_e("wifi manager disonncted after %d attempts", active->_disconnected);
 #endif
