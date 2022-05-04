@@ -1,11 +1,6 @@
 use async_std::prelude::*;
 use std::io::{Error, ErrorKind, Result};
 
-const REGISTRAR_AVAILABLE: &'static str = "ob:r";
-const REGISTRAR_INCOMING: &'static str = "ob:i";
-const REGISTRAR_ACTIVE: &'static str = "ob:a";
-const REGISTRAR_INDEX: &'static str = "ob:s";
-
 #[derive(Default)]
 struct CommandLineConfig {
   redis: (String, String, String),
@@ -46,7 +41,7 @@ impl Worker {
       Some(mut inner) => {
         let output = kramer::execute(
           &mut inner,
-          kramer::Command::List::<&str, bool>(kramer::ListCommand::Len(REGISTRAR_AVAILABLE)),
+          kramer::Command::List::<&str, bool>(kramer::ListCommand::Len(beetle::constants::REGISTRAR_AVAILABLE)),
         )
         .await?;
 
@@ -76,7 +71,7 @@ impl Worker {
             &mut inner,
             kramer::Command::List(kramer::ListCommand::Push(
               (kramer::Side::Left, kramer::Insertion::Always),
-              REGISTRAR_AVAILABLE,
+              beetle::constants::REGISTRAR_AVAILABLE,
               kramer::Arity::Many(ids),
             )),
           )
@@ -87,7 +82,11 @@ impl Worker {
 
         let taken = kramer::execute(
           &mut inner,
-          kramer::Command::List::<&str, bool>(kramer::ListCommand::Pop(kramer::Side::Left, REGISTRAR_INCOMING, None)),
+          kramer::Command::List::<&str, bool>(kramer::ListCommand::Pop(
+            kramer::Side::Left,
+            beetle::constants::REGISTRAR_INCOMING,
+            None,
+          )),
         )
         .await?;
 
@@ -99,7 +98,7 @@ impl Worker {
           let activation = kramer::execute(
             &mut inner,
             kramer::Command::Hashes(kramer::HashCommand::Set(
-              REGISTRAR_ACTIVE,
+              beetle::constants::REGISTRAR_ACTIVE,
               kramer::Arity::One((id.as_str(), chrono::Utc::now().to_rfc3339())),
               kramer::Insertion::Always,
             )),
@@ -109,7 +108,7 @@ impl Worker {
           log::debug!("device activation - {:?}", activation);
 
           let setter = kramer::Command::Sets(kramer::SetCommand::Add(
-            REGISTRAR_INDEX,
+            beetle::constants::REGISTRAR_INDEX,
             kramer::Arity::One(id.as_str()),
           ));
           let activation = kramer::execute(&mut inner, setter).await?;

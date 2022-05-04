@@ -134,7 +134,7 @@ async fn run(config: CommandLineConfig) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-  dotenv::dotenv().map_err(|error| Error::new(ErrorKind::Other, error))?;
+  dotenv::dotenv().ok();
   env_logger::init();
 
   log::info!("environment + logger ready.");
