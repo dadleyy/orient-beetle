@@ -1,0 +1,4 @@
+[alias]
+reg = "run --bin beetle-registrar"
+web = "run --bin beetle-web"
+cli = "run --bin beetle-cli"

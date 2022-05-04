@@ -29,9 +29,7 @@ namespace redismanager {
         Disconnected * d = std::get_if<0>(&_state);
 
         if (d->update(message) || _paused) {
-#ifndef RELEASE
           log_d("attempting to move from disconnect to connected");
-#endif
 
           _paused = false;
           _state.emplace<Connected>();
@@ -56,9 +54,7 @@ namespace redismanager {
         // If we've received an interruption, pause immediately.
         if (message == wifimanager::Manager::EManagerMessage::ConnectionInterruption) {
           _paused = true;
-#ifndef RELEASE
           log_d("wifi connection was interrupted, pausing all requests");
-#endif
 
           return std::nullopt;
         }
@@ -100,29 +96,20 @@ namespace redismanager {
     if (_certified == ECertificationStage::NotRequested) {
       _certified = ECertificationStage::CerificationRequested;
 
-#ifndef RELEASE
       log_d("attempting to certify redis connection");
-#endif
       extern const uint8_t redis_root_ca[] asm("_binary_embeds_redis_host_root_ca_pem_start");
 
       _client.setCACert((char *) redis_root_ca);
-
-#ifndef RELEASE
       log_d("attempting to establish connection with redis %s:%d", _redis_host, _redis_port);
-#endif
 
       int result = _client.connect(_redis_host, _redis_port);
 
       if (result != 1) {
-#ifndef RELEASE
         log_e("unable to establish connection - %d", result);
-#endif
         return Manager::EManagerMessage::FailedConnection;
       }
 
-#ifndef RELEASE
       log_d("successfully connected to redis host/port ('%s')", _redis_auth);
-#endif
 
       // At this point we have a valid tcp connection using tls and can start writing our redis
       // commands. Start by sending the `AUTH` command.
@@ -131,9 +118,7 @@ namespace redismanager {
       sprintf(auth_command, "*2\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n", strlen(_redis_auth), _redis_auth);
       size_t written = _client.print(auth_command);
 
-#ifndef RELEASE
       log_d("wrote %d bytes on first message", written);
-#endif
 
       // Return early, delay read for another frame at least.
       return std::nullopt;
@@ -142,10 +127,8 @@ namespace redismanager {
     // If we're officially "certified" with the server, it is time to request our identity.
     if (_certified == ECertificationStage::Certified) {
       _certified = ECertificationStage::IdentificationRequested;
-#ifndef RELEASE
       // At this point we've got a connection and have successfully authorized ourselves.
       log_d("writing pop command for next frame");
-#endif
       _client.print(REDIS_REGISTRATION_POP);
 
       return std::nullopt;
@@ -163,9 +146,7 @@ namespace redismanager {
     // If we are not certified, assume this is our first `+OK` response pulled in off the 
     // `AUTH` command that was issued previously.
     if (_certified == ECertificationStage::CerificationRequested) {
-#ifndef RELEASE
       log_d("not yet certified with server, skipping pop");
-#endif
 
       // If we had no data, do nothing (we're still waiting for a response).
       if (_cursor == 0) {
@@ -173,9 +154,7 @@ namespace redismanager {
       }
 
       if (strcmp(_framebuffer, "+OK\r\n") == 0) {
-#ifndef RELEASE
         log_d("successfully authorized connection to redis");
-#endif
         _certified = ECertificationStage::Certified;
 
         return Manager::EManagerMessage::EstablishedConnection;
@@ -187,11 +166,9 @@ namespace redismanager {
 
     // If we popped something off the queue and it was empty, do nothing.
     if (strcmp(_framebuffer, "$-1\r\n") == 0 || _cursor == 0) {
-#ifndef RELEASE
       if (_certified == ECertificationStage::IdentificationRequested) {
         log_e("unable to pull device id, is registrar running?");
       }
-#endif
 
       // If we had nothing but we're identified, write our next pop before moving on.
       if (_certified == ECertificationStage::Identified) {
@@ -244,9 +221,7 @@ namespace redismanager {
         stage = 2;
         len = 0;
 
-#ifndef RELEASE
         log_d("parsed message length - %d (from %s)", size, message);
-#endif
 
         // Clear out our buffer in preparation for the real content.
         memset(message, '\0', FRAMEBUFFER_SIZE);
@@ -257,60 +232,40 @@ namespace redismanager {
       len += 1;
     }
 
-    if (len != size || len == 0 || stage != 2) {
-#ifndef RELEASE
-      if (isint == false) {
-        log_e("unable to parse message - '%s'", message);
-      }
-#endif
+    if ((len != size || len == 0 || stage != 2) && !isint) {
+      log_e("unable to parse message - '%s'", message);
       _cursor = 0;
       memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
       return std::nullopt;
     }
 
-#ifndef RELEASE
-    log_d("parsed message '%s' (len %d)", message, len);
-#endif
+    log_d("parsed message '%s' (len %d) (integer? %d)", message, len, isint);
 
     // TODO: here we are copying our parsed message back onto the memory we've allocated for
     // our framebuffer. It is definitely possible that this is not necessary.
-    memcpy(_framebuffer, message, len);
-    if (len < FRAMEBUFFER_SIZE) {
-      _framebuffer[len] = '\0';
+    if (isint == false) {
+      memcpy(_framebuffer, message, len);
+      if (len < FRAMEBUFFER_SIZE) {
+        _framebuffer[len] = '\0';
+      }
     }
 
     if (_certified == ECertificationStage::IdentificationRequested) {
-#ifndef RELEASE
       log_d("assuming '%s' is our identity", _framebuffer);
-#endif
       memcpy(_device_id, message, len < MAX_ID_SIZE ? len : MAX_ID_SIZE);
       _certified = ECertificationStage::Identified;
-
-      char buffer [256];
-      memset(buffer, '\0', 256);
-      sprintf(buffer, "*3\r\n$5\r\nRPUSH\r\n$4\r\nob:i\r\n$%d\r\n%s\r\n", strlen(_device_id), _device_id);
-      uint16_t written = _client.print(buffer);
-
-#ifndef RELEASE
-      log_d("wrote %d identification reservation bytes", written);
-#endif
+      write_push();
 
       return std::nullopt;
     }
 
     if (_certified == ECertificationStage::Identified) {
-#ifndef RELEASE
       log_d("writing our identified pop command (%s)", _device_id);
-#endif
-
       uint16_t written = write_pop();
-
-#ifndef RELEASE
       log_d("wrote '%d' bytes as identified user", written);
-#endif
     }
 
-    return std::optional(Manager::EManagerMessage::ReceivedMessage);
+    return isint ? std::nullopt : std::optional(Manager::EManagerMessage::ReceivedMessage);
   }
 
   Manager::Connected::Connected():
@@ -322,9 +277,7 @@ namespace redismanager {
   }
 
   Manager::Connected::~Connected() {
-#ifndef RELEASE
     log_d("cleaning up redis client connection");
-#endif
 
     _client.stop();
   }
@@ -332,14 +285,22 @@ namespace redismanager {
   inline uint16_t Manager::Connected::write_pop(void) {
     // Only actually write a pop every 10 times we request one...
     if (_write_delay++ < 10) {
-      return 0;
+      return _write_delay == 5 ? write_push() : 0;
     }
+
     _write_delay = 0;
 
     char buffer [256];
     memset(buffer, '\0', 256);
     uint8_t keysize = strlen(_device_id) + 3;
     sprintf(buffer, "*2\r\n$4\r\nLPOP\r\n$%d\r\nob:%s\r\n", keysize, _device_id);
+    return _client.print(buffer);
+  }
+
+  inline uint16_t Manager::Connected::write_push(void) {
+    char buffer [256];
+    memset(buffer, '\0', 256);
+    sprintf(buffer, "*3\r\n$5\r\nRPUSH\r\n$4\r\nob:i\r\n$%d\r\n%s\r\n", strlen(_device_id), _device_id);
     return _client.print(buffer);
   }
 

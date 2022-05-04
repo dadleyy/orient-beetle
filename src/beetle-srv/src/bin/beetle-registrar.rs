@@ -4,6 +4,7 @@ use std::io::{Error, ErrorKind, Result};
 const REGISTRAR_AVAILABLE: &'static str = "ob:r";
 const REGISTRAR_INCOMING: &'static str = "ob:i";
 const REGISTRAR_ACTIVE: &'static str = "ob:a";
+const REGISTRAR_INDEX: &'static str = "ob:s";
 
 #[derive(Default)]
 struct CommandLineConfig {
@@ -99,13 +100,21 @@ impl Worker {
             &mut inner,
             kramer::Command::Hashes(kramer::HashCommand::Set(
               REGISTRAR_ACTIVE,
-              kramer::Arity::One((id.as_str(), "true")),
+              kramer::Arity::One((id.as_str(), chrono::Utc::now().to_rfc3339())),
               kramer::Insertion::Always,
             )),
           )
           .await?;
 
           log::debug!("device activation - {:?}", activation);
+
+          let setter = kramer::Command::Sets(kramer::SetCommand::Add(
+            REGISTRAR_INDEX,
+            kramer::Arity::One(id.as_str()),
+          ));
+          let activation = kramer::execute(&mut inner, setter).await?;
+
+          log::debug!("device indexing - {:?}", activation);
         }
 
         Some(inner)

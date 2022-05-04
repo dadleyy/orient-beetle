@@ -50,9 +50,7 @@ namespace wifimanager {
         }
 
         if (active->_disconnected > MAX_CONNECTION_INTERRUPTS) {
-#ifndef RELEASE
           log_e("wifi manager disonncted after %d attempts", active->_disconnected);
-#endif
 
           _mode.emplace<PendingConfiguration>();
           return Manager::EManagerMessage::Disconnected;
@@ -97,24 +95,16 @@ namespace wifimanager {
        */
       case 2: {
         PendingConnection * pending = std::get_if<2>(&_mode);
-
-#ifndef RELEASE
         log_d("attempting to connect to wifi [%d]", pending->_attempts);
-#endif
 
         if (pending->_attempts == 0) {
-#ifndef RELEASE
           log_d("connecting to wifi");
-#endif
           WiFi.begin(pending->_ssid, pending->_password);
         }
 
         // If we have a connection, move out of this mode
         if (WiFi.status() == WL_CONNECTED) {
-#ifndef RELEASE
           log_d("wifi is connected");
-#endif
-
           _mode.emplace<ActiveConnection>(0);
           return Manager::EManagerMessage::Connected;
         }
@@ -124,9 +114,7 @@ namespace wifimanager {
         // If we have seen too many frames without establishing a connection to the 
         // network provided by the user, move back into the AP/configuration mode.
         if (pending->_attempts > MAX_PENDING_CONNECTION_ATTEMPTS) {
-#ifndef RELEASE
           log_d("too many connections failed, resetting");
-#endif
 
           // Clear out our connection attempt garbage.
           WiFi.disconnect(true, true);
@@ -142,9 +130,7 @@ namespace wifimanager {
         break;
       }
       default:
-#ifndef RELEASE
         log_d("unknown state");
-#endif
         break;
     }
 
@@ -156,17 +142,12 @@ namespace wifimanager {
       WiFi.softAP(std::get<0>(_ap_config), std::get<1>(_ap_config), 7, 0, 1);
       IPAddress address = WiFi.softAPIP();
 
-#ifndef RELEASE
-      log_d("AP IP address: %s", address);
-#endif
-
+      log_d("AP IP address: %s", address.toString());
       std::get_if<1>(&_mode)->begin(address);
       return;
     }
 
-#ifndef RELEASE
     log_d("soft ap not started");
-#endif
   }
 
   bool Manager::PendingConfiguration::frame(char * ssid, char * password) {
@@ -220,9 +201,7 @@ namespace wifimanager {
         }
 
         if (method == ERequestParsingMode::None && strcmp(buffer, CONNECTION_PREFIX) == 0) {
-#ifndef RELEASE
           log_d("found connection request, preparing for ssid parsing");
-#endif
 
           method = ERequestParsingMode::Network;
           cursor += 1;
@@ -261,9 +240,7 @@ namespace wifimanager {
       }
 
       if (method != ERequestParsingMode::Done) {
-#ifndef RELEASE
         log_d("non-connect request:\n%s", buffer);
-#endif
 
         client.write(index_html, index_end - index_html);
         delay(10);
@@ -271,9 +248,7 @@ namespace wifimanager {
         return false;
       }
 
-#ifndef RELEASE
       log_d("[wifi_manager] ssid: %s | password %s", ssid, password);
-#endif
 
       client.write(index_html, index_end - index_html);
       delay(10);
@@ -308,9 +283,7 @@ namespace wifimanager {
   }
 
   Manager::PendingConfiguration::~PendingConfiguration() {
-#ifndef RELEASE
     log_d("wifi_manager::pending_configuration", "exiting pending configuration");
-#endif
 
     _server.stop();
     _dns.stop();

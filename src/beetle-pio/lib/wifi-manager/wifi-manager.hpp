@@ -3,6 +3,7 @@
 
 #include <variant>
 #include <optional>
+#include "esp32-hal-log.h"
 
 #include <WiFi.h>
 #include <DNSServer.h>

@@ -10,15 +10,11 @@ void Engine::update(wifimanager::Manager &wifi, redismanager::Manager &redis) {
         _mode = EEngineMode::ConnectingWifi;
         break;
       case wifimanager::Manager::EManagerMessage::FailedConnection:
-#ifndef RELEASE
         log_e("wifi manager failed connection");
-#endif
         _mode = EEngineMode::Idle;
         break;
       case wifimanager::Manager::EManagerMessage::Disconnected:
-#ifndef RELEASE
         log_e("wifi manager disconnected");
-#endif
         _mode = EEngineMode::Idle;
         break;
 
@@ -33,27 +29,19 @@ void Engine::update(wifimanager::Manager &wifi, redismanager::Manager &redis) {
   if (redis_update != std::nullopt) {
     switch (redis_update.value()) {
       case redismanager::Manager::EManagerMessage::EstablishedConnection:
-#ifndef RELEASE
         log_d("redis manager was connected, moving into working");
-#endif
         _mode = EEngineMode::Working;
         break;
       case redismanager::Manager::EManagerMessage::ReceivedMessage:
-#ifndef RELEASE
         log_d("appears to received message from redis");
-#endif
 
         if (_mode == EEngineMode::Working) {
-#ifndef RELEASE
           log_d("copying message from redis manager in preparation for view");
-#endif
 
           _buffer_len = redis.copy(_buffer, view_buffer_size);
 
           if (_buffer_len > 0) {
-#ifndef RELEASE
             log_d("received message from redis: %s", _buffer);
-#endif
           }
         }
         break;

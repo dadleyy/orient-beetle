@@ -117,9 +117,7 @@ void setup(void) {
     return;
   }
 
-#ifndef RELEASE
   log_d("boot complete, redis-config. host: %s | port: %d", redis_host, redis_port);
-#endif
 
   digitalWrite(PIN_NUM_RST, HIGH);
   delay(10);

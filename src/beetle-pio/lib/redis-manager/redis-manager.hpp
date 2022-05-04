@@ -62,6 +62,7 @@ namespace redismanager {
           Connected & operator=(const Connected &) = default;
 
           inline uint16_t write_pop(void);
+          inline uint16_t write_push(void);
 
           ECertificationStage _certified;
 
