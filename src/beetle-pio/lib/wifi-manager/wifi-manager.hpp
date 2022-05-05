@@ -18,9 +18,11 @@ namespace wifimanager {
       explicit Manager(std::tuple<const char *, const char *>);
       ~Manager() = default;
 
+      // Disable Copy
       Manager(const Manager &) = delete;
       Manager & operator=(const Manager &) = delete;
 
+      // Disable Move
       Manager(Manager &&) = delete;
       Manager& operator=(Manager &&) = delete;
 

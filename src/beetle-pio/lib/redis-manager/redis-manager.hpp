@@ -14,9 +14,11 @@ namespace redismanager {
       Manager(const char *, const uint32_t, const char *);
       ~Manager() = default;
 
-      // It is not clear now what copy move and move assignment look like. Disable for now.
+      // Disable Copy
       Manager(const Manager &) = delete;
       Manager & operator=(const Manager &) = delete;
+
+      // Disable Move
       Manager(Manager &&) = delete;
       Manager& operator=(Manager &&) = delete;
 
