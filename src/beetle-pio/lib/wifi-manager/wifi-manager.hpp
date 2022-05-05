@@ -13,38 +13,38 @@
 
 namespace wifimanager {
 
-  struct Manager final {
-    constexpr static const char * CONNECTION_PREFIX = "GET /connect?";
+  class Manager final {
+    public:
+      explicit Manager(std::tuple<const char *, const char *>);
+      ~Manager() = default;
 
-    constexpr static uint16_t SERVER_BUFFER_CAPACITY = 1024;
-    constexpr static uint8_t MAX_CLIENT_BLANK_READS = 5;
-    constexpr static uint16_t MAX_PENDING_CONNECTION_ATTEMPTS = 200;
-    constexpr static uint16_t MAX_CONNECTION_INTERRUPTS = 500;
-    constexpr static uint16_t MAX_HEADER_SIZE = 512;
-    constexpr static uint8_t MAX_SSID_LENGTH = 60;
-    constexpr static uint8_t MAX_PASSWORD_LENGTH  = 30;
+      Manager(const Manager &) = delete;
+      Manager & operator=(const Manager &) = delete;
 
-    Manager(std::tuple<const char *, const char *>);
-    ~Manager() = default;
+      Manager(Manager &&) = delete;
+      Manager& operator=(Manager &&) = delete;
 
-    enum EManagerMessage {
-      Connecting,
-      Connected,
-      FailedConnection,
-      Disconnected,
-      ConnectionInterruption,
-      ConnectionResumed,
-    };
+      enum EManagerMessage {
+        Connecting,
+        Connected,
+        FailedConnection,
+        Disconnected,
+        ConnectionInterruption,
+        ConnectionResumed,
+      };
 
-    void begin(void);
-    std::optional<EManagerMessage> frame();
+      void begin(void);
+      std::optional<EManagerMessage> frame();
 
     private:
-      // It is not clear now what copy move and move assignment look like.
-      // Disable for now.
-      Manager(const Manager &) = default;
-      Manager(Manager &&) = default;
-      Manager & operator=(const Manager &) = default;
+      constexpr static const char * CONNECTION_PREFIX = "GET /connect?";
+      constexpr static uint16_t SERVER_BUFFER_CAPACITY = 1024;
+      constexpr static uint8_t MAX_CLIENT_BLANK_READS = 5;
+      constexpr static uint16_t MAX_PENDING_CONNECTION_ATTEMPTS = 200;
+      constexpr static uint16_t MAX_CONNECTION_INTERRUPTS = 500;
+      constexpr static uint16_t MAX_HEADER_SIZE = 512;
+      constexpr static uint8_t MAX_SSID_LENGTH = 60;
+      constexpr static uint8_t MAX_PASSWORD_LENGTH  = 30;
 
       enum ERequestParsingMode {
         None = 0,

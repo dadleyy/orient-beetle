@@ -14,6 +14,12 @@ namespace redismanager {
       Manager(const char *, const uint32_t, const char *);
       ~Manager() = default;
 
+      // It is not clear now what copy move and move assignment look like. Disable for now.
+      Manager(const Manager &) = delete;
+      Manager & operator=(const Manager &) = delete;
+      Manager(Manager &&) = delete;
+      Manager& operator=(Manager &&) = delete;
+
       enum EManagerMessage {
         FailedConnection,
         ConnectionLost,
@@ -26,11 +32,6 @@ namespace redismanager {
       uint16_t copy(char *, uint16_t);
 
     private:
-      // It is not clear now what copy move and move assignment look like. Disable for now.
-      Manager(const Manager &) = default;
-      Manager(Manager &&) = default;
-      Manager & operator=(const Manager &) = default;
-
       constexpr static const uint32_t FRAMEBUFFER_SIZE = 1024;
       constexpr static const uint32_t MAX_ID_SIZE = 36;
 

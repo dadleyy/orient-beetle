@@ -225,8 +225,6 @@ namespace redismanager {
         stage = 2;
         len = 0;
 
-        log_d("parsed message length - %d (from %s)", size, message);
-
         // Clear out our buffer in preparation for the real content.
         memset(message, '\0', FRAMEBUFFER_SIZE);
         continue;
@@ -245,8 +243,6 @@ namespace redismanager {
       memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
       return std::nullopt;
     }
-
-    log_d("parsed message '%s' (len %d) (integer? %d)", message, len, isint);
 
     // TODO: here we are copying our parsed message back onto the memory we've allocated for
     // our framebuffer. It is definitely possible that this is not necessary.
@@ -268,9 +264,7 @@ namespace redismanager {
     }
 
     if (_certified == ECertificationStage::Identified) {
-      log_d("writing our identified pop command (%s)", _device_id);
-      uint16_t written = write_pop();
-      log_d("wrote '%d' bytes as identified user", written);
+      write_pop();
     }
 
     return isint ? std::nullopt : std::optional(Manager::EManagerMessage::ReceivedMessage);
