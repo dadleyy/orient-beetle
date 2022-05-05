@@ -18,6 +18,7 @@ namespace redismanager {
         FailedConnection,
         ConnectionLost,
         EstablishedConnection,
+        IdentificationReceived,
         ReceivedMessage,
       };
 
@@ -72,6 +73,7 @@ namespace redismanager {
 
           uint8_t _write_delay;
           char _device_id [MAX_ID_SIZE + 1];
+          uint8_t _device_id_len;
           WiFiClientSecure _client;
       };
 

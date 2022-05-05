@@ -116,6 +116,8 @@ namespace redismanager {
       char auth_command [256];
       memset(auth_command, '\0', 256);
       sprintf(auth_command, "*2\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n", strlen(_redis_auth), _redis_auth);
+
+      // TODO: `_client.write(...)` might be a better choice here
       size_t written = _client.print(auth_command);
 
       log_d("wrote %d bytes on first message", written);
@@ -129,6 +131,7 @@ namespace redismanager {
       _certified = ECertificationStage::IdentificationRequested;
       // At this point we've got a connection and have successfully authorized ourselves.
       log_d("writing pop command for next frame");
+      // TODO: `_client.write(...)` might be a better choice here
       _client.print(REDIS_REGISTRATION_POP);
 
       return std::nullopt;
@@ -139,6 +142,7 @@ namespace redismanager {
 
     // Read everything we can off our client.
     while (_client.available() && _cursor < FRAMEBUFFER_SIZE - 1) {
+      // TODO: `_client.read((uint8_t *) _framebuffer, FRAMEBUFFER)` might be a better choice here
       _framebuffer[_cursor] = (char) _client.read();
       _cursor += 1;
     }
@@ -232,6 +236,9 @@ namespace redismanager {
       len += 1;
     }
 
+    // If we parsed something that wasn't a integer response and it was either empty or
+    // the value returned is not the same as our index it does not appear to be a valid
+    // message.
     if ((len != size || len == 0 || stage != 2) && !isint) {
       log_e("unable to parse message - '%s'", message);
       _cursor = 0;
@@ -252,11 +259,12 @@ namespace redismanager {
 
     if (_certified == ECertificationStage::IdentificationRequested) {
       log_d("assuming '%s' is our identity", _framebuffer);
-      memcpy(_device_id, message, len < MAX_ID_SIZE ? len : MAX_ID_SIZE);
+
+      _device_id_len = len < MAX_ID_SIZE ? len : MAX_ID_SIZE;
+      memcpy(_device_id, message, _device_id_len);
       _certified = ECertificationStage::Identified;
       write_push();
-
-      return std::nullopt;
+      return Manager::EManagerMessage::IdentificationReceived;
     }
 
     if (_certified == ECertificationStage::Identified) {
@@ -271,7 +279,8 @@ namespace redismanager {
   Manager::Connected::Connected():
     _certified(ECertificationStage::NotRequested),
     _cursor(0),
-    _write_delay(0) {
+    _write_delay(0),
+    _device_id_len(0) {
       memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
       memset(_device_id, '\0', MAX_ID_SIZE + 1);
   }
@@ -294,6 +303,8 @@ namespace redismanager {
     memset(buffer, '\0', 256);
     uint8_t keysize = strlen(_device_id) + 3;
     sprintf(buffer, "*2\r\n$4\r\nLPOP\r\n$%d\r\nob:%s\r\n", keysize, _device_id);
+
+    // TODO: `_client.write(...)` might be a better choice here
     return _client.print(buffer);
   }
 
@@ -301,6 +312,8 @@ namespace redismanager {
     char buffer [256];
     memset(buffer, '\0', 256);
     sprintf(buffer, "*3\r\n$5\r\nRPUSH\r\n$4\r\nob:i\r\n$%d\r\n%s\r\n", strlen(_device_id), _device_id);
+
+    // TODO: `_client.write(...)` might be a better choice here
     return _client.print(buffer);
   }
 

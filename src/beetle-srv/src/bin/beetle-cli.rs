@@ -12,6 +12,7 @@ usage:
 enum CommandLineCommand {
   Help,
   PrintConnected,
+  CleanDisconnects,
   PushString(String, String),
 }
 
@@ -88,21 +89,7 @@ async fn run(config: CommandLineConfig) -> Result<()> {
     return Ok(());
   }
 
-  let connector = async_tls::TlsConnector::default();
-  let mut stream = connector
-    .connect(
-      &config.redis.0,
-      async_std::net::TcpStream::connect(format!("{}:{}", config.redis.0, config.redis.1)).await?,
-    )
-    .await?;
-
-  let auth_result = kramer::execute(
-    &mut stream,
-    kramer::Command::Auth::<&str, bool>(kramer::AuthCredentials::Password(&config.redis.2)),
-  )
-  .await?;
-
-  log::warn!("auth result - {:?}", auth_result);
+  let mut stream = beetle::connect(&config.redis.0, &config.redis.1, &config.redis.2).await?;
 
   match config.command {
     CommandLineCommand::Help => unreachable!(),
@@ -128,6 +115,37 @@ async fn run(config: CommandLineConfig) -> Result<()> {
         println!("{}", dev);
       }
     }
+
+    CommandLineCommand::CleanDisconnects => {
+      let page = get_connected_page(&mut stream, None).await?;
+      let mins = chrono::Utc::now();
+
+      for dev in &page {
+        let since = mins.signed_duration_since(*dev.last_seen()).num_seconds();
+
+        if since > 60 {
+          kramer::execute(
+            &mut stream,
+            kramer::Command::Hashes::<&str, &str>(kramer::HashCommand::Del(
+              beetle::constants::REGISTRAR_ACTIVE,
+              kramer::Arity::One(dev.id()),
+            )),
+          )
+          .await?;
+
+          kramer::execute(
+            &mut stream,
+            kramer::Command::Sets::<&str, &str>(kramer::SetCommand::Rem(
+              beetle::constants::REGISTRAR_INDEX,
+              kramer::Arity::One(dev.id()),
+            )),
+          )
+          .await?;
+
+          log::info!("cleaned up up {}", dev);
+        }
+      }
+    }
   }
 
   Ok(())
@@ -151,6 +169,7 @@ fn main() -> Result<()> {
 
   config.command = match cmd.as_ref().map(|i| i.as_str()) {
     Some("printall") => CommandLineCommand::PrintConnected,
+    Some("cleanup") => CommandLineCommand::CleanDisconnects,
     Some("write") => {
       let (id, message) = args
         .next()
