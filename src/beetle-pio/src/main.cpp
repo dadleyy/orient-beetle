@@ -58,6 +58,7 @@ Adafruit_VCNL4010 vcnl;
 
 #ifndef RELEASE
 uint16_t heap_debug_tick = 0;
+uint16_t heap_debug_tick_minimum = 25;
 #endif
 
 unsigned long MIN_FRAME_DELAY = 200;
@@ -142,7 +143,7 @@ void loop(void) {
 
 #ifndef RELEASE
   heap_debug_tick += 1;
-  if (heap_debug_tick > 50) {
+  if (heap_debug_tick > heap_debug_tick_minimum) {
     log_d("free memory before malloc: %d", ESP.getFreeHeap());
     uint16_t prox = vcnl.readProximity();
     log_d("proximity: %d", prox);
@@ -175,7 +176,7 @@ void loop(void) {
   gfx::draw::filled_rectangle(tmp, (gfx::srect16) lcd.bounds(), lcd_color::black);
 
 #ifndef RELEASE
-  if (heap_debug_tick > 50) {
+  if (heap_debug_tick > heap_debug_tick_minimum) {
     log_d("free memory after malloc: %d", ESP.getFreeHeap());
     heap_debug_tick = 0;
   }
