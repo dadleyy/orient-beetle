@@ -11,7 +11,7 @@ namespace redismanager {
   
   class Manager final {
     public:
-      Manager(const char *, const uint32_t, const char *);
+      explicit Manager(std::tuple<const char *, const uint32_t, const char *>);
       ~Manager() = default;
 
       // Disable Copy

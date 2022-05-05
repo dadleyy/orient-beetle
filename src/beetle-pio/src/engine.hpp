@@ -7,10 +7,18 @@
 
 class Engine final {
   public:
-    Engine() = default;
+    Engine(
+      std::tuple<const char *, const char *>,
+      std::tuple<const char *, uint32_t, const char *>
+    );
     ~Engine() = default;
 
-    void update(wifimanager::Manager&, redismanager::Manager&);
+    Engine() = delete;
+    Engine(const Engine&) = delete;
+    Engine& operator=(const Engine&) = delete;
+
+    void begin(void);
+    void update(void);
     void view(char *, uint16_t);
 
   private:
@@ -27,6 +35,9 @@ class Engine final {
 
     EEngineMode _mode = EEngineMode::Idle;
     uint8_t _tick = 0;
+
+    wifimanager::Manager _wifi;
+    redismanager::Manager _redis;
 };
 
 #endif

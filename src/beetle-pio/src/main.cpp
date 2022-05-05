@@ -51,9 +51,13 @@ using lcd_color = gfx::color<typename lcd_type::pixel_type>;
 using bmp_type = gfx::bitmap<typename lcd_type::pixel_type>;
 lcd_type lcd;
 
-wifimanager::Manager wi(std::make_pair(ap_ssid, ap_password));
-redismanager::Manager red(redis_host, redis_port, redis_auth);
-Engine eng;
+// TODO: explore constructing the wifi + redis managers here. Dealing with the copy
+// and/or movement semantics of their constructors is out of scope for now.
+Engine eng(
+  std::make_pair(ap_ssid, ap_password),
+  std::make_tuple(redis_host, redis_port, redis_auth)
+);
+
 Adafruit_VCNL4010 vcnl;
 
 #ifndef RELEASE
@@ -128,7 +132,7 @@ void setup(void) {
   delay(50);
 
   gfx::draw::filled_rectangle(lcd, (gfx::srect16) lcd.bounds(), lcd_color::black);
-  wi.begin();
+  eng.begin();
 }
 
 void loop(void) {
@@ -153,7 +157,7 @@ void loop(void) {
   last_frame = now;
 
   // Apply updates.
-  eng.update(wi, red);
+  eng.update();
 
   // Prepare our drawing buffer.
   const gfx::open_font & f = TEXT_FONT;

@@ -2,10 +2,10 @@
 
 namespace redismanager {
 
-  Manager::Manager(const char * host, const uint32_t port, const char * auth):
-    _redis_host(host),
-    _redis_port(port),
-    _redis_auth(auth),
+  Manager::Manager(std::tuple<const char *, const uint32_t, const char *> config):
+    _redis_host(std::get<0>(config)),
+    _redis_port(std::get<1>(config)),
+    _redis_auth(std::get<2>(config)),
     _paused(false),
     _state(Disconnected { tick: 0 })
   {
