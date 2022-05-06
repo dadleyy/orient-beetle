@@ -103,7 +103,7 @@ void setup(void) {
   digitalWrite(PIN_NUM_RST, HIGH);
   delay(50);
 
-  // gfx::draw::filled_rectangle(lcd, (gfx::srect16) lcd.bounds(), lcd_color::black);
+  view.clear();
   eng.begin();
 }
 

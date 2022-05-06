@@ -11,64 +11,30 @@ void Engine::begin(void) {
 }
 
 State Engine::update(State& current) {
-  std::optional<wifimanager::Manager::EManagerMessage> wifi_update = _wifi.frame();
-  std::optional<redismanager::Manager::EManagerMessage> redis_update = _redis.frame(wifi_update);
+  State next(std::move(current));
 
-  if (wifi_update != std::nullopt) {
-    switch (wifi_update.value()) {
+  std::optional<wifimanager::Manager::EManagerMessage> wifi_update = _wifi.frame();
+
+  if (wifi_update) {
+    switch (*wifi_update) {
       case wifimanager::Manager::EManagerMessage::Connecting:
-        _mode = EEngineMode::ConnectingWifi;
-        break;
+        next.active.emplace<ConnectingState>();
+        return next;
       case wifimanager::Manager::EManagerMessage::FailedConnection:
-        log_e("wifi manager failed connection");
-        _mode = EEngineMode::Idle;
         break;
       case wifimanager::Manager::EManagerMessage::Disconnected:
-        log_e("wifi manager disconnected");
-        _mode = EEngineMode::Idle;
         break;
-
       case wifimanager::Manager::EManagerMessage::ConnectionInterruption:
+        break;
       case wifimanager::Manager::EManagerMessage::ConnectionResumed:
+        break;
       case wifimanager::Manager::EManagerMessage::Connected:
-      default:
-        break;
+        next.active.emplace<ConnectedState>();
+        return next;
     }
   }
 
-  if (redis_update != std::nullopt) {
-    switch (redis_update.value()) {
-      case redismanager::Manager::EManagerMessage::EstablishedConnection:
-        log_d("redis manager was connected, moving into working");
-        _mode = EEngineMode::Working;
-        break;
-      case redismanager::Manager::EManagerMessage::ReceivedMessage:
-        log_d("appears to received message from redis");
+  std::optional<redismanager::Manager::EManagerMessage> redis_update = _redis.frame(wifi_update);
 
-        if (_mode == EEngineMode::Working) {
-          log_d("copying message from redis manager in preparation for view");
-
-          _buffer_len = _redis.copy(_buffer, view_buffer_size);
-
-          if (_buffer_len > 0) {
-            log_d("received message from redis: %s", _buffer);
-          }
-        }
-        break;
-
-      // these messages are not necessarily interesting to the user, or are covered
-      // by transitions ealier.
-      case redismanager::Manager::EManagerMessage::ConnectionLost:
-      case redismanager::Manager::EManagerMessage::FailedConnection:
-      default:
-        break;
-    }
-  }
-
-  if (_mode != EEngineMode::Working) {
-    _buffer_len = 0;
-    memset(_buffer, '\0', view_buffer_size);
-  }
-
-  return std::move(current);
+  return next;
 }

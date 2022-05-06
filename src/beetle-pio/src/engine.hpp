@@ -22,20 +22,6 @@ class Engine final {
     State update(State&);
 
   private:
-    constexpr static const uint16_t view_buffer_size = 1024;
-
-    enum EEngineMode {
-      Idle,
-      ConnectingWifi,
-      Working,
-    };
-
-    char _buffer[view_buffer_size];
-    uint16_t _buffer_len = 0;
-
-    EEngineMode _mode = EEngineMode::Idle;
-    uint8_t _tick = 0;
-
     wifimanager::Manager _wifi;
     redismanager::Manager _redis;
 };

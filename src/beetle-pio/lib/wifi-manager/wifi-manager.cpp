@@ -9,6 +9,13 @@ namespace wifimanager {
     _mode.emplace<PendingConfiguration>();
   }
 
+  inline uint8_t Manager::attempt(void) {
+    if (_mode.index() == 2) {
+      return std::get_if<PendingConnection>(&_mode)->_attempts;
+    }
+    return 0;
+  }
+
   std::optional<Manager::EManagerMessage> Manager::frame() {
     unsigned int modi = _mode.index();
 
@@ -67,8 +74,13 @@ namespace wifimanager {
        */
       case 1: {
         PendingConfiguration * server = std::get_if<1>(&_mode);
-        char ssid [MAX_SSID_LENGTH] = {'\0'};
-        char password [MAX_SSID_LENGTH] = {'\0'};
+
+        // TODO: using stack allocated char arrays of a preset max size here over
+        // dynamically allocated memory. Not clear right now which is better.
+        char ssid [MAX_SSID_LENGTH];
+        memset(ssid, '\0', MAX_SSID_LENGTH);
+        char password [MAX_PASSWORD_LENGTH];
+        memset(password, '\0', MAX_PASSWORD_LENGTH);
 
         if (server->frame(ssid, password) == false) { 
           break;
@@ -95,7 +107,10 @@ namespace wifimanager {
        */
       case 2: {
         PendingConnection * pending = std::get_if<2>(&_mode);
-        log_d("attempting to connect to wifi [%d]", pending->_attempts);
+
+        if (pending->_attempts % 3 == 0) {
+          log_d("attempting to connect to wifi [%d]", pending->_attempts);
+        }
 
         if (pending->_attempts == 0) {
           log_d("connecting to wifi");
@@ -169,11 +184,10 @@ namespace wifimanager {
       unsigned char noreads = 0;
 
       ERequestParsingMode method = ERequestParsingMode::None;
-      char buffer [SERVER_BUFFER_CAPACITY] = {'\0'};
 
+      // stack-allocated space with immediate initialization?
+      char buffer [SERVER_BUFFER_CAPACITY];
       memset(buffer, '\0', SERVER_BUFFER_CAPACITY);
-      memset(ssid, '\0', MAX_SSID_LENGTH);
-      memset(password, '\0', MAX_SSID_LENGTH);
 
       while (
         client.connected()

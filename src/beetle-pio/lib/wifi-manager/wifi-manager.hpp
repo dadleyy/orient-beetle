@@ -27,7 +27,7 @@ namespace wifimanager {
       Manager& operator=(Manager &&) = delete;
 
       enum EManagerMessage {
-        Connecting,
+        Connecting = 0,
         Connected,
         FailedConnection,
         Disconnected,
@@ -37,6 +37,7 @@ namespace wifimanager {
 
       void begin(void);
       std::optional<EManagerMessage> frame();
+      inline uint8_t attempt(void);
 
     private:
       constexpr static const char * CONNECTION_PREFIX = "GET /connect?";
@@ -45,6 +46,7 @@ namespace wifimanager {
       constexpr static uint16_t MAX_PENDING_CONNECTION_ATTEMPTS = 200;
       constexpr static uint16_t MAX_CONNECTION_INTERRUPTS = 500;
       constexpr static uint16_t MAX_HEADER_SIZE = 512;
+
       constexpr static uint8_t MAX_SSID_LENGTH = 60;
       constexpr static uint8_t MAX_PASSWORD_LENGTH  = 30;
 
@@ -59,7 +61,7 @@ namespace wifimanager {
       // Initially, we do not have the necessary information to connect to a
       // wifi network. While in this state, we will run both an http server
       // as well as a dns server to create a "captive portal"
-      struct PendingConfiguration {
+      struct PendingConfiguration final {
         public:
           PendingConfiguration(): _server(80) {}
           ~PendingConfiguration();
@@ -78,17 +80,28 @@ namespace wifimanager {
       // Once the user submits their wifi network configuration settings, we'll
       // attempt to connect via `WiFi.begin(...)` and wait a defined number of
       // frames before aborting back to configuration.
-      struct PendingConnection {
+      struct PendingConnection final {
         uint8_t _attempts = 0;
-        char _ssid [MAX_SSID_LENGTH] = {'\0'};
-        char _password [MAX_PASSWORD_LENGTH] = {'\0'};
 
-        PendingConnection(
-            char ssid [MAX_SSID_LENGTH],
-            char password [MAX_PASSWORD_LENGTH]
-        ): _attempts(0) {
+        // TODO: unsure if using pointers here vs arrays with constant sizes is
+        // more "proper". Since we're dealing with a small amount (max 60 + 40
+        // bytes) of data, it might be easier to use array members.
+        char * _ssid;
+        char * _password;
+
+        PendingConnection(const char * ssid, const char * password):
+          _attempts(0),
+          _ssid((char *) malloc(sizeof(char) * MAX_SSID_LENGTH)),
+          _password((char *) malloc(sizeof(char) * MAX_PASSWORD_LENGTH))
+        {
           memcpy(_ssid, ssid, MAX_SSID_LENGTH);
           memcpy(_password, password, MAX_PASSWORD_LENGTH);
+        }
+
+        ~PendingConnection() {
+          log_d("[MEMORY OPERATION] freeing memory used by pending connection");
+          free(_ssid);
+          free(_password);
         }
       };
 
