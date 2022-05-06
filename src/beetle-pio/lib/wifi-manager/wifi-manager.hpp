@@ -37,7 +37,7 @@ namespace wifimanager {
 
       void begin(void);
       std::optional<EManagerMessage> frame();
-      inline uint8_t attempt(void);
+      uint8_t attempt(void);
 
     private:
       constexpr static const char * CONNECTION_PREFIX = "GET /connect?";

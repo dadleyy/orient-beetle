@@ -1,6 +1,7 @@
 #ifndef _STATE_H
 #define _STATE_H
 
+#include <cstdint>
 #include <variant>
 
 struct UnknownState final {
@@ -22,12 +23,18 @@ struct ConfiguringState final {
 };
 
 struct ConnectingState final {
-  ConnectingState() {}
-  ConnectingState(ConnectingState&&) {}
-  ConnectingState& operator=(ConnectingState&&) { return *this; }
+  ConnectingState(): attempt(0) {}
+  ConnectingState(uint8_t a): attempt(a) {}
+  ConnectingState(ConnectingState&& other) { attempt = other.attempt; }
+  ConnectingState& operator=(ConnectingState&& other) {
+    this->attempt = other.attempt;
+    return *this;
+  }
 
   ConnectingState(const ConnectingState&) = delete;
   ConnectingState& operator=(const ConnectingState&) = delete;
+
+  uint8_t attempt;
 };
 
 struct ConnectedState final {

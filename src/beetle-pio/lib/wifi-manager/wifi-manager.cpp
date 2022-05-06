@@ -9,7 +9,7 @@ namespace wifimanager {
     _mode.emplace<PendingConfiguration>();
   }
 
-  inline uint8_t Manager::attempt(void) {
+  uint8_t Manager::attempt(void) {
     if (_mode.index() == 2) {
       return std::get_if<PendingConnection>(&_mode)->_attempts;
     }

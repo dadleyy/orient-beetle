@@ -207,7 +207,7 @@ namespace arduino {
                     driver::send_data8(0XAF);
                     
                     driver::send_command(0x36);    // Memory Access Control
-                    driver::send_data8(0x08);
+                    driver::send_data8(0x00);
                     
                     driver::send_command(0x3A);
                     driver::send_data8(0x55);

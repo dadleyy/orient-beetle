@@ -16,6 +16,7 @@
 #define ICON_FONT _______resources_Glyphter_font_Glyphter_ttf
 #define TEXT_FONT _______resources_Jellee_1223_TTF_Jellee_Bold_ttf
 
+constexpr const char * CONFIGURING = "pending setup";
 
 template<class T>
 class View final {
@@ -32,39 +33,87 @@ class View final {
 
     void render(const State& state) {
       auto bnds = _lcd.bounds();
+      gfx::ssize16 dims = (gfx::ssize16) _lcd.dimensions();
 
-      const gfx::open_font & f = TEXT_FONT;
-      float ss = f.scale(30);
+      const gfx::open_font & text_font = TEXT_FONT;
+      const gfx::open_font & icon_font = ICON_FONT;
+      float text_scale = text_font.scale(30);
+      float icon_scale = icon_font.scale(30);
 
-      gfx::size16 bmp_size(240, 30);
-      uint8_t * line_buf = (uint8_t*) malloc(bmp_type::sizeof_buffer(bmp_size));
-      bmp_type line_bmp(bmp_size, line_buf);
+      gfx::size16 header_size(240, 30);
+      uint8_t * header_buf = (uint8_t*) malloc(bmp_type::sizeof_buffer(header_size));
+      bmp_type header_bitmap(header_size, header_buf);
 
       if (const ConfiguringState * conf = std::get_if<ConfiguringState>(&state.active)) {
-        gfx::srect16 tr = f.measure_text((gfx::ssize16) _lcd.dimensions(), {0, 0}, "conf", ss).bounds();
-        gfx::draw::filled_rectangle(line_bmp, (gfx::srect16) bnds, lcd_color::black);
-        gfx::draw::text(line_bmp, tr.offset(0, 0), {0, 0}, "conf", f, ss, lcd_color::white, lcd_color::black, false);
+        gfx::srect16 tr = text_font.measure_text(dims, {0, 0}, CONFIGURING, text_scale).bounds();
+        gfx::srect16 ir = icon_font.measure_text(dims, {0, 0}, "A", icon_scale).bounds();
+
+        gfx::draw::filled_rectangle(header_bitmap, (gfx::srect16) bnds, lcd_color::black);
+
+        gfx::draw::text(
+          header_bitmap,
+          ir.offset(0, 0),
+          {0, 0},
+          "A",
+          icon_font,
+          icon_scale,
+          lcd_color::red,
+          lcd_color::black,
+          false
+        );
+        gfx::draw::text(
+          header_bitmap,
+          tr.offset(36, 0),
+          {0, 0},
+          CONFIGURING,
+          text_font,
+          text_scale,
+          lcd_color::white,
+          lcd_color::black,
+          false
+        );
       } else if (const ConnectingState * con = std::get_if<ConnectingState>(&state.active)) {
-        gfx::srect16 tr = f.measure_text((gfx::ssize16) _lcd.dimensions(), {0, 0}, "connecting", ss).bounds();
-        gfx::draw::filled_rectangle(line_bmp, (gfx::srect16) bnds, lcd_color::black);
-        gfx::draw::text(line_bmp, tr.offset(0, 0), {0, 0}, "connecting", f, ss, lcd_color::white, lcd_color::black, false);
+        char * buffer = (char *) calloc(50, sizeof(char));
+        sprintf(buffer, "connecting (%d)", con->attempt);
+        gfx::srect16 tr = text_font.measure_text((gfx::ssize16) dims, {0, 0}, buffer, text_scale).bounds();
+        gfx::draw::filled_rectangle(header_bitmap, (gfx::srect16) bnds, lcd_color::black);
+        gfx::draw::text(
+          header_bitmap,
+          tr.offset(0, 0),
+          {0, 0},
+          buffer,
+          text_font,
+          text_scale,
+          lcd_color::white,
+          lcd_color::black,
+          false
+        );
+        free(buffer);
       } else if (const ConnectedState * con = std::get_if<ConnectedState>(&state.active)) {
-        gfx::srect16 tr = f.measure_text((gfx::ssize16) _lcd.dimensions(), {0, 0}, "connected", ss).bounds();
-        gfx::draw::filled_rectangle(line_bmp, (gfx::srect16) bnds, lcd_color::black);
-        gfx::draw::text(line_bmp, tr.offset(0, 0), {0, 0}, "connected", f, ss, lcd_color::white, lcd_color::black, false);
+        gfx::srect16 tr = text_font.measure_text((gfx::ssize16) dims, {0, 0}, "connected", text_scale).bounds();
+        gfx::draw::filled_rectangle(header_bitmap, (gfx::srect16) bnds, lcd_color::black);
+        gfx::draw::text(
+          header_bitmap,
+          tr.offset(0, 0),
+          {0, 0},
+          "connected",
+          text_font,
+          text_scale,
+          lcd_color::white,
+          lcd_color::black,
+          false
+        );
       }
 
-      gfx::draw::bitmap(_lcd, (gfx::srect16) bnds, line_bmp, line_bmp.bounds());
-      free(line_buf);
+      gfx::draw::bitmap(_lcd, (gfx::srect16) bnds, header_bitmap, header_bitmap.bounds());
+      free(header_buf);
 
       // draw footer
-      const gfx::open_font & gly = ICON_FONT;
-      float scale = gly.scale(20);
-      uint8_t * icon_buf = (uint8_t*) malloc(bmp_type::sizeof_buffer(bmp_size));
-      bmp_type icon_bmp(bmp_size, icon_buf);
+      uint8_t * icon_buf = (uint8_t*) malloc(bmp_type::sizeof_buffer(header_size));
+      bmp_type icon_bmp(header_size, icon_buf);
       gfx::draw::filled_rectangle(icon_bmp, (gfx::srect16) bnds, lcd_color::black);
-      gfx::srect16 text_rect = gly.measure_text((gfx::ssize16) _lcd.dimensions(), {0, 0}, "ABCDEFGHIJK", scale).bounds();
-      gfx::draw::text(icon_bmp, text_rect, {0, 0}, "ABCDEFGHIJK", gly, scale, lcd_color::white, lcd_color::black, false);
+      gfx::srect16 text_rect = icon_font.measure_text((gfx::ssize16) dims, {0, 0}, "ABCDEF", icon_scale).bounds();
+      gfx::draw::text(icon_bmp, text_rect, {0, 0}, "ABCDEF", icon_font, icon_scale, lcd_color::white, lcd_color::black, false);
       gfx::draw::bitmap(_lcd, (gfx::srect16) bnds.offset(0, bnds.height() - text_rect.height()), icon_bmp, icon_bmp.bounds().offset(0, 0));
       free(icon_buf);
     }
