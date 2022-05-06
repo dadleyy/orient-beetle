@@ -4,6 +4,7 @@
 #include <optional>
 #include "wifi-manager.hpp"
 #include "redis-manager.hpp"
+#include "state.hpp"
 
 class Engine final {
   public:
@@ -18,8 +19,7 @@ class Engine final {
     Engine& operator=(const Engine&) = delete;
 
     void begin(void);
-    void update(void);
-    void view(char *, uint16_t);
+    State update(State&);
 
   private:
     constexpr static const uint16_t view_buffer_size = 1024;

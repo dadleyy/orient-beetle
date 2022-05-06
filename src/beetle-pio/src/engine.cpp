@@ -10,7 +10,7 @@ void Engine::begin(void) {
   _wifi.begin();
 }
 
-void Engine::update() {
+State Engine::update(State& current) {
   std::optional<wifimanager::Manager::EManagerMessage> wifi_update = _wifi.frame();
   std::optional<redismanager::Manager::EManagerMessage> redis_update = _redis.frame(wifi_update);
 
@@ -69,26 +69,6 @@ void Engine::update() {
     _buffer_len = 0;
     memset(_buffer, '\0', view_buffer_size);
   }
-}
 
-void Engine::view(char * destination, uint16_t size) {
-  switch (_mode) {
-    case EEngineMode::Idle:
-      strcpy(destination, "configuring");
-      break;
-    case EEngineMode::ConnectingWifi:
-      strcpy(destination, "connecting");
-      break;
-    case EEngineMode::Working:
-      if (_buffer_len > 0) {
-        uint16_t amount = size < _buffer_len ? size : _buffer_len;
-        memcpy(destination, _buffer, amount);
-      } else {
-        strcpy(destination, "working...");
-      }
-      break;
-    default:
-      strcpy(destination, "other");
-      break;
-  }
+  return std::move(current);
 }
