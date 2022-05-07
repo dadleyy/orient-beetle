@@ -111,10 +111,10 @@ header : Model -> Html.Html Msg
 header model =
     case model.status of
         Nothing ->
-            Html.div [ Html.Attributes.class "pending" ] []
+            Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] []
 
         Just data ->
-            Html.div [ Html.Attributes.class "loaded" ] [ Html.text (String.concat [ data.version, " @ ", data.timestamp ]) ]
+            Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] [ Html.text (String.concat [ data.version, " @ ", data.timestamp ]) ]
 
 
 buildRoutePath : Model -> String -> String
@@ -122,18 +122,38 @@ buildRoutePath model path =
     String.concat [ model.flags.root, path ]
 
 
+body : Model -> Html.Html Msg
+body model =
+    Html.div [ Html.Attributes.class "flex-1" ]
+        [ Html.text "The current URL is: "
+        , Html.i [] [ Html.text (Url.toString model.url) ]
+        , Html.ul []
+            [ viewLink (buildRoutePath model "home")
+            , viewLink (buildRoutePath model "profile")
+            ]
+        ]
+
+
+externalLink : String -> String -> Html.Html Msg
+externalLink addr text =
+    Html.a [ Html.Attributes.href addr, Html.Attributes.rel "noopener", Html.Attributes.target "_blank" ] [ Html.text text ]
+
+
+footer : Model -> Html.Html Msg
+footer model =
+    Html.div [ Html.Attributes.class "cont-dark px-4 py-2" ]
+        [ externalLink "https://github.com/dadleyy/orient-beetle" "github"
+        ]
+
+
 view : Model -> Browser.Document Msg
 view model =
     { title = "beetle-ui"
     , body =
-        [ header model
-        , Html.div []
-            [ Html.text "The current URL is: "
-            , Html.i [] [ Html.text (Url.toString model.url) ]
-            , Html.ul []
-                [ viewLink (buildRoutePath model "home")
-                , viewLink (buildRoutePath model "profile")
-                ]
+        [ Html.div [ Html.Attributes.class "flex flex-col relative h-full w-full" ]
+            [ header model
+            , body model
+            , footer model
             ]
         ]
     }

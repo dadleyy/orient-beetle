@@ -1,5 +1,5 @@
 doctype html
-html
+html(lang="en")
   head
     meta(charset="utf-8")
     title orient-beetle
@@ -10,8 +10,10 @@ html
     - var environment = JSON.stringify({ release, api, root, version })
     - var mainsrc = release ? `${root}main.min.js` : `${root}main.js`
     - var bootsrc = release ? `${root}boot.min.js` : `${root}boot.js`
-    meta(name="environment" value=environment)
-    script(type="text/javascript" src=mainsrc)
-    script(type="text/javascript" src=bootsrc)
+    - var maincss = `${root}main.css`
+    meta(name="environment", value=environment)
+    meta(name="viewport", value="width=device-width, initial-scale=1.0, user-scalable=0, minimum-scale=1.0, maximum-scale=1.0")
+    link(rel="stylesheet", href=maincss)
+    script(type="text/javascript", src=mainsrc)
+    script(type="text/javascript", src=bootsrc)
   body
-    main#main
