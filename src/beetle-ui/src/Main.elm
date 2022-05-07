@@ -77,9 +77,8 @@ update msg model =
                 Ok data ->
                     ( { model | status = Just data }, Cmd.none )
 
-                Err error ->
-                    Debug.log (Debug.toString error)
-                        ( model, Cmd.batch [] )
+                Err _ ->
+                  ( model, Cmd.batch [] )
 
         LinkClicked urlRequest ->
             case urlRequest of
