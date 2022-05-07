@@ -78,7 +78,7 @@ update msg model =
                     ( { model | status = Just data }, Cmd.none )
 
                 Err _ ->
-                  ( model, Cmd.batch [] )
+                    ( model, Cmd.batch [] )
 
         LinkClicked urlRequest ->
             case urlRequest of
@@ -117,6 +117,11 @@ header model =
             Html.div [ Html.Attributes.class "loaded" ] [ Html.text (String.concat [ data.version, " @ ", data.timestamp ]) ]
 
 
+buildRoutePath : Model -> String -> String
+buildRoutePath model path =
+    String.concat [ model.flags.root, path ]
+
+
 view : Model -> Browser.Document Msg
 view model =
     { title = "beetle-ui"
@@ -126,11 +131,8 @@ view model =
             [ Html.text "The current URL is: "
             , Html.i [] [ Html.text (Url.toString model.url) ]
             , Html.ul []
-                [ viewLink "/home"
-                , viewLink "/profile"
-                , viewLink "/reviews/the-century-of-the-self"
-                , viewLink "/reviews/public-opinion"
-                , viewLink "/reviews/shah-of-shahs"
+                [ viewLink (buildRoutePath model "home")
+                , viewLink (buildRoutePath model "profile")
                 ]
             ]
         ]
