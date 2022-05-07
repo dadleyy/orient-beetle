@@ -33,6 +33,12 @@ jobs:
       - name: "install elm: verison"
         run: elm --version
 
+      - name: "install node-deps"
+        run: npm i
+
+      - name: "make: release"
+        run: make release
+
     # - run: npm i
     # - run: npm run test:ember
     # - run: npm run lint:js
