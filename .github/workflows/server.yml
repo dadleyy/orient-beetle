@@ -6,7 +6,7 @@ on:
       - v*
 jobs:
   test:
-    runs-on: rust:1.58.1
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: src/beetle-srv
