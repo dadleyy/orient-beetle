@@ -8,7 +8,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: rust:1.58.1
+      image: dadleyy/rust-raspberry-pi-openssl:latest
     env:
       BEETLE_VERSION: "${{ github.sha }}"
     defaults:
@@ -16,38 +16,6 @@ jobs:
         working-directory: src/beetle-srv
     steps:
       - uses: actions/checkout@v2
-
-      - name: update-apt
-        run: apt-get update
-
-      - name: install-packages
-        run: apt-get install -y libssl-dev gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
-
-      - name: add-rust-target
-        run: rustup target add armv7-unknown-linux-gnueabihf
-
-      - name: add-rust-target-components
-        run: rustup component add --target armv7-unknown-linux-gnueabihf rust-src rust-std rustc-dev
-
-      - name: download-openssl
-        run: cd /tmp && wget https://www.openssl.org/source/openssl-1.1.1g.tar.gz
-
-      - name: extract-openssl
-        run: cd /tmp && tar xzf openssl-1.1.1g.tar.gz
-
-      - name: configure-openssl
-        run: cd /tmp/openssl-1.1.1g && ./config shared
-        env:
-          MACHINE: armv7
-          ARCH: arm
-          CC: arm-linux-gnueabihf-gcc
-
-      - name: build-openssl
-        run: cd /tmp/openssl-1.1.1g && make
-        env:
-          MACHINE: armv7
-          ARCH: arm
-          CC: arm-linux-gnueabihf-gcc
 
       - name: test
         run: cargo test
