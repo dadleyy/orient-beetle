@@ -11,6 +11,103 @@ struct Worker {
   connection: Option<async_tls::client::TlsStream<async_std::net::TcpStream>>,
 }
 
+/// The main thing our worker will be responsible for is to count the amount of available ids
+/// in our pool that devices will pull down to identify themselves. If that amount reaches a
+/// quantity below a specific threshold, fill it back up.
+async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net::TcpStream>) -> Result<usize> {
+  let output = kramer::execute(
+    &mut stream,
+    kramer::Command::List::<&str, bool>(kramer::ListCommand::Len(beetle::constants::REGISTRAR_AVAILABLE)),
+  )
+  .await?;
+
+  let should_send = match output {
+    kramer::Response::Item(kramer::ResponseValue::Integer(amount)) if amount < 10 => {
+      log::debug!("not enough ids, populating");
+      true
+    }
+    kramer::Response::Item(kramer::ResponseValue::Integer(amount)) => {
+      log::trace!("nothing to do, plenty of ids ('{amount}')");
+      false
+    }
+    other => {
+      log::warn!("unexpected response from count: {:?}", other);
+      false
+    }
+  };
+
+  if should_send == false {
+    return Ok(0);
+  }
+
+  let ids = (0..10)
+    .map(|_| uuid::Uuid::new_v4().to_string())
+    .collect::<Vec<String>>();
+  let count = ids.len();
+
+  log::info!("populating ids - {:?}", ids);
+
+  let insertion = kramer::execute(
+    &mut stream,
+    kramer::Command::List(kramer::ListCommand::Push(
+      (kramer::Side::Left, kramer::Insertion::Always),
+      beetle::constants::REGISTRAR_AVAILABLE,
+      kramer::Arity::Many(ids),
+    )),
+  )
+  .await?;
+
+  log::debug!("insertion result - {:?}", insertion);
+
+  Ok(count)
+}
+
+/// The second main function of our registrar is to keep our server informed of the active devices
+/// by pulling off a queue that is pushed to by devices during regular operating procedure. With an
+/// id pulled from the queue, we will store:
+///
+/// 1. the current timestamp in a hash of `<id> -> timestamp`
+/// 2. the id we received in a `Set` for easy indexing.
+async fn mark_active(mut stream: &mut async_tls::client::TlsStream<async_std::net::TcpStream>) -> Result<usize> {
+  let taken = kramer::execute(
+    &mut stream,
+    kramer::Command::List::<&str, bool>(kramer::ListCommand::Pop(
+      kramer::Side::Left,
+      beetle::constants::REGISTRAR_INCOMING,
+      None,
+    )),
+  )
+  .await?;
+
+  log::trace!("taken ids - {:?}", taken);
+
+  if let kramer::Response::Item(kramer::ResponseValue::String(id)) = taken {
+    log::debug!("device '{}' submitted registration", id);
+
+    let activation = kramer::execute(
+      &mut stream,
+      kramer::Command::Hashes(kramer::HashCommand::Set(
+        beetle::constants::REGISTRAR_ACTIVE,
+        kramer::Arity::One((id.as_str(), chrono::Utc::now().to_rfc3339())),
+        kramer::Insertion::Always,
+      )),
+    )
+    .await?;
+
+    log::trace!("device activation - {:?}", activation);
+
+    let setter = kramer::Command::Sets(kramer::SetCommand::Add(
+      beetle::constants::REGISTRAR_INDEX,
+      kramer::Arity::One(id.as_str()),
+    ));
+    let activation = kramer::execute(&mut stream, setter).await?;
+
+    log::trace!("device indexing - {:?}", activation);
+  }
+
+  Ok(0usize)
+}
+
 impl Worker {
   fn new(config: CommandLineConfig) -> Self {
     Worker {
@@ -23,98 +120,16 @@ impl Worker {
     let stream = self.connection.take();
 
     self.connection = match stream {
-      None => {
-        let stream = async_std::net::TcpStream::connect(format!("{}:{}", self.redis.0, self.redis.1)).await?;
-        let connector = async_tls::TlsConnector::default();
-        let mut connect = connector.connect(&self.redis.0, stream).await?;
-        log::debug!("successfully connected, attempting auth");
-
-        kramer::execute(
-          &mut connect,
-          kramer::Command::Auth::<&str, bool>(kramer::AuthCredentials::Password(&self.redis.2)),
-        )
-        .await?;
-
-        Some(connect)
-      }
+      None => beetle::connect(&self.redis.0, &self.redis.1, &self.redis.2)
+        .await
+        .map(Some)?,
 
       Some(mut inner) => {
-        let output = kramer::execute(
-          &mut inner,
-          kramer::Command::List::<&str, bool>(kramer::ListCommand::Len(beetle::constants::REGISTRAR_AVAILABLE)),
-        )
-        .await?;
-
-        let should_send = match output {
-          kramer::Response::Item(kramer::ResponseValue::Integer(amount)) if amount < 10 => {
-            log::debug!("not enough ids, populating");
-            true
-          }
-          kramer::Response::Item(kramer::ResponseValue::Integer(amount)) => {
-            log::trace!("nothing to do, plenty of ids ('{amount}')");
-            false
-          }
-          other => {
-            log::warn!("unexpected response from count: {:?}", other);
-            false
-          }
-        };
-
-        if should_send {
-          let ids = (0..10)
-            .map(|_| uuid::Uuid::new_v4().to_string())
-            .collect::<Vec<String>>();
-
-          log::debug!("populating ids - {:?}", ids);
-
-          let insertion = kramer::execute(
-            &mut inner,
-            kramer::Command::List(kramer::ListCommand::Push(
-              (kramer::Side::Left, kramer::Insertion::Always),
-              beetle::constants::REGISTRAR_AVAILABLE,
-              kramer::Arity::Many(ids),
-            )),
-          )
-          .await?;
-
-          log::debug!("insertion result - {:?}", insertion);
+        let amount = fill_pool(&mut inner).await?;
+        if amount > 0 {
+          log::info!("filled pool with '{}' new ids", amount)
         }
-
-        let taken = kramer::execute(
-          &mut inner,
-          kramer::Command::List::<&str, bool>(kramer::ListCommand::Pop(
-            kramer::Side::Left,
-            beetle::constants::REGISTRAR_INCOMING,
-            None,
-          )),
-        )
-        .await?;
-
-        log::trace!("taken ids - {:?}", taken);
-
-        if let kramer::Response::Item(kramer::ResponseValue::String(id)) = taken {
-          log::debug!("device submitted registration for id '{}'", id);
-
-          let activation = kramer::execute(
-            &mut inner,
-            kramer::Command::Hashes(kramer::HashCommand::Set(
-              beetle::constants::REGISTRAR_ACTIVE,
-              kramer::Arity::One((id.as_str(), chrono::Utc::now().to_rfc3339())),
-              kramer::Insertion::Always,
-            )),
-          )
-          .await?;
-
-          log::debug!("device activation - {:?}", activation);
-
-          let setter = kramer::Command::Sets(kramer::SetCommand::Add(
-            beetle::constants::REGISTRAR_INDEX,
-            kramer::Arity::One(id.as_str()),
-          ));
-          let activation = kramer::execute(&mut inner, setter).await?;
-
-          log::debug!("device indexing - {:?}", activation);
-        }
+        mark_active(&mut inner).await?;
 
         Some(inner)
       }
@@ -127,11 +142,11 @@ impl Worker {
 async fn run(config: CommandLineConfig) -> Result<()> {
   let mut worker = Worker::new(config);
   let mut failures = Vec::with_capacity(3);
-  let mut interval = async_std::stream::interval(std::time::Duration::from_secs(1));
+  let mut interval = async_std::stream::interval(std::time::Duration::from_millis(200));
 
   while failures.len() < 10 {
     interval.next().await;
-    log::debug!("attempting worker frame");
+    log::trace!("attempting worker frame");
 
     match worker.work().await {
       Err(error) => failures.push(format!("{error}")),

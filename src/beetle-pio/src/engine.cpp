@@ -21,26 +21,55 @@ State Engine::update(State& current) {
       case wifimanager::Manager::EManagerMessage::Connecting:
         next.active.emplace<ConnectingState>();
         return next;
-      case wifimanager::Manager::EManagerMessage::FailedConnection:
-        return next;
+
       case wifimanager::Manager::EManagerMessage::Disconnected:
         next.active.emplace<ConfiguringState>();
         return next;
-      case wifimanager::Manager::EManagerMessage::ConnectionInterruption:
-        return next;
+
       case wifimanager::Manager::EManagerMessage::ConnectionResumed:
-        return next;
       case wifimanager::Manager::EManagerMessage::Connected:
         next.active.emplace<ConnectedState>();
+        return next;
+
+      case wifimanager::Manager::EManagerMessage::ConnectionInterruption:
+      case wifimanager::Manager::EManagerMessage::FailedConnection:
+        next.active.emplace<UnknownState>();
         return next;
     }
   }
 
-  // If we havent received a new message and are connecting, just jump the attempt
-  // count and move along.
+  // While we are in a connecting state, make sure to _not_ "leave" until we have received
+  // `Connected` from the wifi manager, indicating we're back online.
   if (std::get_if<ConnectingState>(&next.active) != nullptr) {
     next.active.emplace<ConnectingState>(_wifi.attempt());
     return next;
+  }
+
+  // If redis has received an id and we had previously moved into a `Connected` state, we
+  // should now enter our main, `Working` state that will hold messages.
+  bool now_working = redis_update ==
+    redismanager::Manager::EManagerMessage::IdentificationReceived
+    && std::get_if<ConnectedState>(&next.active) != nullptr;
+
+  if (now_working) {
+    next.active.emplace<WorkingState>(_redis.id_size());
+    return next;
+  }
+
+  bool has_message =
+    redis_update == redismanager::Manager::EManagerMessage::ReceivedMessage
+    && std::get_if<WorkingState>(&next.active);
+
+  if (has_message) {
+    WorkingState * w = std::get_if<WorkingState>(&next.active);
+
+    if (!w) {
+      log_e("received message, but redis not yet connected. strange");
+      return next;
+    }
+
+    log_d("received message, copying buffer to connected state");
+    w->message_size = _redis.copy(w->message_content, 2048);
   }
 
   return next;

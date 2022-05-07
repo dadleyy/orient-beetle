@@ -1,22 +1,24 @@
 #ifndef _STATE_H
 #define _STATE_H
 
+#include <cstdlib>
+#include <cstring>
 #include <cstdint>
 #include <variant>
 
 struct UnknownState final {
-  UnknownState() {}
-  UnknownState(UnknownState&&) {}
-  UnknownState& operator=(UnknownState&&) { return *this; }
+  UnknownState() = default;
+  UnknownState(UnknownState&&) = default;
+  UnknownState& operator=(UnknownState&&) = default;
 
   UnknownState(const UnknownState&) = delete;
   UnknownState& operator=(const UnknownState&) = delete;
 };
 
 struct ConfiguringState final {
-  ConfiguringState() {}
-  ConfiguringState(ConfiguringState&&) {}
-  ConfiguringState& operator=(ConfiguringState&&) { return *this; }
+  ConfiguringState() = default;
+  ConfiguringState(ConfiguringState&&) = default;
+  ConfiguringState& operator=(ConfiguringState&&) = default;
 
   ConfiguringState(const ConfiguringState&) = delete;
   ConfiguringState& operator=(const ConfiguringState&) = delete;
@@ -38,15 +40,39 @@ struct ConnectingState final {
 };
 
 struct ConnectedState final {
-  ConnectedState() {}
-  ConnectedState(ConnectedState&&) {}
-  ConnectedState& operator=(ConnectedState&&) { return *this; }
+  ConnectedState() = default;
+  ~ConnectedState() = default;
+  ConnectedState(ConnectedState&& other) = default;
+  ConnectedState& operator=(ConnectedState&& other) = default;
 
   ConnectedState(const ConnectedState&) = delete;
   ConnectedState& operator=(const ConnectedState&) = delete;
 };
 
-using StateT = std::variant<UnknownState, ConfiguringState, ConnectingState, ConnectedState>;
+struct WorkingState final {
+  constexpr static const uint16_t WORKING_BUFFER_SIZE = 2048;
+  explicit WorkingState(uint16_t);
+  ~WorkingState();
+  WorkingState(WorkingState&&);
+  WorkingState& operator=(WorkingState&&);
+
+  WorkingState(const WorkingState&) = delete;
+  WorkingState& operator=(const WorkingState&) = delete;
+
+  char * message_content;
+  uint16_t message_size;
+
+  char * id_content;
+  uint16_t id_size;
+};
+
+using StateT = std::variant<
+  UnknownState,
+  ConfiguringState,
+  ConnectingState,
+  ConnectedState,
+  WorkingState
+>;
 
 struct State final {
   State();

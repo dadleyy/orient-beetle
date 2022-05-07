@@ -85,6 +85,7 @@ void setup(void) {
     return;
   }
 
+  /*
   if (!vcnl.begin()) {
 #ifndef RELEASE
     log_d("unable to detect vcnl proximity sensor");
@@ -93,6 +94,7 @@ void setup(void) {
     failed = true;
     return;
   }
+  */
 
   log_d("boot complete, redis-config. host: %s | port: %d", redis_host, redis_port);
 
@@ -121,8 +123,8 @@ void loop(void) {
   heap_debug_tick += 1;
   if (heap_debug_tick > heap_debug_tick_minimum) {
     log_d("free memory before malloc: %d", ESP.getFreeHeap());
-    uint16_t prox = vcnl.readProximity();
-    log_d("proximity: %d", prox);
+    // uint16_t prox = vcnl.readProximity();
+    // log_d("proximity: %d", prox);
   }
 #endif
 

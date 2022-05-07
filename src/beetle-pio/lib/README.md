@@ -5,4 +5,4 @@
 ./redis-manager <- sends and receives messages from redis.
 ```
 
-[<- README](../README.md)
+[← README](../README.md)

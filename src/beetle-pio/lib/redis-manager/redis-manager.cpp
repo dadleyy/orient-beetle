@@ -323,4 +323,22 @@ namespace redismanager {
 
     return false;
   }
+
+  uint8_t Manager::id_size(void) {
+    Connected * c = std::get_if<Connected>(&_state);
+    if (!c) {
+      return 0;
+    }
+    return c->_device_id_len;
+  }
+
+  uint8_t Manager::copy_id(char * dest, uint8_t max) {
+    Connected * c = std::get_if<Connected>(&_state);
+    if (!c) {
+      return 0;
+    }
+    uint8_t amount = c->_device_id_len < max ? c->_device_id_len : max;
+    memcpy(dest, c->_device_id, amount);
+    return amount;
+  }
 }

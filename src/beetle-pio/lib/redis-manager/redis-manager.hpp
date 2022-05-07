@@ -33,6 +33,9 @@ namespace redismanager {
       std::optional<EManagerMessage> frame(std::optional<wifimanager::Manager::EManagerMessage> &message);
       uint16_t copy(char *, uint16_t);
 
+      uint8_t id_size(void);
+      uint8_t copy_id(char *, uint8_t);
+
     private:
       constexpr static const uint32_t FRAMEBUFFER_SIZE = 1024;
       constexpr static const uint32_t MAX_ID_SIZE = 36;
@@ -78,6 +81,8 @@ namespace redismanager {
           char _device_id [MAX_ID_SIZE + 1];
           uint8_t _device_id_len;
           WiFiClientSecure _client;
+
+          friend class Manager;
       };
 
       // Until our wifi manager is connected, this state represents doing nothing.

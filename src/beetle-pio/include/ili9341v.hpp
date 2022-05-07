@@ -1,3 +1,17 @@
+// Note:
+//
+// This code was provided by "honey the codewitch" (github.com/codewitch-honey-crisis)
+// and is a one-off copy of the upstream driver found at:
+// github.com/codewitch-honey-crisis/htcw_ili9341.
+//
+// Other drivers that did not work immediately without further investigation:
+//
+// 1. adafruit's @ https://github.com/adafruit/Adafruit_ILI9341
+// 2. dfrobot's @ https://github.com/DFRobot/DFRobot_GDL
+//
+// The data sheet for the ili9341v driver can be found here:
+// https://www.crystalfontz.com/controllers/Ilitek/ILI9341V/143/
+
 #include <Arduino.h>
 #include <tft_driver.hpp>
 #include <gfx_core.hpp>
@@ -28,8 +42,23 @@ namespace arduino {
         using bus = Bus;
         using pixel_type = gfx::rgb_pixel<16>;
         using caps = gfx::gfx_caps<false,(bus::dma_size>0),true,true,false,bus::readable,true>;
+
+        enum EScreenOrientation {
+          Standard,
+          Flipped
+        };
+
+        void rotate(EScreenOrientation orientation) {
+          bus::begin_write();
+          driver::send_command(0x36);
+          driver::send_data8(orientation == EScreenOrientation::Standard ? 0xC0 : 0x00);
+          delayMicroseconds(10);
+          bus::end_write();
+        }
+
         ili9341v() : m_initialized(false), m_dma_initialized(false), m_in_batch(false) {
         }
+
         ~ili9341v() {
             if(m_dma_initialized) {
                 bus::deinitialize_dma();
@@ -748,32 +777,11 @@ namespace arduino {
         }
         
         static void apply_rotation() {   
-          /*
             bus::begin_write();       
             driver::send_command(0x36);
-            switch (rotation) {
-                case 0:
-                // portrait
-                driver::send_data8(0x40 | 0x08);
-                break;
-                case 1:
-                // landscape
-                driver::send_data8(0x20 | 0x08);
-                break;
-                case 2:
-                // portrait
-                driver::send_data8(0x80 | 0x08);
-                break;
-                case 3:
-                // landscape
-                driver::send_data8(0x20 | 0x40 | 0x80 | 0x08);
-                break;
-
-            }
+            driver::send_data8(0xC0);
             delayMicroseconds(10);
-
             bus::end_write();
-            */
         }
         
     };
