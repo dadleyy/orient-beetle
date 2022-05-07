@@ -7,6 +7,7 @@
     "pug": "pug",
     "pug:release": "RELEASE=true pug",
     "min": "uglifyjs",
+    "dev:server": "http-server -P http://localhost:8337 target/debug",
     "elm:fmt": "elm-format ./src --yes",
     "ts:lint": "eslint . --ext .ts"
   },
@@ -19,6 +20,7 @@
     "eslint": "^8.15.0",
     "eslint-config-airbnb-typescript": "^17.0.0",
     "eslint-plugin-import": "^2.26.0",
+    "http-server": "^14.1.0",
     "pug": "^3.0.2",
     "pug-cli": "^1.0.0-alpha6",
     "typescript": "^4.6.4",

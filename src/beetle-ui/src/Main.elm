@@ -2,8 +2,10 @@ module Main exposing (..)
 
 import Browser
 import Browser.Navigation as Nav
-import Html exposing (..)
-import Html.Attributes exposing (..)
+import Html
+import Html.Attributes
+import Http
+import Json.Decode
 import Url
 
 
@@ -31,6 +33,7 @@ type alias Model =
     { key : Nav.Key
     , url : Url.Url
     , flags : Flags
+    , status : Maybe StatusResponse
     }
 
 
@@ -40,7 +43,7 @@ type alias Flags =
 
 init : Flags -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init flags url key =
-    ( Model key url flags, Cmd.none )
+    ( Model key url flags Nothing, Http.get { url = String.concat [ flags.api, "status" ], expect = Http.expectJson StatusFetch statusDecoder } )
 
 
 
@@ -50,11 +53,34 @@ init flags url key =
 type Msg
     = LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
+    | StatusFetch (Result Http.Error StatusResponse)
+
+
+type alias StatusResponse =
+    { version : String
+    , timestamp : String
+    }
+
+
+statusDecoder : Json.Decode.Decoder StatusResponse
+statusDecoder =
+    Json.Decode.map2 StatusResponse
+        (Json.Decode.field "version" Json.Decode.string)
+        (Json.Decode.field "timestamp" Json.Decode.string)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        StatusFetch res ->
+            case res of
+                Ok data ->
+                    ( { model | status = Just data }, Cmd.none )
+
+                Err error ->
+                    Debug.log (Debug.toString error)
+                        ( model, Cmd.batch [] )
+
         LinkClicked urlRequest ->
             case urlRequest of
                 Browser.Internal url ->
@@ -82,15 +108,25 @@ subscriptions _ =
 -- VIEW
 
 
+header : Model -> Html.Html Msg
+header model =
+    case model.status of
+        Nothing ->
+            Html.div [ Html.Attributes.class "pending" ] []
+
+        Just data ->
+            Html.div [ Html.Attributes.class "loaded" ] [ Html.text (String.concat [ data.version, " @ ", data.timestamp ]) ]
+
+
 view : Model -> Browser.Document Msg
 view model =
     { title = "beetle-ui"
     , body =
-        [ div [] [ text "hi" ]
-        , div []
-            [ text "The current URL is: "
-            , b [] [ text (Url.toString model.url) ]
-            , ul []
+        [ header model
+        , Html.div []
+            [ Html.text "The current URL is: "
+            , Html.i [] [ Html.text (Url.toString model.url) ]
+            , Html.ul []
                 [ viewLink "/home"
                 , viewLink "/profile"
                 , viewLink "/reviews/the-century-of-the-self"
@@ -102,6 +138,6 @@ view model =
     }
 
 
-viewLink : String -> Html msg
+viewLink : String -> Html.Html msg
 viewLink path =
-    li [] [ a [ href path ] [ text path ] ]
+    Html.li [] [ Html.a [ Html.Attributes.href path ] [ Html.text path ] ]

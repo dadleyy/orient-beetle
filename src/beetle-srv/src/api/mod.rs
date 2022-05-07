@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Just having fun here with traits; actually figuring out where code lives relative
 /// to the `bin` members and this code is not clear at the time being.
@@ -6,6 +6,24 @@ pub trait Connector: Clone + Send + Sync {
   type Value: AsRef<str> + Sync + Send;
 
   fn redis<'a>(&'a self) -> (&'a Self::Value, &'a Self::Value, &'a Self::Value);
+}
+
+#[derive(Serialize, Debug)]
+struct HeartbeatPayload {
+  version: String,
+  timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+impl Default for HeartbeatPayload {
+  fn default() -> Self {
+    HeartbeatPayload {
+      // TODO: pulling in compile-time environment varibles this "deep" in the code is
+      // not ideal. It would be better for that to be handled by the consumer, but for
+      // now this is quick-and-dirty.
+      version: option_env!("BEETLE_VERSION").unwrap_or("dev").into(),
+      timestamp: chrono::Utc::now(),
+    }
+  }
 }
 
 #[derive(Deserialize, Debug)]
@@ -61,6 +79,14 @@ where
   Ok("".into())
 }
 
+async fn heartbeat<T>(_request: tide::Request<T>) -> tide::Result {
+  Ok(
+    tide::Response::builder(200)
+      .body(tide::Body::from_json(&HeartbeatPayload::default())?)
+      .build(),
+  )
+}
+
 async fn missing<T>(_request: tide::Request<T>) -> tide::Result
 where
   T: Connector,
@@ -76,6 +102,7 @@ where
   let mut app = tide::with_state::<T>(connector);
 
   app.at("/send-device-message").post(send_message);
+  app.at("/status").get(heartbeat);
 
   app.at("/*").all(missing);
   app.at("/").all(missing);
