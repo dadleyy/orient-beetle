@@ -42,17 +42,14 @@ jobs:
       - name: "make: release"
         run: make release
 
-    # - run: npm i
-    # - run: npm run test:ember
-    # - run: npm run lint:js
-    # - run: npm run lint:hbs
-    # - run: npm run build
-    # - name: rename-bundle
-    #   run: mv dist redink-ui
-    # - name: create-bundle
-    #   run: tar cvzf redink-ui-$REDINK_VERSION.tar.gz redink-ui
-    # - name: release
-    #   uses: softprops/action-gh-release@v1
-    #   if: startsWith(github.ref, 'refs/tags/')
-    #   with:
-    #     files: "./src/redink-ui/redink-ui-${{ github.sha }}.tar.gz"
+      - name: prepare-bundle
+        run: mv target/release beetle-ui-dist
+
+      - name: create-bundle
+        run: tar cvzf beetle-ui-$BEETLE_VERSION.tar.gz beetle-ui-dist
+
+      - name: release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: "./src/beetle-ui/beetle-ui-${{ github.sha }}.tar.gz"
