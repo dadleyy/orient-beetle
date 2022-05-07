@@ -3,6 +3,7 @@ use std::{
   io::{Error, ErrorKind, Result},
 };
 
+pub mod api;
 pub mod constants;
 
 pub struct IndexedDevice {
@@ -38,22 +39,21 @@ impl fmt::Display for IndexedDevice {
   }
 }
 
-pub async fn connect(
-  host: &String,
-  port: &String,
-  auth: &String,
-) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>> {
+pub async fn connect<S>(host: S, port: S, auth: S) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>>
+where
+  S: AsRef<str>,
+{
   let connector = async_tls::TlsConnector::default();
   let mut stream = connector
     .connect(
-      &host,
-      async_std::net::TcpStream::connect(format!("{}:{}", host, port)).await?,
+      host.as_ref(),
+      async_std::net::TcpStream::connect(format!("{}:{}", host.as_ref(), port.as_ref())).await?,
     )
     .await?;
 
   let auth_result = kramer::execute(
     &mut stream,
-    kramer::Command::Auth::<&str, bool>(kramer::AuthCredentials::Password(&auth)),
+    kramer::Command::Auth::<&str, bool>(kramer::AuthCredentials::Password(auth.as_ref())),
   )
   .await?;
 

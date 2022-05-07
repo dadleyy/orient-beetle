@@ -11,7 +11,10 @@ struct Worker {
   connection: Option<async_tls::client::TlsStream<async_std::net::TcpStream>>,
 }
 
-fn shorten(mut input: String) -> String {
+/// The uuid crate's `new_v4()` method will build us random-enough of string that is a bit
+/// too long to be easily consumed from the display. Here we're shrinking it down to 10
+/// characters which should theoretically still have 16^10 possibilities.
+fn shorten(input: String) -> String {
   let shorter = input.chars().filter(|c| *c != '-').take(10).collect::<String>();
   let (f, b) = shorter.split_at(5);
   format!("{}-{}", f, b)

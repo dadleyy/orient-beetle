@@ -1,0 +1,15 @@
+doctype html
+html
+  head
+    meta(charset="utf-8")
+    title orient-beetle
+    - var release = process.env['RELEASE'] !== undefined
+    - var api = process.env['BEETLE_SRV_ADDR'] || '0.0.0.0:8337'
+    - var environment = JSON.stringify({ release, api })
+    - var mainsrc = release ? '/main.min.js' : '/main.js'
+    - var bootsrc = release ? '/boot.min.js' : '/boot.js'
+    meta(name="environment" value=environment)
+    script(type="text/javascript" src=mainsrc)
+    script(type="text/javascript" src=bootsrc)
+  body
+    main#main

@@ -1,52 +1,30 @@
 use std::io::{Error, ErrorKind, Result};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct CommandLineConfig {
-  message: Option<String>,
+  addr: String,
   redis: (String, String, String),
 }
 
-async fn run(mut config: CommandLineConfig) -> Result<()> {
-  let connection = async_std::net::TcpStream::connect(format!("{}:{}", config.redis.0, config.redis.1)).await?;
-  log::info!("connection established, negotiating tls");
-  let connector = async_tls::TlsConnector::default();
-  let mut stream = connector.connect(&config.redis.0, connection).await?;
-  log::info!("stream ready");
-  match kramer::execute(
-    &mut stream,
-    kramer::Command::Auth::<&str, &str>(kramer::AuthCredentials::Password(&config.redis.2)),
-  )
-  .await
-  {
-    Ok(thing) => log::info!("auth result - {thing:?}"),
-    Err(error) => log::info!("auth result - {error:?}"),
-  };
+/// Having fun with traits, not necessarily how this will be in the long-term.
+impl beetle::api::Connector for CommandLineConfig {
+  type Value = String;
 
-  if let Some(message) = config.message.take() {
-    log::info!("sending '{message}'");
-
-    let out = kramer::execute(
-      &mut stream,
-      kramer::Command::List(kramer::ListCommand::Push(
-        (kramer::Side::Left, kramer::Insertion::Always),
-        "ob:m",
-        kramer::Arity::One(message.as_str()),
-      )),
-    )
-    .await;
-
-    log::info!("message result - {out:?}");
-
-    return Ok(());
+  fn redis<'a>(&'a self) -> (&'a String, &'a String, &'a String) {
+    (&self.redis.0, &self.redis.1, &self.redis.2)
   }
+}
 
-  Ok(())
+async fn run(config: CommandLineConfig) -> Result<()> {
+  let addr = format!("{}", config.addr);
+  beetle::api::new(config).listen(&addr).await
 }
 
 fn main() -> Result<()> {
   dotenv::dotenv().map_err(|error| Error::new(ErrorKind::Other, error))?;
   env_logger::init();
 
+  let mut config = CommandLineConfig::default();
   log::info!("environment + logger ready.");
 
   let redis = std::env::var("REDIS_HOST")
@@ -55,13 +33,12 @@ fn main() -> Result<()> {
     .zip(std::env::var("REDIS_AUTH").ok())
     .map(|((h, p), a)| (h, p, a));
 
-  let mut config = CommandLineConfig::default();
   if let Some(redis) = redis {
     config.redis = redis;
   }
 
-  if let Some(message) = std::env::args().skip(1).next() {
-    config.message = Some(message);
+  if let Some(addr) = std::env::var("BEETLE_WEB_ADDR").ok() {
+    config.addr = addr;
   }
 
   async_std::task::block_on(run(config))
