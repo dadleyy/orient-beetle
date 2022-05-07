@@ -114,7 +114,7 @@ header model =
             Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] []
 
         Just data ->
-            Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] [ Html.text (String.concat [ data.version, " @ ", data.timestamp ]) ]
+            Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] []
 
 
 buildRoutePath : Model -> String -> String
@@ -139,10 +139,18 @@ externalLink addr text =
     Html.a [ Html.Attributes.href addr, Html.Attributes.rel "noopener", Html.Attributes.target "_blank" ] [ Html.text text ]
 
 
+statusFooter : StatusResponse -> Html.Html Msg
+statusFooter data =
+    Html.div [] [ Html.text (String.concat [ (String.slice 0 7 data.version), " @ ", data.timestamp ]) ]
+
+
 footer : Model -> Html.Html Msg
 footer model =
-    Html.div [ Html.Attributes.class "cont-dark px-4 py-2" ]
-        [ externalLink "https://github.com/dadleyy/orient-beetle" "github"
+    Html.div [ Html.Attributes.class "cont-dark px-4 py-2 flex" ]
+        [ Html.div [] [ externalLink "https://github.com/dadleyy/orient-beetle" "github" ]
+        , Html.div [ Html.Attributes.class "ml-auto" ]
+            [ Maybe.withDefault (Html.div [] []) (Maybe.map statusFooter model.status)
+            ]
         ]
 
 
