@@ -49,6 +49,9 @@ jobs:
           ARCH: arm
           CC: arm-linux-gnueabihf-gcc
 
+      - name: test
+        run: cargo test
+
       - name: build
         run: cargo build --target armv7-unknown-linux-gnueabihf --release
         env:
@@ -58,13 +61,13 @@ jobs:
       - name: prepare-bundle
         run: mkdir -p beetle-server-dist/bin
 
-      - name: populate-bundle: cli
+      - name: "populate-bundle: cli"
         run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-cli beetle-server-dist/bin/beetle-cli
 
-      - name: populate-bundle: web
+      - name: "populate-bundle: web"
         run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-web beetle-server-dist/bin/beetle-web
 
-      - name: populate-bundle: registrar
+      - name: "populate-bundle: registrar"
         run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-registrar beetle-server-dist/bin/beetle-registrar
 
       - name: create-bundle

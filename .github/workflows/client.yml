@@ -21,16 +21,16 @@ jobs:
         with:
           node-version: '12'
 
-      - name: install elm: download
+      - name: "install elm: download"
         run: curl -L -o elm.gz https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz
 
-      - name: install elm: unpack
+      - name: "install elm: unpack"
         run: gunzip elm.gz && chmod +x elm
 
-      - name: install elm: install
+      - name: "install elm: install"
         run: sudo mv elm /usr/local/bin/
 
-      - name: install elm: verison
+      - name: "install elm: verison"
         run: elm --version
 
     # - run: npm i
