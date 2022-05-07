@@ -1,4 +1,11 @@
+// esint-disable import/extensions
+
+// This should match the `Flags` type defined in `Main.elm`
 type BeetleFlags = {
+  api: string,
+  root: string,
+  version: string,
+  release: boolean,
 };
 
 type ElmInitialization = {
@@ -14,4 +21,4 @@ type ElmRuntime = {
   Main: ElmMain,
 };
 
-const Elm: ElmRuntime;
+declare const Elm: ElmRuntime;

@@ -3,6 +3,9 @@
 
 type Environment = {
   api: string,
+  root: string,
+  version: string,
+  release: boolean,
 };
 
 function parse(input: string): Environment | undefined {
@@ -25,7 +28,7 @@ function boot(): void {
   }
 
   console.info(`booting application with ${JSON.stringify(environment)}`);
-  const flags = { api: environment.api };
+  const flags = { ...environment };
   Elm.Main.init({ flags });
 }
 

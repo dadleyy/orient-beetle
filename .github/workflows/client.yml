@@ -36,6 +36,9 @@ jobs:
       - name: "install node-deps"
         run: npm i
 
+      - name: "lint: ts"
+        run: npm run ts:lint
+
       - name: "make: release"
         run: make release
 

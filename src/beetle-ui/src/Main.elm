@@ -30,17 +30,17 @@ main =
 type alias Model =
     { key : Nav.Key
     , url : Url.Url
-    , api : String
+    , flags : Flags
     }
 
 
 type alias Flags =
-    { api : String }
+    { api : String, root : String, version : String }
 
 
 init : Flags -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init flags url key =
-    ( Model key url flags.api, Cmd.none )
+    ( Model key url flags, Cmd.none )
 
 
 
@@ -84,16 +84,19 @@ subscriptions _ =
 
 view : Model -> Browser.Document Msg
 view model =
-    { title = String.concat [ "config: ", model.api ]
+    { title = "beetle-ui"
     , body =
-        [ text "The current URL is: "
-        , b [] [ text (Url.toString model.url) ]
-        , ul []
-            [ viewLink "/home"
-            , viewLink "/profile"
-            , viewLink "/reviews/the-century-of-the-self"
-            , viewLink "/reviews/public-opinion"
-            , viewLink "/reviews/shah-of-shahs"
+        [ div [] [ text "hi" ]
+        , div []
+            [ text "The current URL is: "
+            , b [] [ text (Url.toString model.url) ]
+            , ul []
+                [ viewLink "/home"
+                , viewLink "/profile"
+                , viewLink "/reviews/the-century-of-the-self"
+                , viewLink "/reviews/public-opinion"
+                , viewLink "/reviews/shah-of-shahs"
+                ]
             ]
         ]
     }
