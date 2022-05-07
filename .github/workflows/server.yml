@@ -5,6 +5,18 @@ on:
     tags:
       - v*
 jobs:
+  test:
+    runs-on: rust:1.58.1
+    defaults:
+      run:
+        working-directory: src/beetle-srv
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: build
+        run: cargo build
+      - name: test
+        run: cargo test
   build:
     runs-on: ubuntu-latest
     container:
@@ -16,9 +28,6 @@ jobs:
         working-directory: src/beetle-srv
     steps:
       - uses: actions/checkout@v2
-
-      - name: test
-        run: cargo test --target armv7-unknown-linux-gnueabihf
 
       - name: build
         run: cargo build --target armv7-unknown-linux-gnueabihf --release
