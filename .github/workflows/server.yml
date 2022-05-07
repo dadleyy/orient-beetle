@@ -1,0 +1,57 @@
+name: server
+on:
+  push:
+  create:
+    tags:
+      - v*
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/beetle-srv
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: build
+        run: cargo build
+      - name: test
+        run: cargo test
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: dadleyy/rust-raspberry-pi-openssl:latest
+    env:
+      BEETLE_VERSION: "${{ github.sha }}"
+    defaults:
+      run:
+        working-directory: src/beetle-srv
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: build
+        run: cargo build --target armv7-unknown-linux-gnueabihf --release
+        env:
+          OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
+          OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
+
+      - name: prepare-bundle
+        run: mkdir -p beetle-server-dist/bin
+
+      - name: "populate-bundle: cli"
+        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-cli beetle-server-dist/bin/beetle-cli
+
+      - name: "populate-bundle: web"
+        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-web beetle-server-dist/bin/beetle-web
+
+      - name: "populate-bundle: registrar"
+        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-registrar beetle-server-dist/bin/beetle-registrar
+
+      - name: create-bundle
+        run: tar cvzf beetle-server-armv7-unknown-linux-gnueabihf-$BEETLE_VERSION.tar.gz beetle-server-dist
+
+      - name: release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: "./src/beetle-srv/beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"

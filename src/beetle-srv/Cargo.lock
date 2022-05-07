@@ -360,6 +360,8 @@ dependencies = [
  "env_logger",
  "kramer",
  "log",
+ "serde",
+ "serde_json",
  "tide",
  "uuid",
 ]
