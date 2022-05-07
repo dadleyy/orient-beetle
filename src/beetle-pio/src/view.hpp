@@ -19,7 +19,7 @@
 constexpr const char * CONFIGURING = "pending setup";
 
 template<class T>
-static void icon_line(T lcd, char icon, const char * message) {
+static void icon_line(T lcd, char icon, const char * message, uint8_t position = 0) {
   using lcd_color = gfx::color<typename T::pixel_type>;
   using bmp_type = gfx::bitmap<typename T::pixel_type>;
 
@@ -31,8 +31,8 @@ static void icon_line(T lcd, char icon, const char * message) {
 
   const gfx::open_font & text_font = TEXT_FONT;
   const gfx::open_font & icon_font = ICON_FONT;
-  float text_scale = text_font.scale(30);
-  float icon_scale = icon_font.scale(30);
+  float text_scale = position == 0 ? text_font.scale(30) : text_font.scale(20);
+  float icon_scale = position == 0 ? icon_font.scale(30) : icon_font.scale(20);
 
   gfx::size16 bounds(240, 30);
   uint8_t * buffer = (uint8_t*) malloc(bmp_type::sizeof_buffer(bounds));
@@ -53,7 +53,14 @@ static void icon_line(T lcd, char icon, const char * message) {
   gfx::draw::text(bitmap, rect.offset(30, 0), {0, 0}, message, text_font, text_scale, fg, bg, false);
 
   // Finish by drawing the bitmap into the actual screen.
-  gfx::draw::bitmap(lcd, (gfx::srect16) bnds, bitmap, bitmap.bounds());
+  switch (position) {
+    case 1:
+      gfx::draw::bitmap(lcd, (gfx::srect16) bnds.offset(0, bnds.height() - rect.height()), bitmap, bitmap.bounds());
+      break;
+    default:
+      gfx::draw::bitmap(lcd, (gfx::srect16) bnds, bitmap, bitmap.bounds());
+      break;
+  }
 
   // Free up our memory.
   free(buffer);
@@ -84,16 +91,38 @@ class View final {
       float icon_scale = icon_font.scale(30);
 
       if (const ConfiguringState * conf = std::get_if<ConfiguringState>(&state.active)) {
+        rm_footer = true;
         icon_line(_lcd, 'F', "configuring");
       } else if (const ConnectingState * con = std::get_if<ConnectingState>(&state.active)) {
+        rm_footer = true;
         icon_line(_lcd, 'E', "connecting");
       } else if (const ConnectedState * con = std::get_if<ConnectedState>(&state.active)) {
+        rm_footer = true;
         icon_line(_lcd, 'I', "connected");
       } else if (const WorkingState * work = std::get_if<WorkingState>(&state.active)) {
         bool has_message = work->message_size > 0;
         icon_line(_lcd, has_message ? 'A' : 'B', has_message ? work->message_content : "working");
+
+        if (work->id_size > 0) {
+          // draw footer
+          if (rm_footer) {
+            gfx::size16 header_size(240, 30);
+            uint8_t * icon_buf = (uint8_t*) malloc(bmp_type::sizeof_buffer(header_size));
+            bmp_type icon_bmp(header_size, icon_buf);
+            gfx::draw::filled_rectangle(icon_bmp, (gfx::srect16) bnds, lcd_color::black);
+            gfx::srect16 text_rect = icon_font.measure_text((gfx::ssize16) dims, {0, 0}, "ABCDEF", icon_scale).bounds();
+            gfx::draw::bitmap(_lcd, (gfx::srect16) bnds.offset(0, bnds.height() - text_rect.height()), icon_bmp, icon_bmp.bounds().offset(0, 0));
+            free(icon_buf);
+            rm_footer = false;
+          }
+
+          icon_line(_lcd, 'A', work->id_content, 1);
+        }
+
+        return;
       }
 
+      rm_footer = true;
       // draw footer
       gfx::size16 header_size(240, 30);
       uint8_t * icon_buf = (uint8_t*) malloc(bmp_type::sizeof_buffer(header_size));
@@ -107,6 +136,7 @@ class View final {
 
   private:
     T _lcd;
+    bool rm_footer;
 };
 
 #endif

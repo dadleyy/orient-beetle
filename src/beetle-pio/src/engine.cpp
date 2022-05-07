@@ -53,6 +53,9 @@ State Engine::update(State& current) {
 
   if (now_working) {
     next.active.emplace<WorkingState>(_redis.id_size());
+    WorkingState * w = std::get_if<WorkingState>(&next.active);
+    log_d("moved into working state with id size '%d' -> '%s'", _redis.id_size(), w->id_content);
+    _redis.copy_id(w->id_content, _redis.id_size());
     return next;
   }
 

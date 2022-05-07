@@ -11,6 +11,12 @@ struct Worker {
   connection: Option<async_tls::client::TlsStream<async_std::net::TcpStream>>,
 }
 
+fn shorten(mut input: String) -> String {
+  let shorter = input.chars().filter(|c| *c != '-').take(10).collect::<String>();
+  let (f, b) = shorter.split_at(5);
+  format!("{}-{}", f, b)
+}
+
 /// The main thing our worker will be responsible for is to count the amount of available ids
 /// in our pool that devices will pull down to identify themselves. If that amount reaches a
 /// quantity below a specific threshold, fill it back up.
@@ -42,6 +48,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
 
   let ids = (0..10)
     .map(|_| uuid::Uuid::new_v4().to_string())
+    .map(shorten)
     .collect::<Vec<String>>();
   let count = ids.len();
 
@@ -179,4 +186,16 @@ fn main() -> Result<()> {
   }
 
   async_std::task::block_on(run(config))
+}
+
+#[cfg(test)]
+mod test {
+  use super::shorten;
+
+  #[test]
+  fn test_is_short() {
+    let out = shorten(uuid::Uuid::new_v4().to_string());
+    println!("{out}");
+    assert_eq!(out.len(), 11);
+  }
 }

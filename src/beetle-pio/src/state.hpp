@@ -51,6 +51,8 @@ struct ConnectedState final {
 
 struct WorkingState final {
   constexpr static const uint16_t WORKING_BUFFER_SIZE = 2048;
+  constexpr static const uint16_t MAX_ID_SIZE = 40;
+
   explicit WorkingState(uint16_t);
   ~WorkingState();
   WorkingState(WorkingState&&);

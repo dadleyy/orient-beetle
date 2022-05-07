@@ -17,10 +17,11 @@ State& State::operator=(State&& other) {
 WorkingState::WorkingState(uint16_t size):
   message_content((char *) malloc(sizeof(char) * WORKING_BUFFER_SIZE)),
   message_size(0),
-  id_content((char *) malloc(sizeof(char) * size)),
+  id_content((char *) malloc(sizeof(char) * MAX_ID_SIZE)),
   id_size(size) 
 {
   memset(message_content, '\0', WORKING_BUFFER_SIZE);
+  memset(id_content, '\0', MAX_ID_SIZE);
 }
 
 WorkingState::WorkingState(WorkingState&& other) {
@@ -35,10 +36,13 @@ WorkingState::WorkingState(WorkingState&& other) {
 }
 
 WorkingState& WorkingState::operator=(WorkingState&& other) {
+  // Steal the pointers
   this->message_content = other.message_content;
-  this->message_size = other.message_size;
   this->id_content = other.id_content;
+
+  this->message_size = other.message_size;
   this->id_size = other.id_size;
+
   other.message_content = nullptr;
   other.id_content = nullptr;
   return *this;
