@@ -8,8 +8,8 @@ html
     - var root = process.env['BEETLE_UI_ROOT'] || '/'
     - var version = process.env['BEETLE_VERSION'] || 'dev'
     - var environment = JSON.stringify({ release, api, root, version })
-    - var mainsrc = release ? '/main.min.js' : '/main.js'
-    - var bootsrc = release ? '/boot.min.js' : '/boot.js'
+    - var mainsrc = release ? `${root}main.min.js` : `${root}main.js`
+    - var bootsrc = release ? `${root}boot.min.js` : `${root}boot.js`
     meta(name="environment" value=environment)
     script(type="text/javascript" src=mainsrc)
     script(type="text/javascript" src=bootsrc)

@@ -9,7 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BEETLE_VERSION: "${{ github.sha }}"
-      BEETLE_UI_ROOT: "/beetle"
+      # note: These are specific paths related to nginx hosting config. When developing locally,
+      # it is more likely you will be serving from a root `/`.
+      BEETLE_UI_ROOT: "/beetle/"
       BEETLE_API_ROOT: "/beetle/api/"
     defaults:
       run:
