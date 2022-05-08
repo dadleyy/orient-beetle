@@ -1,7 +1,8 @@
 name: server
 on:
   push:
-  create:
+    branches:
+      - *
     tags:
       - v*
 jobs:
