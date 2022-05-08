@@ -118,7 +118,9 @@ jobs:
     steps:
       - uses: actions/download-artifact@v3
         with:
-          name: ["beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz", "beetle-ui-${{ github.sha }}.tar.gz"]
+          name: |
+            "beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
+            "beetle-ui-${{ github.sha }}.tar.gz"
 
       - name: printall
         run: ls -lah
