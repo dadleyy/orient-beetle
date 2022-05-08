@@ -18,6 +18,57 @@ jobs:
         run: cargo build
       - name: test
         run: cargo test
+
+  build-ui:
+    runs-on: ubuntu-latest
+    env:
+      BEETLE_VERSION: "${{ github.sha }}"
+      # note: These are specific paths related to nginx hosting config. When developing locally,
+      # it is more likely you will be serving from a root `/`.
+      BEETLE_UI_ROOT: "/beetle/"
+      BEETLE_API_ROOT: "/beetle/api/"
+    defaults:
+      run:
+        working-directory: src/beetle-ui
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '12'
+
+      - name: "install elm: download"
+        run: curl -L -o elm.gz https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz
+
+      - name: "install elm: unpack"
+        run: gunzip elm.gz && chmod +x elm
+
+      - name: "install elm: install"
+        run: sudo mv elm /usr/local/bin/
+
+      - name: "install elm: verison"
+        run: elm --version
+
+      - name: "install node-deps"
+        run: npm i
+
+      - name: "lint: ts"
+        run: npm run ts:lint
+
+      - name: "make: release"
+        run: make release
+
+      - name: prepare-bundle
+        run: mv target/release beetle-ui-dist
+
+      - name: create-bundle
+        run: tar cvzf beetle-ui-$BEETLE_VERSION.tar.gz beetle-ui-dist
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: "beetle-ui-${{ github.sha }}.tar.gz"
+          path: "./src/beetle-ui/beetle-ui-${{ github.sha }}.tar.gz"
+
   build-srv:
     runs-on: ubuntu-latest
     container:
@@ -63,10 +114,11 @@ jobs:
           files: "./src/beetle-srv/beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
   publish:
     runs-on: ubuntu-latest
-    needs: build-srv
+    needs: ["build-srv", "build-ui"]
     steps:
       - uses: actions/download-artifact@v3
         with:
-          name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
+          name: ["beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz", "beetle-ui-${{ github.sha }}.tar.gz"]
+
       - name: printall
         run: ls -lah
