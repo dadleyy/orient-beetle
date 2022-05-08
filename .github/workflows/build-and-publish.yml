@@ -1,4 +1,4 @@
-name: server
+name: build-and-publish
 on:
   push:
     branches:
@@ -107,11 +107,6 @@ jobs:
           name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
           path: "./src/beetle-srv/beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
 
-      - name: release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: "./src/beetle-srv/beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
   publish:
     runs-on: ubuntu-latest
     needs: ["build-srv", "build-ui"]
@@ -124,3 +119,11 @@ jobs:
 
       - name: printall
         run: ls -lah
+
+      - name: release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            "./beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
+            "./beetle-ui-${{ github.sha }}.tar.gz"
