@@ -113,9 +113,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v3
         with:
-          name: |
-            "beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
-            "beetle-ui-${{ github.sha }}.tar.gz"
+          name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: "beetle-ui-${{ github.sha }}.tar.gz"
 
       - name: printall
         run: ls -lah
@@ -124,6 +126,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: |
-            "./beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
-            "./beetle-ui-${{ github.sha }}.tar.gz"
+          files:
+            - "./beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
+            - "./beetle-ui-${{ github.sha }}.tar.gz"
