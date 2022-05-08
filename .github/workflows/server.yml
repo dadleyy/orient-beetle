@@ -2,9 +2,9 @@ name: server
 on:
   push:
     branches:
-      - *
+      - "*"
     tags:
-      - v*
+      - "v*"
 jobs:
   test:
     runs-on: ubuntu-latest
