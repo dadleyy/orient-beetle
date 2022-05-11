@@ -1,11 +1,47 @@
 use serde::{Deserialize, Serialize};
+use std::io::{Error, ErrorKind, Result};
 
-/// Just having fun here with traits; actually figuring out where code lives relative
-/// to the `bin` members and this code is not clear at the time being.
-pub trait Connector: Clone + Send + Sync {
-  type Value: AsRef<str> + Sync + Send;
+mod auth;
+mod claims;
+mod messages;
+mod worker;
 
-  fn redis<'a>(&'a self) -> (&'a Self::Value, &'a Self::Value, &'a Self::Value);
+/// These configuration definitions makes it easy for the web binary to
+/// deserialize a configuration file (e.g toml) and have everything ready
+/// for the server to run.
+
+#[derive(Deserialize, Clone)]
+pub struct WebConfiguration {
+  ui_redirect: String,
+  session_secret: String,
+  session_cookie: String,
+}
+
+#[derive(Deserialize)]
+pub struct Configuration {
+  web: WebConfiguration,
+  redis: crate::config::RedisConfiguration,
+  auth0: crate::config::Auth0Configuration,
+  mongo: crate::config::MongoConfiguration,
+}
+
+impl Configuration {
+  pub async fn worker(self) -> Result<worker::Worker> {
+    // Attempt to connect to mongo early.
+    let mongo_options = mongodb::options::ClientOptions::parse(&self.mongo.url)
+      .await
+      .map_err(|error| Error::new(ErrorKind::Other, format!("failed mongodb connection - {error}")))?;
+
+    let mongo = mongodb::Client::with_options(mongo_options)
+      .map_err(|error| Error::new(ErrorKind::Other, format!("failed mongodb connection - {error}")))?;
+
+    Ok(worker::Worker {
+      web_configuration: self.web,
+      redis_configuration: self.redis,
+      auth0_configuration: self.auth0,
+      mongo: (mongo, self.mongo),
+    })
+  }
 }
 
 #[derive(Serialize, Debug)]
@@ -26,59 +62,6 @@ impl Default for HeartbeatPayload {
   }
 }
 
-#[derive(Deserialize, Debug)]
-struct MessagePayload {
-  device: String,
-  message: String,
-}
-
-async fn send_message<T>(mut request: tide::Request<T>) -> tide::Result
-where
-  T: Connector,
-{
-  let (host, port, auth) = request.state().redis();
-  let mut stream = crate::connect(host, port, auth).await?;
-
-  let payload = request.body_json::<MessagePayload>().await.map_err(|err| {
-    log::warn!("invalid payload - {err}");
-    err
-  })?;
-
-  log::debug!("message payload {payload:?}");
-  let find_result = kramer::execute(
-    &mut stream,
-    kramer::Command::Sets(kramer::SetCommand::IsMember(
-      crate::constants::REGISTRAR_INDEX,
-      &payload.device,
-    )),
-  )
-  .await?;
-
-  let found = match find_result {
-    kramer::Response::Item(kramer::ResponseValue::Integer(1)) => true,
-    other => {
-      log::warn!("unable to find '{}' - {other:?}", payload.device);
-      false
-    }
-  };
-
-  if found != true {
-    return Ok(tide::Response::new(404));
-  }
-
-  kramer::execute(
-    &mut stream,
-    kramer::Command::List(kramer::ListCommand::Push(
-      (kramer::Side::Right, kramer::Insertion::Always),
-      format!("ob:{}", payload.device),
-      kramer::Arity::One(&payload.message),
-    )),
-  )
-  .await?;
-
-  Ok("".into())
-}
-
 async fn heartbeat<T>(_request: tide::Request<T>) -> tide::Result {
   Ok(
     tide::Response::builder(200)
@@ -87,23 +70,21 @@ async fn heartbeat<T>(_request: tide::Request<T>) -> tide::Result {
   )
 }
 
-async fn missing<T>(_request: tide::Request<T>) -> tide::Result
-where
-  T: Connector,
-{
+async fn missing(_request: tide::Request<worker::Worker>) -> tide::Result {
   log::debug!("not-found");
   Ok("".into())
 }
 
-pub fn new<T>(connector: T) -> tide::Server<T>
-where
-  T: Connector + 'static,
-{
-  let mut app = tide::with_state::<T>(connector);
+pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
+  let mut app = tide::with_state(worker);
 
-  app.at("/send-device-message").post(send_message);
+  app.at("/send-device-message").post(messages::send_message);
+
+  app.at("/auth/redirect").get(auth::redirect);
+  app.at("/auth/complete").get(auth::complete);
+  app.at("/auth/identify").get(auth::identify);
+
   app.at("/status").get(heartbeat);
-
   app.at("/*").all(missing);
   app.at("/").all(missing);
 

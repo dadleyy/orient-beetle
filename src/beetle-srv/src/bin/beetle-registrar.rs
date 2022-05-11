@@ -130,7 +130,7 @@ impl Worker {
     let stream = self.connection.take();
 
     self.connection = match stream {
-      None => beetle::connect(&self.redis.0, &self.redis.1, &self.redis.2)
+      None => beetle::redis::connect(&self.redis.0, &self.redis.1, &self.redis.2)
         .await
         .map(Some)?,
 

@@ -89,7 +89,7 @@ async fn run(config: CommandLineConfig) -> Result<()> {
     return Ok(());
   }
 
-  let mut stream = beetle::connect(&config.redis.0, &config.redis.1, &config.redis.2).await?;
+  let mut stream = beetle::redis::connect(&config.redis.0, &config.redis.1, &config.redis.2).await?;
 
   match config.command {
     CommandLineCommand::Help => unreachable!(),

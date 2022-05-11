@@ -1,10 +1,10 @@
-use std::{
-  fmt,
-  io::{Error, ErrorKind, Result},
-};
+use std::fmt;
 
 pub mod api;
+pub mod config;
 pub mod constants;
+pub mod redis;
+pub mod types;
 
 pub struct IndexedDevice {
   id: String,
@@ -36,32 +36,5 @@ impl fmt::Display for IndexedDevice {
   fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
     let mins = chrono::Utc::now().signed_duration_since(self.last_seen).num_seconds();
     write!(formatter, "[{}]: last seen @ {} seconds ago", self.id, mins)
-  }
-}
-
-pub async fn connect<S>(host: S, port: S, auth: S) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>>
-where
-  S: AsRef<str>,
-{
-  let connector = async_tls::TlsConnector::default();
-  let mut stream = connector
-    .connect(
-      host.as_ref(),
-      async_std::net::TcpStream::connect(format!("{}:{}", host.as_ref(), port.as_ref())).await?,
-    )
-    .await?;
-
-  let auth_result = kramer::execute(
-    &mut stream,
-    kramer::Command::Auth::<&str, bool>(kramer::AuthCredentials::Password(auth.as_ref())),
-  )
-  .await?;
-
-  match auth_result {
-    kramer::Response::Item(kramer::ResponseValue::String(value)) if value.as_str() == "OK" => Ok(stream),
-    other => {
-      log::warn!("unrecognized auth response - {other:?}");
-      Err(Error::new(ErrorKind::Other, "bad-auth"))
-    }
   }
 }

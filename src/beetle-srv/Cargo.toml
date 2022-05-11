@@ -32,3 +32,9 @@ kramer = { version = "^1.1", features = ["kramer-async"] }
 chrono = { version = "^0.4" }
 serde = { version = "^1.0" }
 serde_json = { version = "^1.0" }
+jsonwebtoken = { version = "^7.2.0" }
+http-types = { version = "^2.0" }
+surf = { version = "^2.3.0" }
+toml = { version = "^0.5" }
+bson = { version = "2.0.0", features = ["uuid-0_8"] }
+mongodb = { version = "^2.0.0", features = ["async-std-runtime", "bson-uuid-0_8"], default-features = false }

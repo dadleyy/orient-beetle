@@ -38,12 +38,22 @@ type alias Model =
 
 
 type alias Flags =
-    { api : String, root : String, version : String }
+    { api : String, root : String, version : String, loginUrl : String }
+
+
+defaultModel : Flags -> Url.Url -> Nav.Key -> Model
+defaultModel flags url key =
+    { key = key, url = url, flags = flags, status = Nothing }
+
+
+fetchStatus : Flags -> Cmd Msg
+fetchStatus flags =
+    Http.get { url = String.concat [ flags.api, "status" ], expect = Http.expectJson StatusFetch statusDecoder }
 
 
 init : Flags -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init flags url key =
-    ( Model key url flags Nothing, Http.get { url = String.concat [ flags.api, "status" ], expect = Http.expectJson StatusFetch statusDecoder } )
+    ( defaultModel flags url key, fetchStatus flags )
 
 
 
@@ -141,7 +151,7 @@ externalLink addr text =
 
 statusFooter : StatusResponse -> Html.Html Msg
 statusFooter data =
-    Html.div [] [ Html.text (String.concat [ (String.slice 0 7 data.version), " @ ", data.timestamp ]) ]
+    Html.div [] [ Html.text (String.concat [ String.slice 0 7 data.version, " @ ", data.timestamp ]) ]
 
 
 footer : Model -> Html.Html Msg
