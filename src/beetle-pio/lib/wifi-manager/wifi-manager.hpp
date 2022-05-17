@@ -66,6 +66,9 @@ namespace wifimanager {
           PendingConfiguration(): _server(80) {}
           ~PendingConfiguration();
 
+          PendingConfiguration(const PendingConfiguration&) = delete;
+          PendingConfiguration & operator=(const PendingConfiguration&) = delete;
+
           bool frame(char *, char *);
           void begin(IPAddress addr);
 
@@ -103,6 +106,9 @@ namespace wifimanager {
           free(_ssid);
           free(_password);
         }
+
+        PendingConnection(const PendingConnection &) = delete;
+        PendingConnection& operator=(const PendingConnection &) = delete;
       };
 
 
@@ -110,8 +116,8 @@ namespace wifimanager {
       // we'll move into this active connection state where each frame checks
       // the current connection information and disconnects after some number of
       // frames.
-      struct ActiveConnection {
-        ActiveConnection(uint8_t d): _disconnected(d) {}
+      struct ActiveConnection final {
+        explicit ActiveConnection(uint8_t d): _disconnected(d) {}
         uint8_t _disconnected = 0;
       };
 

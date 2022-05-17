@@ -4,10 +4,7 @@ namespace wifimanager {
   Manager::Manager(std::tuple<const char *, const char *> ap):
     _last_mode(0),
     _ap_config(ap),
-    _mode(false)
-  {
-    _mode.emplace<PendingConfiguration>();
-  }
+    _mode(std::in_place_type_t<PendingConfiguration>()) {}
 
   uint8_t Manager::attempt(void) {
     if (_mode.index() == 2) {
@@ -39,7 +36,7 @@ namespace wifimanager {
 
     switch (modi) {
       case 0: {
-        ActiveConnection * active = std::get_if<0>(&_mode);
+        ActiveConnection * active = std::get_if<ActiveConnection>(&_mode);
         uint8_t previous = active->_disconnected;
 
         active->_disconnected = WiFi.status() == WL_CONNECTED
@@ -48,6 +45,7 @@ namespace wifimanager {
 
         // If we're now disconnected, sent an interruption message.
         if (active->_disconnected == 1) {
+          WiFi.reconnect();
           return Manager::EManagerMessage::ConnectionInterruption;
         }
 
@@ -73,7 +71,7 @@ namespace wifimanager {
        * load the index html page and enter in the wifi credentials.
        */
       case 1: {
-        PendingConfiguration * server = std::get_if<1>(&_mode);
+        PendingConfiguration * server = std::get_if<PendingConfiguration>(&_mode);
 
         // TODO: using stack allocated char arrays of a preset max size here over
         // dynamically allocated memory. Not clear right now which is better.
@@ -106,7 +104,7 @@ namespace wifimanager {
        * to boot the wifi module and wait for it to be connected.
        */
       case 2: {
-        PendingConnection * pending = std::get_if<2>(&_mode);
+        PendingConnection * pending = std::get_if<PendingConnection>(&_mode);
 
         if (pending->_attempts % 3 == 0) {
           log_d("attempting to connect to wifi [%d]", pending->_attempts);
