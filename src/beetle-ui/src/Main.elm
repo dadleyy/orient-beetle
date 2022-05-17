@@ -2,18 +2,16 @@ module Main exposing (..)
 
 import Browser
 import Browser.Navigation as Nav
+import Environment
 import Html
 import Html.Attributes
 import Http
 import Json.Decode
+import Route
 import Url
 
 
-
--- MAIN
-
-
-main : Program Flags Model Msg
+main : Program Environment.Configuration Model Msg
 main =
     Browser.application
         { init = init
@@ -25,72 +23,54 @@ main =
         }
 
 
-
--- MODEL
+type Route
+    = Login
+    | Home
 
 
 type alias Model =
     { key : Nav.Key
     , url : Url.Url
-    , flags : Flags
-    , status : Maybe StatusResponse
+    , env : Environment.Environment
+    , route : Maybe Route.Route
     }
-
-
-type alias Flags =
-    { api : String, root : String, version : String, loginUrl : String }
-
-
-defaultModel : Flags -> Url.Url -> Nav.Key -> Model
-defaultModel flags url key =
-    { key = key, url = url, flags = flags, status = Nothing }
-
-
-fetchStatus : Flags -> Cmd Msg
-fetchStatus flags =
-    Http.get { url = String.concat [ flags.api, "status" ], expect = Http.expectJson StatusFetch statusDecoder }
-
-
-init : Flags -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
-init flags url key =
-    ( defaultModel flags url key, fetchStatus flags )
-
-
-
--- UPDATE
 
 
 type Msg
     = LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
-    | StatusFetch (Result Http.Error StatusResponse)
+    | EnvironmentMessage Environment.Message
+    | RouteMessage Route.Message
 
 
-type alias StatusResponse =
-    { version : String
-    , timestamp : String
-    }
+defaultModel : Environment.Configuration -> Url.Url -> Nav.Key -> Model
+defaultModel flags url key =
+    let
+        env =
+            Environment.default flags
+    in
+    { route = Route.fromUrl env url, key = key, url = url, env = env }
 
 
-statusDecoder : Json.Decode.Decoder StatusResponse
-statusDecoder =
-    Json.Decode.map2 StatusResponse
-        (Json.Decode.field "version" Json.Decode.string)
-        (Json.Decode.field "timestamp" Json.Decode.string)
+init : Environment.Configuration -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
+init flags url key =
+    let
+        model =
+            defaultModel flags url key
+    in
+    ( model, Cmd.batch [ initEnv model.env ] )
+
+
+initEnv : Environment.Environment -> Cmd Msg
+initEnv env =
+    Environment.boot env |> Cmd.map EnvironmentMessage
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    case msg of
-        StatusFetch res ->
-            case res of
-                Ok data ->
-                    ( { model | status = Just data }, Cmd.none )
-
-                Err _ ->
-                    ( model, Cmd.batch [] )
-
-        LinkClicked urlRequest ->
+update message model =
+    case ( message, model.route ) of
+        -- Links are not really specific to any given route/model state.
+        ( LinkClicked urlRequest, _ ) ->
             case urlRequest of
                 Browser.Internal url ->
                     ( model, Nav.pushUrl model.key (Url.toString url) )
@@ -98,14 +78,54 @@ update msg model =
                 Browser.External href ->
                     ( model, Nav.load href )
 
-        UrlChanged url ->
-            ( { model | url = url }
-            , Cmd.none
-            )
+        -- Environment messages are also not specific to a route/model as they
+        -- will probably come in early
+        ( EnvironmentMessage em, _ ) ->
+            let
+                ( updated, path ) =
+                    Environment.update em model.env
 
+                -- Handle newly-authenticated users here, sending them home
+                cmd =
+                    case path of
+                        Just p ->
+                            Nav.pushUrl model.key p
 
+                        Nothing ->
+                            Cmd.none
+            in
+            ( { model | env = updated }, cmd )
 
--- SUBSCRIPTIONS
+        -- The url change here is where we do all of our route transition magic,
+        -- where the route module delegates an intial load and stuff to sub
+        -- modules.
+        ( UrlChanged url, _ ) ->
+            let
+                next =
+                    Route.fromUrl model.env url
+
+                redirect =
+                    case next of
+                        Just _ ->
+                            Cmd.none
+
+                        Nothing ->
+                            Nav.pushUrl model.key "/login"
+            in
+            ( { model | url = url, route = next }, redirect )
+
+        -- If we don't have a current route and receive some route-specific message,
+        -- do nothing.
+        ( RouteMessage _, Nothing ) ->
+            ( model, Cmd.none )
+
+        -- Handle login route messages
+        ( RouteMessage inner, Just Route.Login ) ->
+            ( model, Cmd.none )
+
+        -- Handle home route messages
+        ( RouteMessage inner, Just Route.Home ) ->
+            ( model, Cmd.none )
 
 
 subscriptions : Model -> Sub Msg
@@ -113,35 +133,34 @@ subscriptions _ =
     Sub.none
 
 
-
--- VIEW
-
-
 header : Model -> Html.Html Msg
 header model =
-    case model.status of
+    case Environment.getId model.env of
         Nothing ->
             Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] []
 
-        Just data ->
-            Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] []
-
-
-buildRoutePath : Model -> String -> String
-buildRoutePath model path =
-    String.concat [ model.flags.root, path ]
+        Just id ->
+            Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] [ Html.text (String.concat [ "oid: ", id ]) ]
 
 
 body : Model -> Html.Html Msg
 body model =
-    Html.div [ Html.Attributes.class "flex-1" ]
-        [ Html.text "The current URL is: "
-        , Html.i [] [ Html.text (Url.toString model.url) ]
-        , Html.ul []
-            [ viewLink (buildRoutePath model "home")
-            , viewLink (buildRoutePath model "profile")
-            ]
-        ]
+    case ( Environment.getId model.env, model.route ) of
+        ( Nothing, Just Route.Login ) ->
+            Html.div [ Html.Attributes.class "flex-1" ] [ Route.render model.env Route.Login |> Html.map RouteMessage ]
+
+        ( Just _, Just route ) ->
+            Html.div [ Html.Attributes.class "flex-1" ] [ Route.render model.env route |> Html.map RouteMessage ]
+
+        -- If we have a session but not a route, link back to home.
+        ( Just _, Nothing ) ->
+            Html.div
+                [ Html.Attributes.class "flex-1 px-4 py-3" ]
+                [ Html.a [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ] [ Html.text "home" ] ]
+
+        -- Only our login route should ever be dealing with non-loaded sessions
+        ( Nothing, _ ) ->
+            Html.div [ Html.Attributes.class "flex-1 px-4 py-3" ] [ Html.text "loading..." ]
 
 
 externalLink : String -> String -> Html.Html Msg
@@ -149,18 +168,12 @@ externalLink addr text =
     Html.a [ Html.Attributes.href addr, Html.Attributes.rel "noopener", Html.Attributes.target "_blank" ] [ Html.text text ]
 
 
-statusFooter : StatusResponse -> Html.Html Msg
-statusFooter data =
-    Html.div [] [ Html.text (String.concat [ String.slice 0 7 data.version, " @ ", data.timestamp ]) ]
-
-
 footer : Model -> Html.Html Msg
 footer model =
     Html.div [ Html.Attributes.class "cont-dark px-4 py-2 flex" ]
         [ Html.div [] [ externalLink "https://github.com/dadleyy/orient-beetle" "github" ]
         , Html.div [ Html.Attributes.class "ml-auto" ]
-            [ Maybe.withDefault (Html.div [] []) (Maybe.map statusFooter model.status)
-            ]
+            [ Environment.statusFooter model.env |> Html.map EnvironmentMessage ]
         ]
 
 

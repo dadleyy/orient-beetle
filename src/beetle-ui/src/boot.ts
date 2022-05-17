@@ -4,6 +4,7 @@
 type Environment = {
   api: string,
   root: string,
+  loginUrl: string,
   version: string,
   release: boolean,
 };

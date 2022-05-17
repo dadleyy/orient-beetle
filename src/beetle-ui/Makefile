@@ -1,6 +1,7 @@
 ELM=elm
 NPM=npm
 
+ELM_SOURCES=$(wildcard src/*.elm)
 DEBUG_DIR=./target/debug
 MAIN_JS=./target/debug/main.js
 BOOT_JS=./target/debug/boot.js
@@ -13,11 +14,14 @@ RELEASE_MAIN_CSS=$(subst debug,release,$(MAIN_CSS))
 RELEASE_BOOT_JS=$(subst .js,.min.js,$(subst debug,release,$(BOOT_JS)))
 RELEASE_INDEX=$(subst debug,release,$(INDEX_HTML))
 
-.PHONY: all clean
+.PHONY: all clean fmt
 
 all: $(MAIN_JS) $(BOOT_JS) $(INDEX_HTML) $(MAIN_CSS)
 
 release: $(RELEASE_MAIN_JS) $(RELEASE_BOOT_JS) $(RELEASE_INDEX) $(RELEASE_MAIN_CSS)
+
+fmt:
+	$(NPM) run elm:fmt
 
 clean:
 	rm -rf $(DEBUG_DIR)
@@ -37,7 +41,7 @@ $(RELEASE_INDEX): ./src/index.pug $(INDEX_HTML)
 # JS
 ##
 
-$(MAIN_JS): ./src/Main.elm
+$(MAIN_JS): ./src/Main.elm $(ELM_SOURCES)
 	$(ELM) make $< --output $(MAIN_JS)
 
 $(BOOT_JS): ./src/boot.ts @types/global.d.ts
