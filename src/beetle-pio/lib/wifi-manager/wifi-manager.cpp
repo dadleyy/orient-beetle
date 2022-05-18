@@ -45,8 +45,14 @@ namespace wifimanager {
 
         // If we're now disconnected, sent an interruption message.
         if (active->_disconnected == 1) {
+          log_e("wifi connection interrupted, attempting to reconnect");
           WiFi.reconnect();
           return Manager::EManagerMessage::ConnectionInterruption;
+        }
+
+        if (active->_disconnected > 1) {
+          log_e("wifi still disconnected at %d attempts", active->_disconnected);
+          WiFi.reconnect();
         }
 
         // If we're no longer disconnected, but were previously, we've been resumed.
@@ -112,6 +118,7 @@ namespace wifimanager {
 
         if (pending->_attempts == 0) {
           log_d("connecting to wifi");
+          WiFi.setHostname("orient-beetle");
           WiFi.begin(pending->_ssid, pending->_password);
         }
 
