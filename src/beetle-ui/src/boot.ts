@@ -9,28 +9,30 @@ type Environment = {
   release: boolean,
 };
 
-function parse(input: string): Environment | undefined {
-  try {
-    return JSON.parse(input);
-  } catch (error) {
-    console.error(`unable to parse - ${error}`);
-    return void 0;
-  }
-}
-
-function boot(): void {
-  const config = document.querySelector('meta[name=environment]');
-  const value = config ? config.getAttribute('value') : null;
-  const environment = typeof value === 'string' ? parse(value) : null;
-
-  if (!environment) {
-    console.warn('unable to find environment container');
-    return;
+(function() {
+  function parse(input: string): Environment | undefined {
+    try {
+      return JSON.parse(input);
+    } catch (error) {
+      console.error(`unable to parse - ${error}`);
+      return void 0;
+    }
   }
 
-  console.info(`booting application with ${JSON.stringify(environment)}`);
-  const flags = { ...environment };
-  Elm.Main.init({ flags });
-}
+  function boot(): void {
+    const config = document.querySelector('meta[name=environment]');
+    const value = config ? config.getAttribute('value') : null;
+    const environment = typeof value === 'string' ? parse(value) : null;
 
-window.addEventListener('DOMContentLoaded', boot);
+    if (!environment) {
+      console.warn('unable to find environment container');
+      return;
+    }
+
+    console.info(`booting application with ${JSON.stringify(environment)}`);
+    const flags = { ...environment };
+    Elm.Main.init({ flags });
+  }
+
+  window.addEventListener('DOMContentLoaded', boot);
+})();

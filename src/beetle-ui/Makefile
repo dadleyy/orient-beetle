@@ -1,7 +1,7 @@
 ELM=elm
 NPM=npm
 
-ELM_SOURCES=$(wildcard src/*.elm)
+ELM_SOURCES=$(wildcard src/*.elm) $(wildcard src/*/*.elm)
 DEBUG_DIR=./target/debug
 MAIN_JS=./target/debug/main.js
 BOOT_JS=./target/debug/boot.js

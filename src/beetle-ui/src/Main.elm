@@ -43,22 +43,25 @@ type Msg
     | RouteMessage Route.Message
 
 
-defaultModel : Environment.Configuration -> Url.Url -> Nav.Key -> Model
+defaultModel : Environment.Configuration -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 defaultModel flags url key =
     let
         env =
             Environment.default flags
+
+        ( route, loader ) =
+            Route.fromUrl env url
     in
-    { route = Route.fromUrl env url, key = key, url = url, env = env }
+    ( { route = route, key = key, url = url, env = env }, loader |> Cmd.map RouteMessage )
 
 
 init : Environment.Configuration -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
 init flags url key =
     let
-        model =
+        ( model, cmd ) =
             defaultModel flags url key
     in
-    ( model, Cmd.batch [ initEnv model.env ] )
+    ( model, Cmd.batch [ initEnv model.env, cmd ] )
 
 
 initEnv : Environment.Environment -> Cmd Msg
@@ -101,13 +104,13 @@ update message model =
         -- modules.
         ( UrlChanged url, _ ) ->
             let
-                next =
+                ( next, cmd ) =
                     Route.fromUrl model.env url
 
                 redirect =
                     case next of
                         Just _ ->
-                            Cmd.none
+                            cmd |> Cmd.map RouteMessage
 
                         Nothing ->
                             Nav.pushUrl model.key "/login"
@@ -120,12 +123,12 @@ update message model =
             ( model, Cmd.none )
 
         -- Handle login route messages
-        ( RouteMessage inner, Just Route.Login ) ->
-            ( model, Cmd.none )
-
-        -- Handle home route messages
-        ( RouteMessage inner, Just Route.Home ) ->
-            ( model, Cmd.none )
+        ( RouteMessage inner, Just route ) ->
+            let
+                ( next, cmd ) =
+                    Route.update model.env inner route
+            in
+            ( { model | route = Just next }, cmd |> Cmd.map RouteMessage )
 
 
 subscriptions : Model -> Sub Msg
@@ -147,20 +150,20 @@ body : Model -> Html.Html Msg
 body model =
     case ( Environment.getId model.env, model.route ) of
         ( Nothing, Just Route.Login ) ->
-            Html.div [ Html.Attributes.class "flex-1" ] [ Route.render model.env Route.Login |> Html.map RouteMessage ]
+            Html.div [ Html.Attributes.class "flex-1 main" ] [ Route.view model.env Route.Login |> Html.map RouteMessage ]
 
         ( Just _, Just route ) ->
-            Html.div [ Html.Attributes.class "flex-1" ] [ Route.render model.env route |> Html.map RouteMessage ]
+            Html.div [ Html.Attributes.class "flex-1 main" ] [ Route.view model.env route |> Html.map RouteMessage ]
 
         -- If we have a session but not a route, link back to home.
         ( Just _, Nothing ) ->
             Html.div
-                [ Html.Attributes.class "flex-1 px-4 py-3" ]
+                [ Html.Attributes.class "flex-1 px-4 py-3 main" ]
                 [ Html.a [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ] [ Html.text "home" ] ]
 
         -- Only our login route should ever be dealing with non-loaded sessions
         ( Nothing, _ ) ->
-            Html.div [ Html.Attributes.class "flex-1 px-4 py-3" ] [ Html.text "loading..." ]
+            Html.div [ Html.Attributes.class "flex-1 px-4 py-3 main" ] [ Html.text "loading..." ]
 
 
 externalLink : String -> String -> Html.Html Msg
