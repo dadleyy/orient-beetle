@@ -1,4 +1,4 @@
-module Environment exposing (Configuration, Environment, Message(..), Session, StatusResponse, boot, buildRoutePath, default, getId, statusFooter, update)
+module Environment exposing (Configuration, Environment, Message(..), Session, StatusResponse, apiRoute, boot, buildRoutePath, default, getId, statusFooter, update)
 
 import Html
 import Http

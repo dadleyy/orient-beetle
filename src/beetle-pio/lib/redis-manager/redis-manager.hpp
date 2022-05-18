@@ -60,14 +60,15 @@ namespace redismanager {
           Connected();
           ~Connected();
 
+          Connected(const Connected &) = delete;
+          Connected & operator=(const Connected &) = delete;
+
+          Connected(Connected &&) = delete;
+
           uint16_t copy(char *, uint16_t);
           std::optional<EManagerMessage> update(const char *, const char *, uint32_t);
 
         private:
-          Connected(const Connected &) = default;
-          Connected(Connected &&) = default;
-          Connected & operator=(const Connected &) = default;
-
           inline uint16_t write_pop(void);
           inline uint16_t write_push(void);
 
@@ -75,7 +76,7 @@ namespace redismanager {
 
           // The `_cursor` represents the last index of our framebuffer we have pushed into.
           uint16_t _cursor;
-          char _framebuffer[FRAMEBUFFER_SIZE];
+          char * _framebuffer;
 
           uint8_t _write_delay;
           char _device_id [MAX_ID_SIZE + 1];

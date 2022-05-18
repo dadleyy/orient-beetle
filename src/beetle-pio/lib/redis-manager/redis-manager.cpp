@@ -275,13 +275,14 @@ namespace redismanager {
     _cursor(0),
     _write_delay(0),
     _device_id_len(0) {
+      _framebuffer = (char*) malloc(sizeof(char) * FRAMEBUFFER_SIZE);
       memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
       memset(_device_id, '\0', MAX_ID_SIZE + 1);
   }
 
   Manager::Connected::~Connected() {
     log_d("cleaning up redis client connection");
-
+    free(_framebuffer);
     _client.stop();
   }
 

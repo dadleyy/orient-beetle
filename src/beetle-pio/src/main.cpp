@@ -122,7 +122,7 @@ void loop(void) {
 #ifndef RELEASE
   heap_debug_tick += 1;
   if (heap_debug_tick > heap_debug_tick_minimum) {
-    log_d("free memory before malloc: %d", ESP.getFreeHeap());
+    log_d("free memory before malloc: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     // uint16_t prox = vcnl.readProximity();
     // log_d("proximity: %d", prox);
   }
@@ -136,7 +136,7 @@ void loop(void) {
 
 #ifndef RELEASE
   if (heap_debug_tick > heap_debug_tick_minimum) {
-    log_d("free memory after malloc: %d", ESP.getFreeHeap());
+    log_d("free memory after malloc: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     heap_debug_tick = 0;
   }
 #endif

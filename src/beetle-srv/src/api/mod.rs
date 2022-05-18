@@ -3,6 +3,7 @@ use std::io::{Error, ErrorKind, Result};
 
 mod auth;
 mod claims;
+mod devices;
 mod messages;
 mod worker;
 
@@ -83,6 +84,8 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/auth/redirect").get(auth::redirect);
   app.at("/auth/complete").get(auth::complete);
   app.at("/auth/identify").get(auth::identify);
+
+  app.at("/devices/register").post(devices::register);
 
   app.at("/status").get(heartbeat);
   app.at("/*").all(missing);

@@ -8,8 +8,8 @@
     "tailwind": "tailwindcss",
     "min": "uglifyjs",
     "pug:release": "RELEASE=true pug",
-    "elm:fmt": "elm-format ./src --yes",
-    "ts:lint": "eslint . --ext .ts",
+    "lint:elm": "elm-format ./src",
+    "lint:ts": "eslint . --ext .ts",
     "start:dev-server": "node dev-server.js"
   },
   "author": "",

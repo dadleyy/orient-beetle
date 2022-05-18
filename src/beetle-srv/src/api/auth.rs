@@ -1,11 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::io::{Error, ErrorKind, Result};
 
 #[cfg(debug_assertions)]
-const COOKIE_SET_FLAGS: &'static str = "Max-Age=600; Path=/; SameSite=Strict; HttpOnly";
+const COOKIE_SET_FLAGS: &'static str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly";
 
 #[cfg(not(debug_assertions))]
-const COOKIE_SET_FLAGS: &'static str = "Max-Age=600; Path=/; SameSite=Strict; HttpOnly; Secure";
+const COOKIE_SET_FLAGS: &'static str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly; Secure";
 
 #[derive(Debug, Deserialize)]
 struct AuthCodeResponse {

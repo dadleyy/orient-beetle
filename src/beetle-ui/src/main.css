@@ -33,7 +33,26 @@ button:disabled {
   @apply bg-neutral-500;
 }
 
+input {
+  @apply flex-1;
+}
+
 button:not(:disabled) {
   @apply bg-sky-500;
+  @apply text-white;
+}
+
+.pill {
+  @apply block relative;
+  @apply px-3 py-2;
+}
+
+.pill.sad {
+  @apply bg-yellow-500;
+  @apply text-white;
+}
+
+.pill.happy {
+  @apply bg-green-500;
   @apply text-white;
 }

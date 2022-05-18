@@ -21,7 +21,8 @@ all: $(MAIN_JS) $(BOOT_JS) $(INDEX_HTML) $(MAIN_CSS)
 release: $(RELEASE_MAIN_JS) $(RELEASE_BOOT_JS) $(RELEASE_INDEX) $(RELEASE_MAIN_CSS)
 
 fmt:
-	$(NPM) run elm:fmt
+	$(NPM) run lint:elm -- --yes
+	$(NPM) run lint:ts -- --fix
 
 clean:
 	rm -rf $(DEBUG_DIR)

@@ -9,7 +9,7 @@ type Environment = {
   release: boolean,
 };
 
-(function() {
+(function () {
   function parse(input: string): Environment | undefined {
     try {
       return JSON.parse(input);

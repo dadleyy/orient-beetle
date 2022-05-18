@@ -53,7 +53,10 @@ jobs:
         run: npm i
 
       - name: "lint: ts"
-        run: npm run ts:lint
+        run: npm run lint:ts
+
+      - name: "lint: elm"
+        run: npm run lint:elm -- --validate
 
       - name: "make: release"
         run: make release
