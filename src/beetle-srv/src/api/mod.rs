@@ -73,7 +73,7 @@ async fn heartbeat<T>(_request: tide::Request<T>) -> tide::Result {
 
 async fn missing(_request: tide::Request<worker::Worker>) -> tide::Result {
   log::debug!("not-found");
-  Ok("".into())
+  Ok(tide::Response::builder(404).build())
 }
 
 pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
@@ -86,6 +86,7 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/auth/identify").get(auth::identify);
 
   app.at("/devices/register").post(devices::register);
+  app.at("/devices/unregister").post(devices::unregister);
 
   app.at("/status").get(heartbeat);
   app.at("/*").all(missing);

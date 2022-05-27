@@ -28,7 +28,7 @@ impl Claims {
     T: std::fmt::Display,
   {
     let day = chrono::Utc::now()
-      .checked_add_signed(chrono::Duration::minutes(60))
+      .checked_add_signed(chrono::Duration::minutes(1440))
       .unwrap_or(chrono::Utc::now());
 
     let exp = day.timestamp() as usize;

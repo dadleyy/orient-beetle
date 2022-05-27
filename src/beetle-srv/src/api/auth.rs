@@ -115,10 +115,14 @@ pub async fn complete(request: tide::Request<super::worker::Worker>) -> tide::Re
     .return_document(mongodb::options::ReturnDocument::After)
     .build();
 
+  let state = crate::types::User {
+    oid: info.sub.clone(),
+    ..Default::default()
+  };
   let user = users
     .find_one_and_update(
       query,
-      bson::doc! { "$setOnInsert": bson::to_bson(&crate::types::User { oid: info.sub.clone() }).map_err(|error| {
+      bson::doc! { "$setOnInsert": bson::to_bson(&state).map_err(|error| {
           log::warn!("unable to serialize new player - {:?}", error);
           tide::Error::from_str(500, "player-failure")
         })?,

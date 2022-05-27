@@ -6,6 +6,7 @@ pub mod constants;
 pub mod redis;
 pub mod types;
 
+#[derive(Debug)]
 pub struct IndexedDevice {
   id: String,
   last_seen: chrono::DateTime<chrono::Utc>,

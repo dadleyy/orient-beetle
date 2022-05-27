@@ -1,5 +1,6 @@
 module Route.Home exposing (Message, Model, default, update, view)
 
+import Dict
 import Environment
 import Html
 import Html.Attributes
@@ -15,8 +16,14 @@ type Alert
     | Happy String
 
 
+type alias OwnedDevice =
+    { id : String
+    , busy : Bool
+    }
+
+
 type alias Data =
-    { devices : List String
+    { devices : List OwnedDevice
     , newDevice : ( String, Maybe (Maybe Http.Error) )
     , alert : Maybe Alert
     }
@@ -26,11 +33,18 @@ type alias Model =
     Maybe (Result Http.Error Data)
 
 
+type alias DeviceList =
+    { devices : Dict.Dict String Int
+    }
+
+
 type Message
     = SetNewDeviceId String
     | AttemptDeviceClaim
     | RegisteredDevice (Result Http.Error RegistrationResponse)
-    | Pretend Int
+    | AttemptDeviceRemove String
+    | RemovedDevice (Result Http.Error ())
+    | LoadedDevices (Result Http.Error DeviceList)
 
 
 type alias RegistrationResponse =
@@ -61,6 +75,15 @@ registrationDecoder =
     Json.Decode.map RegistrationResponse (Json.Decode.field "id" Json.Decode.string)
 
 
+removeDevice : Environment.Environment -> String -> Cmd Message
+removeDevice env id =
+    Http.post
+        { url = Environment.apiRoute env "devices/unregister"
+        , body = Http.jsonBody (Json.Encode.object [ ( "device_id", Json.Encode.string id ) ])
+        , expect = Http.expectWhatever RemovedDevice
+        }
+
+
 registerDevice : Environment.Environment -> String -> Cmd Message
 registerDevice env id =
     Http.post
@@ -68,6 +91,11 @@ registerDevice env id =
         , body = Http.jsonBody (Json.Encode.object [ ( "device_id", Json.Encode.string id ) ])
         , expect = Http.expectJson RegisteredDevice registrationDecoder
         }
+
+
+setAlert : String -> Data -> Data
+setAlert message data =
+    { data | alert = Just (Warning message) }
 
 
 applyRegistrationResult : Result Http.Error RegistrationResponse -> Data -> Data
@@ -115,8 +143,8 @@ getDeviceId model =
             Nothing
 
 
-sendAttempt : Environment.Environment -> String -> Cmd Message
-sendAttempt env id =
+addDevice : Environment.Environment -> String -> Cmd Message
+addDevice env id =
     Http.post
         { url = Environment.apiRoute env "devices/register"
         , body = Http.jsonBody (Json.Encode.object [ ( "device_id", Json.Encode.string id ) ])
@@ -129,21 +157,57 @@ setNewDeviceId id model =
     { model | newDevice = ( id, Nothing ), alert = Nothing }
 
 
+ownedDevice : String -> OwnedDevice
+ownedDevice id =
+    OwnedDevice id False
+
+
+checkBusy : String -> OwnedDevice -> OwnedDevice
+checkBusy id dev =
+    { dev | busy = dev.busy || id == dev.id }
+
+
+markDeviceBusy : String -> Data -> Data
+markDeviceBusy id data =
+    { data | devices = List.map (checkBusy id) data.devices }
+
+
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
-        Pretend item ->
-            ( Just (Ok emptyData), Cmd.none )
+        LoadedDevices item ->
+            case item of
+                Ok inner ->
+                    case model of
+                        Just (Ok data) ->
+                            ( Just (Ok { data | devices = Dict.keys inner.devices |> List.map ownedDevice }), Cmd.none )
 
-        RegisteredDevice registrationResult ->
-            ( model |> Maybe.map (Result.map (applyRegistrationResult registrationResult)), Cmd.none )
+                        _ ->
+                            ( Just (Ok { emptyData | devices = Dict.keys inner.devices |> List.map ownedDevice }), Cmd.none )
+
+                Err e ->
+                    ( Just (Ok emptyData), Cmd.none )
 
         AttemptDeviceClaim ->
             let
                 cmd =
-                    Maybe.withDefault Cmd.none (Maybe.map (sendAttempt env) (getDeviceId model))
+                    Maybe.withDefault Cmd.none (Maybe.map (addDevice env) (getDeviceId model))
             in
             ( model |> Maybe.map (Result.map setPending), cmd )
+
+        RegisteredDevice registrationResult ->
+            ( model |> Maybe.map (Result.map (applyRegistrationResult registrationResult)), fetchDevices env )
+
+        AttemptDeviceRemove id ->
+            ( model |> Maybe.map (Result.map (markDeviceBusy id)), removeDevice env id )
+
+        RemovedDevice result ->
+            case result of
+                Err _ ->
+                    ( model |> Maybe.map (Result.map (setAlert "Unable to remove")), fetchDevices env )
+
+                Ok _ ->
+                    ( model, fetchDevices env )
 
         SetNewDeviceId id ->
             ( model |> Maybe.map (Result.map (setNewDeviceId id)), Cmd.none )
@@ -156,7 +220,7 @@ deviceRegistrationForm data =
             data.newDevice
     in
     Html.div [ Html.Attributes.class "flex-1" ]
-        [ Html.div [ Html.Attributes.class "px-3 py-2" ] [ Html.text "add-device" ]
+        [ Html.div [ Html.Attributes.class "px-3 py-2" ] [ Html.b [] [ Html.text "Add Device" ] ]
         , Html.div [ Html.Attributes.class "flex items-center" ]
             [ Html.input
                 [ Html.Attributes.placeholder "device id"
@@ -170,7 +234,7 @@ deviceRegistrationForm data =
                 [ Html.Attributes.disabled (hasPendingAddition data)
                 , Html.Events.onClick AttemptDeviceClaim
                 ]
-                [ Html.text "add" ]
+                [ Html.text "Add" ]
             ]
         , case data.alert of
             Nothing ->
@@ -184,16 +248,41 @@ deviceRegistrationForm data =
         ]
 
 
+renderDevice : OwnedDevice -> Html.Html Message
+renderDevice device =
+    Html.tr []
+        [ Html.td [ Html.Attributes.class "px-3 py-2" ] [ Html.text device.id ]
+        , Html.td
+            [ Html.Attributes.class "px-3 py-2" ]
+            [ Html.button
+                [ Html.Attributes.disabled device.busy
+                , Html.Events.onClick (AttemptDeviceRemove device.id)
+                ]
+                [ Html.text "Remove" ]
+            ]
+        ]
+
+
 deviceList : Data -> Html.Html Message
 deviceList data =
-    Html.div [ Html.Attributes.class "flex-1" ] []
+    Html.div [ Html.Attributes.class "flex-1" ]
+        [ Html.table [ Html.Attributes.class "w-full" ]
+            [ Html.thead []
+                [ Html.tr [ Html.Attributes.class "text-left" ]
+                    [ Html.th [ Html.Attributes.class "px-3 py-2" ] [ Html.text "Devices" ]
+                    , Html.th [ Html.Attributes.class "px-3 py-2" ] []
+                    ]
+                ]
+            , Html.tbody [] (List.map renderDevice data.devices)
+            ]
+        ]
 
 
 view : Model -> Html.Html Message
 view model =
     case model of
         Nothing ->
-            Html.div [ Html.Attributes.class "flex px-4 py-3" ] [ Html.text "loading..." ]
+            Html.div [ Html.Attributes.class "flex px-4 py-3" ] [ Html.text "Loading..." ]
 
         Just result ->
             case result of
@@ -205,11 +294,16 @@ view model =
                         [ deviceList modelData, deviceRegistrationForm modelData ]
 
 
-oneToTen : Random.Generator Int
-oneToTen =
-    Random.int 1 10
+sessionDecoder : Json.Decode.Decoder DeviceList
+sessionDecoder =
+    Json.Decode.map DeviceList (Json.Decode.field "devices" (Json.Decode.dict Json.Decode.int))
+
+
+fetchDevices : Environment.Environment -> Cmd Message
+fetchDevices env =
+    Http.get { url = Environment.apiRoute env "auth/identify", expect = Http.expectJson LoadedDevices sessionDecoder }
 
 
 default : Environment.Environment -> ( Model, Cmd Message )
 default env =
-    ( Nothing, Random.generate Pretend oneToTen )
+    ( Nothing, Cmd.batch [ fetchDevices env ] )

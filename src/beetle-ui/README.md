@@ -19,18 +19,35 @@ $ make release  <- compiles into ./target/release
 ```
 
 Once compiled, the application can be "run" using any http server capable of serving static files,
-or using the `http-server` included in the npm module dependencies:
+or using the `dev-server.js` included in the root of this repo:
 
 ```
-$ npm run dev:server
+$ npm run start:dev-server
 ```
 
-> Note: By default, this will attempt to proxy any "unrecognized" requests to a running intance of the 
+> Note: By default, this will attempt to proxy any `/api` requests to a running intance of the 
 > [`beetle-web`](../beetle-srv/README.md) application; be sure to have that ready.
->
-> TODO: Currently, this also means that true single-page application functionality will be broken; when
-> refreshing the browser following an in-app link transition, the server will proxy to the backend,
-> rather than serve the `index.html`.
+
+
+### Environment
+
+There are a few environment-specific settings that can be changed:
+
+```
+BEETLE_UI_ROOT   -> Used to control where static assets are referenced by the `index.pug`/`html`
+                    file.  Locally this defaults to `/`, but in production this allows a hosting
+                    the application behind a path on an existing hostname.
+
+BEETLE_API_ROOT  -> Specifies where api requests should be sent. Locally this defaults to `/api`
+                    which is specifically handled by the `dev-server.js` file.
+
+BEETLE_LOGIN_URL -> The url that the UI will send a user to in order to start the oauth redirect
+                    + token flow.
+
+```
+
+To get an idea how this fits into the production environment, see the
+`.github/workflows/build-and-publish.yml` workflow at the root of this repository.
 
 [← README](../../README.md)
 

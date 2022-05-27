@@ -1,3 +1,5 @@
 /.pio
 /embeds/*.pem
 .env
+
+/.tmp
