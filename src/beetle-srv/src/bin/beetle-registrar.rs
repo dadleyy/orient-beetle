@@ -15,8 +15,8 @@ struct Worker {
 /// too long to be easily consumed from the display. Here we're shrinking it down to 10
 /// characters which should theoretically still have 16^10 possibilities.
 fn shorten(input: String) -> String {
-  let shorter = input.chars().filter(|c| *c != '-').take(10).collect::<String>();
-  let (f, b) = shorter.split_at(5);
+  let shorter = input.chars().filter(|c| *c != '-').take(16).collect::<String>();
+  let (f, b) = shorter.split_at(8);
   format!("{}-{}", f, b)
 }
 

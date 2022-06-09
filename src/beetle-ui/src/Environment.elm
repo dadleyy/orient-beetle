@@ -1,4 +1,4 @@
-module Environment exposing (Configuration, Environment, Message(..), Session, StatusResponse, apiRoute, boot, buildRoutePath, default, getId, statusFooter, update)
+module Environment exposing (Configuration, Environment, Message(..), Session, StatusResponse, apiRoute, boot, buildRoutePath, default, getId, isLoaded, statusFooter, update)
 
 import Html
 import Http
@@ -53,27 +53,32 @@ errorForHttp error =
             "Unknown problem"
 
 
-update : Message -> Environment -> ( Environment, Maybe String )
+isLoaded : Environment -> Bool
+isLoaded env =
+    let
+        hasSession =
+            Maybe.map (always True) env.session |> Maybe.withDefault False
+
+        hasStatus =
+            Maybe.map (always True) env.status |> Maybe.withDefault False
+    in
+    hasStatus && hasSession
+
+
+
+-- TODO: Currently this is responsible for handling messages that are returned from the
+-- environment's session-related XHR commands. In addition, it returns a (Maybe String)
+-- which indicates the url that we "should" send the user to based on that information.
+
+
+update : Message -> Environment -> Environment
 update message environment =
     case message of
         LoadedStatus result ->
-            ( { environment
-                | status = Just (Result.mapError errorForHttp result)
-              }
-            , Nothing
-            )
+            { environment | status = Just (Result.mapError errorForHttp result) }
 
         LoadedSession result ->
-            let
-                destination =
-                    case result of
-                        Err _ ->
-                            "/login"
-
-                        Ok _ ->
-                            "/home"
-            in
-            ( { environment | session = Just (Result.mapError errorForHttp result) }, Just destination )
+            { environment | session = Just (Result.mapError errorForHttp result) }
 
 
 apiRoute : Environment -> String -> String
@@ -129,4 +134,5 @@ statusFooter env =
 
 buildRoutePath : Environment -> String -> String
 buildRoutePath env path =
-    String.concat [ env.configuration.root, path ]
+    String.concat
+        [ env.configuration.root, path ]

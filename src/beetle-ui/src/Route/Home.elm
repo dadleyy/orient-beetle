@@ -220,7 +220,7 @@ deviceRegistrationForm data =
             data.newDevice
     in
     Html.div [ Html.Attributes.class "flex-1" ]
-        [ Html.div [ Html.Attributes.class "px-3 py-2" ] [ Html.b [] [ Html.text "Add Device" ] ]
+        [ Html.div [ Html.Attributes.class "pb-3 py-2" ] [ Html.b [] [ Html.text "Add Device" ] ]
         , Html.div [ Html.Attributes.class "flex items-center" ]
             [ Html.input
                 [ Html.Attributes.placeholder "device id"
@@ -248,10 +248,17 @@ deviceRegistrationForm data =
         ]
 
 
-renderDevice : OwnedDevice -> Html.Html Message
-renderDevice device =
+renderDevice : Environment.Environment -> OwnedDevice -> Html.Html Message
+renderDevice env device =
     Html.tr []
-        [ Html.td [ Html.Attributes.class "px-3 py-2" ] [ Html.text device.id ]
+        [ Html.td
+            [ Html.Attributes.class "px-3 py-2" ]
+            [ Html.a
+                [ Html.Attributes.href (Environment.buildRoutePath env ("devices/" ++ device.id))
+                ]
+                [ Html.text device.id
+                ]
+            ]
         , Html.td
             [ Html.Attributes.class "px-3 py-2" ]
             [ Html.button
@@ -263,23 +270,23 @@ renderDevice device =
         ]
 
 
-deviceList : Data -> Html.Html Message
-deviceList data =
+deviceList : Data -> Environment.Environment -> Html.Html Message
+deviceList data env =
     Html.div [ Html.Attributes.class "flex-1" ]
         [ Html.table [ Html.Attributes.class "w-full" ]
             [ Html.thead []
                 [ Html.tr [ Html.Attributes.class "text-left" ]
-                    [ Html.th [ Html.Attributes.class "px-3 py-2" ] [ Html.text "Devices" ]
+                    [ Html.th [ Html.Attributes.class "px-3 pb-2" ] [ Html.text "Devices" ]
                     , Html.th [ Html.Attributes.class "px-3 py-2" ] []
                     ]
                 ]
-            , Html.tbody [] (List.map renderDevice data.devices)
+            , Html.tbody [] (List.map (renderDevice env) data.devices)
             ]
         ]
 
 
-view : Model -> Html.Html Message
-view model =
+view : Model -> Environment.Environment -> Html.Html Message
+view model env =
     case model of
         Nothing ->
             Html.div [ Html.Attributes.class "flex px-4 py-3" ] [ Html.text "Loading..." ]
@@ -291,7 +298,7 @@ view model =
 
                 Ok modelData ->
                     Html.div [ Html.Attributes.class "flex px-4 py-3" ]
-                        [ deviceList modelData, deviceRegistrationForm modelData ]
+                        [ deviceList modelData env, deviceRegistrationForm modelData ]
 
 
 sessionDecoder : Json.Decode.Decoder DeviceList

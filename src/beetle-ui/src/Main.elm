@@ -50,9 +50,14 @@ defaultModel flags url key =
             Environment.default flags
 
         ( route, loader ) =
-            Route.fromUrl env url
+            case Route.fromUrl env url of
+                Route.Matched inner ->
+                    ( Tuple.first inner, Tuple.second inner |> Cmd.map RouteMessage )
+
+                Route.Redirect dest ->
+                    ( Nothing, Nav.pushUrl key dest )
     in
-    ( { route = route, key = key, url = url, env = env }, loader |> Cmd.map RouteMessage )
+    ( { route = route, key = key, url = url, env = env }, loader )
 
 
 init : Environment.Configuration -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
@@ -85,19 +90,40 @@ update message model =
         -- will probably come in early
         ( EnvironmentMessage em, _ ) ->
             let
-                ( updated, path ) =
+                updated =
                     Environment.update em model.env
 
-                -- Handle newly-authenticated users here, sending them home
-                cmd =
-                    case path of
-                        Just p ->
-                            Nav.pushUrl model.key p
+                ( newRoute, cmd ) =
+                    case Route.fromUrl updated model.url of
+                        Route.Matched inner ->
+                            inner
 
-                        Nothing ->
-                            Cmd.none
+                        Route.Redirect dest ->
+                            ( Nothing, Nav.pushUrl model.key dest )
+
+                {-
+                   -- Handle newly-authenticated users here, sending them home.
+                   cmd =
+                       case path of
+                           Just environmentRedirect ->
+                               Nav.pushUrl model.key environmentRedirect
+
+                           -- If we finished loading our session + api status and we _weren't_ told to
+                           -- explicitly go somewhere, attempt to push the current url
+                           Nothing ->
+                               let
+                                   ( match, routeCommand ) =
+                                       Route.fromUrl model.env model.url
+                               in
+                               case match of
+                                   Just _ ->
+                                       routeCommand |> Cmd.map RouteMessage
+
+                                   Nothing ->
+                                       Nav.pushUrl model.key (Environment.buildRoutePath model.env "login")
+                -}
             in
-            ( { model | env = updated }, cmd )
+            ( { model | env = updated, route = newRoute }, cmd |> Cmd.map RouteMessage )
 
         -- The url change here is where we do all of our route transition magic,
         -- where the route module delegates an intial load and stuff to sub
@@ -105,17 +131,14 @@ update message model =
         ( UrlChanged url, _ ) ->
             let
                 ( next, cmd ) =
-                    Route.fromUrl model.env url
+                    case Route.fromUrl model.env url of
+                        Route.Matched inner ->
+                            ( Tuple.first inner, Tuple.second inner |> Cmd.map RouteMessage )
 
-                redirect =
-                    case next of
-                        Just _ ->
-                            cmd |> Cmd.map RouteMessage
-
-                        Nothing ->
-                            Nav.pushUrl model.key "/login"
+                        Route.Redirect redir ->
+                            ( Nothing, Nav.pushUrl model.key redir )
             in
-            ( { model | url = url, route = next }, redirect )
+            ( { model | url = url, route = next }, cmd )
 
         -- If we don't have a current route and receive some route-specific message,
         -- do nothing.
@@ -143,7 +166,12 @@ header model =
             Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] []
 
         Just id ->
-            Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] [ Html.text (String.concat [ "oid: ", id ]) ]
+            Html.div [ Html.Attributes.class "cont-dark px-4 py-3 flex items-center" ]
+                [ Html.div [] [ Html.text (String.concat [ "oid: ", id ]) ]
+                , Html.div [ Html.Attributes.class "ml-auto" ]
+                    [ Html.a [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ] [ Html.text "home" ]
+                    ]
+                ]
 
 
 body : Model -> Html.Html Msg
