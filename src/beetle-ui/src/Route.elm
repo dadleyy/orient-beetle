@@ -21,6 +21,7 @@ type Route
 
 type Message
     = HomeMessage Route.Home.Message
+    | DeviceMessage Route.Device.Message
     | Phantom
 
 
@@ -42,6 +43,13 @@ view env route =
 update : Environment.Environment -> Message -> Route -> ( Route, Cmd Message )
 update env message route =
     case ( message, route ) of
+        ( DeviceMessage deviceMessage, Device deviceModel ) ->
+            let
+                ( newDeviceModel, deviceCommand ) =
+                    Route.Device.update env deviceMessage deviceModel
+            in
+            ( Device newDeviceModel, deviceCommand |> Cmd.map DeviceMessage )
+
         ( HomeMessage homeMessage, Home homeModel ) ->
             let
                 ( newHome, homeCmd ) =
@@ -75,7 +83,11 @@ fromUrl env url =
                             in
                             case maybeDeviceId of
                                 Just id ->
-                                    Matched ( Just (Device (Route.Device.default env id)), Cmd.none )
+                                    let
+                                        ( model, cmd ) =
+                                            Route.Device.default env id
+                                    in
+                                    Matched ( Just (Device model), cmd |> Cmd.map DeviceMessage )
 
                                 Nothing ->
                                     Redirect (Environment.buildRoutePath env "login")

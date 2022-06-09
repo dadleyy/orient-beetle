@@ -10,9 +10,33 @@ struct RegistrationResponse {
   id: String,
 }
 
+/// Route: message
+///
+/// Sends a message to the device.
+pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
+  let worker = request.state();
+  let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
+    log::warn!("no user found");
+    tide::Error::from_str(404, "missing-player")
+  })?;
+  Ok("".into())
+}
+
+/// Route: info
+///
+/// Returns basic info about the device.
+pub async fn info(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
+  let worker = request.state();
+  let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
+    log::warn!("no user found");
+    tide::Error::from_str(404, "missing-player")
+  })?;
+  Ok("".into())
+}
+
 /// Route: unregister
 ///
-/// Removes a device from the user's document in mongo
+/// Removes a device from the user's document in mongo.
 pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
   let worker = request.state();
   let users = worker.users_collection().await?;

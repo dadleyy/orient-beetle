@@ -1,8 +1,13 @@
-module Route.Device exposing (Model, default, view)
+module Route.Device exposing (Message(..), Model, default, update, view)
 
 import Environment
 import Html
 import Html.Attributes
+
+
+type Message
+    = Loaded
+    | Sent
 
 
 type alias Model =
@@ -23,6 +28,11 @@ view model env =
         ]
 
 
-default : Environment.Environment -> String -> Model
+update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
+update env message model =
+    ( model, Cmd.none )
+
+
+default : Environment.Environment -> String -> ( Model, Cmd Message )
 default env id =
-    { id = id }
+    ( { id = id }, Cmd.none )
