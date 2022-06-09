@@ -1,3 +1,6 @@
+# This image is potentially useful to cross-compile rust applications for armv7 devices
+# _with_ openssl also pre-compiled for that architecture. It is currently being used by
+# the github workflow defined in the `.github` directory of this repo.
 FROM rust:1.58.1
 
 RUN apt-get update
