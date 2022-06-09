@@ -13,24 +13,26 @@ struct RegistrationResponse {
 /// Route: message
 ///
 /// Sends a message to the device.
-pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
+pub async fn message(request: tide::Request<super::worker::Worker>) -> tide::Result {
   let worker = request.state();
-  let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
+  let user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("no user found");
     tide::Error::from_str(404, "missing-player")
   })?;
+  log::debug!("user {:?} requesting messages for device", user);
   Ok("".into())
 }
 
 /// Route: info
 ///
 /// Returns basic info about the device.
-pub async fn info(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
+pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result {
   let worker = request.state();
-  let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
+  let user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("no user found");
     tide::Error::from_str(404, "missing-player")
   })?;
+  log::debug!("user {:?} requesting info for device", user);
   Ok("".into())
 }
 

@@ -22,7 +22,9 @@ const server = http.createServer(function(request, response) {
       port: parsedServerAddr.port,
       path: request.url.slice('/api'.length),
     };
-    proxy.web(request, response, { target, ignorePath: true });
+    proxy.web(request, response, { target, ignorePath: true }, function (error) {
+      console.error(`non-terminal proxy error - ${error.message}`);
+    });
     return;
   }
 

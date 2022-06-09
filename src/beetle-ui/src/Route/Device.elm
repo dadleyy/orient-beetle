@@ -3,10 +3,11 @@ module Route.Device exposing (Message(..), Model, default, update, view)
 import Environment
 import Html
 import Html.Attributes
+import Http
 
 
 type Message
-    = Loaded
+    = Loaded (Result Http.Error ())
     | Sent
 
 
@@ -28,6 +29,14 @@ view model env =
         ]
 
 
+fetchDevice : Environment.Environment -> String -> Cmd Message
+fetchDevice env id =
+    Http.get
+        { url = Environment.apiRoute env ("device-info?id=" ++ id)
+        , expect = Http.expectWhatever Loaded
+        }
+
+
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     ( model, Cmd.none )
@@ -35,4 +44,4 @@ update env message model =
 
 default : Environment.Environment -> String -> ( Model, Cmd Message )
 default env id =
-    ( { id = id }, Cmd.none )
+    ( { id = id }, Cmd.batch [ fetchDevice env id ] )
