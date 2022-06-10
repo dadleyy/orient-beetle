@@ -50,10 +50,10 @@ $(BOOT_JS): ./src/boot.ts @types/global.d.ts
 
 $(RELEASE_MAIN_JS): ./src/Main.elm $(MAIN_JS)
 	$(ELM) make --optimize --output $@ $<
-	$(NPM) run min -- $@ --output $(subst .js,.min.js,$@)
+	$(NPM) run min -- $@ --output $(subst .js,.min.js,$@) --mangle
 
 $(RELEASE_BOOT_JS): $(BOOT_JS)
-	$(NPM) run min -- $< --output $@
+	$(NPM) run min -- $< --output $@ --mangle
 
 ##
 # CSS

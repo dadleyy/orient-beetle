@@ -13,6 +13,7 @@ const parsedServerAddr = url.parse(beetleServerAddr);
 const port = process.env['BEETLE_UI_PROXY_PORT'] || 8338;
 
 const proxy = httpProxy.createProxyServer({});
+const buildTargetName = process.argv.includes('--release') ? 'release' : 'debug';
 
 const server = http.createServer(function(request, response) {
   if (request.url.startsWith('/api')) {
@@ -28,12 +29,12 @@ const server = http.createServer(function(request, response) {
     return;
   }
 
-  const staticPath = path.join(__dirname, 'target/debug', request.url);
+  const staticPath = path.join(__dirname, 'target', buildTargetName, request.url);
 
   fs.stat(staticPath, function (error, stats) {
     const resolvedPath = !error && stats.isFile()
       ? staticPath
-      : path.join(__dirname, 'target/debug/index.html');
+      : path.join(__dirname, 'target', buildTargetName, 'index.html');
 
     console.info(`attempting to serve static file from '${resolvedPath}' (from '${staticPath}')`);
 
