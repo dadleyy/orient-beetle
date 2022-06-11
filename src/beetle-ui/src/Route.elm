@@ -63,9 +63,10 @@ update env message route =
 
 fromUrl : Environment.Environment -> Url.Url -> RouteInitialization
 fromUrl env url =
-  let 
-      normalizedUrl = Environment.normalizeUrlPath env url
-  in
+    let
+        normalizedUrl =
+            Environment.normalizeUrlPath env url
+    in
     case Environment.isLoaded env of
         False ->
             Matched ( Nothing, Cmd.none )
