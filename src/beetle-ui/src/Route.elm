@@ -30,7 +30,7 @@ view env route =
     case route of
         Login ->
             Html.div [ Html.Attributes.class "px-4 py-3" ]
-                [ Html.a [ Html.Attributes.href env.configuration.loginUrl ] [ Html.text "login" ]
+                [ Html.a [ Html.Attributes.href env.configuration.loginUrl, Html.Attributes.rel "noopener", Html.Attributes.target "_self" ] [ Html.text "login" ]
                 ]
 
         Home inner ->
@@ -107,6 +107,9 @@ fromUrl env url =
                         ( "login", Nothing ) ->
                             Matched ( Just Login, Cmd.none )
 
+                        ( "home", Nothing ) ->
+                            Redirect (Environment.buildRoutePath env "login")
+
                         ( "home", Just _ ) ->
                             let
                                 ( route, cmd ) =
@@ -115,4 +118,4 @@ fromUrl env url =
                             Matched ( Just (Home route), cmd |> Cmd.map HomeMessage )
 
                         _ ->
-                            Matched ( Nothing, Cmd.none )
+                            Redirect (Environment.buildRoutePath env "home")
