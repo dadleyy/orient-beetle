@@ -63,22 +63,25 @@ update env message route =
 
 fromUrl : Environment.Environment -> Url.Url -> RouteInitialization
 fromUrl env url =
+  let 
+      normalizedUrl = Environment.normalizeUrlPath env url
+  in
     case Environment.isLoaded env of
         False ->
             Matched ( Nothing, Cmd.none )
 
         True ->
-            case String.startsWith "/devices" url.path of
+            case String.startsWith "devices" normalizedUrl of
                 True ->
                     case Environment.getId env of
                         Just _ ->
                             let
                                 maybeDeviceId =
-                                    url.path
+                                    normalizedUrl
                                         |> String.split "/"
-                                        |> List.take 3
+                                        |> List.take 2
                                         |> List.tail
-                                        |> Maybe.andThen List.tail
+                                        -- |> Maybe.andThen List.tail
                                         |> Maybe.andThen List.head
                             in
                             case maybeDeviceId of
@@ -96,14 +99,14 @@ fromUrl env url =
                             Redirect (Environment.buildRoutePath env "login")
 
                 False ->
-                    case ( url.path, Environment.getId env ) of
-                        ( "/login", Just _ ) ->
+                    case ( normalizedUrl, Environment.getId env ) of
+                        ( "login", Just _ ) ->
                             Redirect (Environment.buildRoutePath env "home")
 
-                        ( "/login", Nothing ) ->
+                        ( "login", Nothing ) ->
                             Matched ( Just Login, Cmd.none )
 
-                        ( "/home", Just _ ) ->
+                        ( "home", Just _ ) ->
                             let
                                 ( route, cmd ) =
                                     Route.Home.default env
@@ -111,4 +114,4 @@ fromUrl env url =
                             Matched ( Just (Home route), cmd |> Cmd.map HomeMessage )
 
                         _ ->
-                            Redirect (Environment.buildRoutePath env "login")
+                            Matched ( Nothing, Cmd.none )

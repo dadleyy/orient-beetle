@@ -1,8 +1,9 @@
-module Environment exposing (Configuration, Environment, Message(..), Session, StatusResponse, apiRoute, boot, buildRoutePath, default, getId, isLoaded, statusFooter, update)
+module Environment exposing (Configuration, Environment, Message(..), Session, StatusResponse, apiRoute, boot, buildRoutePath, default, getId, isLoaded, normalizeUrlPath, statusFooter, update)
 
 import Html
 import Http
 import Json.Decode
+import Url
 
 
 type alias StatusResponse =
@@ -130,6 +131,11 @@ statusFooter env =
 
         Nothing ->
             Html.div [] [ Html.text "Connecting..." ]
+
+
+normalizeUrlPath : Environment -> Url.Url -> String
+normalizeUrlPath env url =
+    String.dropLeft (String.length env.configuration.root) url.path
 
 
 buildRoutePath : Environment -> String -> String

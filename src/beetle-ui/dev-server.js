@@ -14,6 +14,8 @@ const port = process.env['BEETLE_UI_PROXY_PORT'] || 8338;
 
 const proxy = httpProxy.createProxyServer({});
 const buildTargetName = process.argv.includes('--release') ? 'release' : 'debug';
+const serveUnder = process.argv.includes('--serve-under');
+console.log(`serveUnder? ${serveUnder}`);
 
 const server = http.createServer(function(request, response) {
   if (request.url.startsWith('/api')) {
@@ -29,7 +31,8 @@ const server = http.createServer(function(request, response) {
     return;
   }
 
-  const staticPath = path.join(__dirname, 'target', buildTargetName, request.url);
+  const resource = serveUnder ? request.url.replace('/beetle', '') : request.url;
+  const staticPath = path.join(__dirname, 'target', buildTargetName, resource);
 
   fs.stat(staticPath, function (error, stats) {
     const resolvedPath = !error && stats.isFile()
