@@ -133,7 +133,7 @@ struct DeviceDiagnosticUpsert<'a> {
 /// 2. the id we received in a `Set` for easy indexing.
 async fn mark_active<R>(
   mut stream: &mut R,
-  mut db: &mut mongodb::Client,
+  db: &mut mongodb::Client,
   dbc: &crate::config::MongoConfiguration,
 ) -> Result<usize>
 where

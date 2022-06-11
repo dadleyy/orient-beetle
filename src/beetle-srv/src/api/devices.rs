@@ -21,7 +21,7 @@ struct RegistrationResponse {
   id: String,
 }
 
-async fn parse_message(mut request: &mut tide::Request<super::worker::Worker>) -> tide::Result<MessagePayload> {
+async fn parse_message(request: &mut tide::Request<super::worker::Worker>) -> tide::Result<MessagePayload> {
   request.body_json::<MessagePayload>().await
 }
 
