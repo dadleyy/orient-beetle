@@ -27,6 +27,7 @@ jobs:
       # it is more likely you will be serving from a root `/`.
       BEETLE_UI_ROOT: "/beetle/"
       BEETLE_API_ROOT: "/beetle/api/"
+      BEETLE_LOGIN_URL: "https://www.krumpled.com/beetle/api/auth/redirect"
     defaults:
       run:
         working-directory: src/beetle-ui
