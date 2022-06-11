@@ -20,7 +20,7 @@ pub struct Auth0Configuration {
 #[derive(Deserialize, Debug, Clone)]
 pub struct MongoCollectionsConfiguration {
   pub(crate) users: String,
-  pub(crate) devices: String,
+  pub(crate) device_diagnostics: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
