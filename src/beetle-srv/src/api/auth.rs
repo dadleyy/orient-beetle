@@ -109,7 +109,7 @@ pub async fn complete(request: tide::Request<super::worker::Worker>) -> tide::Re
 
   // Attempt to upsert this user into our db.
   let query = bson::doc! { "oid": info.sub.clone() };
-  let users = worker.users_collection().await?;
+  let users = worker.users_collection()?;
   let options = mongodb::options::FindOneAndUpdateOptions::builder()
     .upsert(true)
     .return_document(mongodb::options::ReturnDocument::After)

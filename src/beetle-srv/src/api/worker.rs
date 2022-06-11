@@ -18,6 +18,15 @@ impl Worker {
     .await
   }
 
+  pub(super) async fn command<S, V>(&self, command: &kramer::Command<S, V>) -> Result<kramer::Response>
+  where
+    S: std::fmt::Display,
+    V: std::fmt::Display,
+  {
+    let mut stream = self.redis().await?;
+    kramer::execute(&mut stream, command).await
+  }
+
   pub(super) async fn request_authority(&self, request: &tide::Request<Self>) -> Result<Option<crate::types::User>> {
     let oid = request
       .cookie(&self.web_configuration.session_cookie)
@@ -30,7 +39,7 @@ impl Worker {
     }
 
     log::debug!("attempting to identify via {:?}", oid);
-    let users = self.users_collection().await?;
+    let users = self.users_collection()?;
     let query = bson::doc! { "oid": oid.clone() };
 
     users.find_one(query, None).await.map_err(|error| {
@@ -39,7 +48,17 @@ impl Worker {
     })
   }
 
-  pub(super) async fn users_collection(&self) -> Result<mongodb::Collection<crate::types::User>> {
+  pub(super) fn device_diagnostic_collection(&self) -> Result<mongodb::Collection<crate::types::DeviceDiagnostic>> {
+    Ok(
+      self
+        .mongo
+        .0
+        .database(&self.mongo.1.database)
+        .collection(&self.mongo.1.collections.device_diagnostics),
+    )
+  }
+
+  pub(super) fn users_collection(&self) -> Result<mongodb::Collection<crate::types::User>> {
     Ok(
       self
         .mongo

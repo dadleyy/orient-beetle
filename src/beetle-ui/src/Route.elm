@@ -37,7 +37,7 @@ view env route =
             Route.Home.view inner env |> Html.map HomeMessage
 
         Device inner ->
-            Route.Device.view inner env |> Html.map (always Phantom)
+            Route.Device.view inner env |> Html.map DeviceMessage
 
 
 update : Environment.Environment -> Message -> Route -> ( Route, Cmd Message )

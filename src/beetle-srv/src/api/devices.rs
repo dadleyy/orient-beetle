@@ -1,6 +1,17 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
+struct LookupQuery {
+  id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MessagePayload {
+  device_id: String,
+  message: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct RegistrationPayload {
   device_id: String,
 }
@@ -10,17 +21,47 @@ struct RegistrationResponse {
   id: String,
 }
 
+async fn parse_message(mut request: &mut tide::Request<super::worker::Worker>) -> tide::Result<MessagePayload> {
+  request.body_json::<MessagePayload>().await
+}
+
 /// Route: message
 ///
 /// Sends a message to the device.
-pub async fn message(request: tide::Request<super::worker::Worker>) -> tide::Result {
-  let worker = request.state();
-  let user = worker.request_authority(&request).await?.ok_or_else(|| {
+pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
+  let user = request.state().request_authority(&request).await?.ok_or_else(|| {
     log::warn!("no user found");
     tide::Error::from_str(404, "missing-player")
   })?;
-  log::debug!("user {:?} requesting messages for device", user);
-  Ok("".into())
+  let body = parse_message(&mut request).await.map_err(|error| {
+    log::warn!("bad device message payload - {error}");
+    tide::Error::from_str(422, "bad-request")
+  })?;
+
+  if user
+    .devices
+    .as_ref()
+    .map(|list| list.contains_key(&body.device_id))
+    .unwrap_or(false)
+    == false
+  {
+    log::warn!("'{}' has no access to device '{}'", user.oid, body.device_id);
+    return Err(tide::Error::from_str(400, "not-found"));
+  }
+
+  log::debug!("user {:?} creating message for device - {body:?}", user);
+
+  request
+    .state()
+    .command(&kramer::Command::List(kramer::ListCommand::Push(
+      (kramer::Side::Left, kramer::Insertion::Always),
+      format!("ob:{}", body.device_id),
+      kramer::Arity::One(body.message),
+    )))
+    .await?;
+
+  tide::Body::from_json(&RegistrationResponse { id: body.device_id })
+    .map(|body| tide::Response::builder(200).body(body).build())
 }
 
 /// Route: info
@@ -32,8 +73,30 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
     log::warn!("no user found");
     tide::Error::from_str(404, "missing-player")
   })?;
-  log::debug!("user {:?} requesting info for device", user);
-  Ok("".into())
+  let query = request.query::<LookupQuery>()?;
+
+  if user
+    .devices
+    .as_ref()
+    .map(|list| list.contains_key(&query.id))
+    .unwrap_or(false)
+    == false
+  {
+    log::warn!("'{}' has no access to device '{}'", user.oid, query.id);
+    return Err(tide::Error::from_str(400, "not-found"));
+  }
+
+  let device_diagnostic = worker
+    .device_diagnostic_collection()?
+    .find_one(bson::doc! { "id": &query.id }, None)
+    .await
+    .map_err(|error| {
+      log::warn!("unable to query device diags - {error}");
+      tide::Error::from_str(500, "server-error")
+    })?;
+  log::debug!("user {:?} requesting info for device {query:?}", user);
+
+  tide::Body::from_json(&device_diagnostic).map(|body| tide::Response::builder(200).body(body).build())
 }
 
 /// Route: unregister
@@ -41,7 +104,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
 /// Removes a device from the user's document in mongo.
 pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
   let worker = request.state();
-  let users = worker.users_collection().await?;
+  let users = worker.users_collection()?;
 
   let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("no user found");
@@ -103,7 +166,7 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
 /// with the user identified in the request cookie.
 pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
   let worker = request.state();
-  let users = worker.users_collection().await?;
+  let users = worker.users_collection()?;
 
   let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("no user found");
