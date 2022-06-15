@@ -100,28 +100,6 @@ update message model =
 
                         Route.Redirect dest ->
                             ( Nothing, Nav.pushUrl model.key dest )
-
-                {-
-                   -- Handle newly-authenticated users here, sending them home.
-                   cmd =
-                       case path of
-                           Just environmentRedirect ->
-                               Nav.pushUrl model.key environmentRedirect
-
-                           -- If we finished loading our session + api status and we _weren't_ told to
-                           -- explicitly go somewhere, attempt to push the current url
-                           Nothing ->
-                               let
-                                   ( match, routeCommand ) =
-                                       Route.fromUrl model.env model.url
-                               in
-                               case match of
-                                   Just _ ->
-                                       routeCommand |> Cmd.map RouteMessage
-
-                                   Nothing ->
-                                       Nav.pushUrl model.key (Environment.buildRoutePath model.env "login")
-                -}
             in
             ( { model | env = updated, route = newRoute }, cmd |> Cmd.map RouteMessage )
 
@@ -169,7 +147,9 @@ header model =
             Html.div [ Html.Attributes.class "cont-dark px-4 py-3 flex items-center" ]
                 [ Html.div [] [ Html.text (String.concat [ "oid: ", id ]) ]
                 , Html.div [ Html.Attributes.class "ml-auto" ]
-                    [ Html.a [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ] [ Html.text "home" ]
+                    [ Html.a
+                        [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ]
+                        [ Html.text "home" ]
                     ]
                 ]
 
@@ -178,16 +158,23 @@ body : Model -> Html.Html Msg
 body model =
     case ( Environment.getId model.env, model.route ) of
         ( Nothing, Just Route.Login ) ->
-            Html.div [ Html.Attributes.class "flex-1 main" ] [ Route.view model.env Route.Login |> Html.map RouteMessage ]
+            Html.div
+                [ Html.Attributes.class "flex-1 main" ]
+                [ Route.view model.env Route.Login |> Html.map RouteMessage ]
 
         ( Just _, Just route ) ->
-            Html.div [ Html.Attributes.class "flex-1 main" ] [ Route.view model.env route |> Html.map RouteMessage ]
+            Html.div
+                [ Html.Attributes.class "flex-1 main" ]
+                [ Route.view model.env route |> Html.map RouteMessage ]
 
         -- If we have a session but not a route, link back to home.
         ( Just _, Nothing ) ->
             Html.div
                 [ Html.Attributes.class "flex-1 px-4 py-3 main" ]
-                [ Html.a [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ] [ Html.text "home" ] ]
+                [ Html.a
+                    [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ]
+                    [ Html.text "home" ]
+                ]
 
         -- Only our login route should ever be dealing with non-loaded sessions
         ( Nothing, _ ) ->
@@ -196,7 +183,9 @@ body model =
 
 externalLink : String -> String -> Html.Html Msg
 externalLink addr text =
-    Html.a [ Html.Attributes.href addr, Html.Attributes.rel "noopener", Html.Attributes.target "_blank" ] [ Html.text text ]
+    Html.a
+        [ Html.Attributes.href addr, Html.Attributes.rel "noopener", Html.Attributes.target "_blank" ]
+        [ Html.text text ]
 
 
 footer : Model -> Html.Html Msg

@@ -1,4 +1,20 @@
-module Environment exposing (Configuration, Environment, Message(..), Session, StatusResponse, apiRoute, boot, buildRoutePath, default, getId, isLoaded, normalizeUrlPath, statusFooter, update)
+module Environment exposing
+    ( Configuration
+    , Environment
+    , Message(..)
+    , Session
+    , StatusResponse
+    , apiRoute
+    , boot
+    , buildRoutePath
+    , default
+    , getId
+    , getLoadedId
+    , isLoaded
+    , normalizeUrlPath
+    , statusFooter
+    , update
+    )
 
 import Html
 import Http
@@ -103,6 +119,19 @@ getSessionId session =
 getId : Environment -> Maybe String
 getId env =
     Maybe.map getSessionId (Maybe.andThen Result.toMaybe env.session)
+
+
+getLoadedId : Environment -> Maybe (Maybe String)
+getLoadedId env =
+    case env.session |> Maybe.map Result.toMaybe of
+        Just (Just session) ->
+            Just (Just session.oid)
+
+        Just Nothing ->
+            Just Nothing
+
+        Nothing ->
+            Nothing
 
 
 sessionDecoder : Json.Decode.Decoder Session

@@ -43,7 +43,10 @@ view model env =
         [ Html.div [ Html.Attributes.class "pb-1 mb-1" ] [ Html.h2 [] [ Html.text model.id ] ]
         , Html.div [ Html.Attributes.class "flex items-center" ]
             [ Html.input
-                [ Html.Events.onInput SetMessage, Html.Attributes.value (getMessage model), Html.Attributes.disabled (isBusy model) ]
+                [ Html.Events.onInput SetMessage
+                , Html.Attributes.value (getMessage model)
+                , Html.Attributes.disabled (isBusy model)
+                ]
                 []
             , Html.button
                 [ Html.Events.onClick AttemptMessage, Html.Attributes.disabled (isBusy model) ]

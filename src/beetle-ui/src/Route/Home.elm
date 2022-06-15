@@ -260,7 +260,7 @@ renderDevice env device =
                 ]
             ]
         , Html.td
-            [ Html.Attributes.class "px-3 py-2" ]
+            [ Html.Attributes.class "px-3 py-2 text-right" ]
             [ Html.button
                 [ Html.Attributes.disabled device.busy
                 , Html.Events.onClick (AttemptDeviceRemove device.id)
@@ -277,7 +277,11 @@ deviceList data env =
             [ Html.thead []
                 [ Html.tr [ Html.Attributes.class "text-left" ]
                     [ Html.th [ Html.Attributes.class "px-3 pb-2" ] [ Html.text "Devices" ]
-                    , Html.th [ Html.Attributes.class "px-3 py-2" ] []
+                    , Html.th [ Html.Attributes.class "px-3 py-2 text-right" ]
+                        [ Html.a
+                            [ Html.Attributes.href (Environment.buildRoutePath env "register-device") ]
+                            [ Html.text "Register" ]
+                        ]
                     ]
                 ]
             , Html.tbody [] (List.map (renderDevice env) data.devices)
@@ -298,7 +302,7 @@ view model env =
 
                 Ok modelData ->
                     Html.div [ Html.Attributes.class "flex px-4 py-3" ]
-                        [ deviceList modelData env, deviceRegistrationForm modelData ]
+                        [ deviceList modelData env ]
 
 
 sessionDecoder : Json.Decode.Decoder DeviceList
@@ -308,7 +312,10 @@ sessionDecoder =
 
 fetchDevices : Environment.Environment -> Cmd Message
 fetchDevices env =
-    Http.get { url = Environment.apiRoute env "auth/identify", expect = Http.expectJson LoadedDevices sessionDecoder }
+    Http.get
+        { url = Environment.apiRoute env "auth/identify"
+        , expect = Http.expectJson LoadedDevices sessionDecoder
+        }
 
 
 default : Environment.Environment -> ( Model, Cmd Message )
