@@ -151,7 +151,10 @@ where
       .database(&dbc.database)
       .collection::<crate::types::DeviceDiagnostic>(&dbc.collections.device_diagnostics);
 
-    let mut device_diagnostic = collection
+    // Attempt to update the diagnostic information in mongo. We only really want to set `last_seen`
+    // on every message; to set `first_seen`, we'll take advantage of mongo's `$setOnInsert`
+    // operation.
+    let device_diagnostic = collection
       .find_one_and_update(
         bson::doc! { "id": &id },
         bson::to_document(&DeviceDiagnosticUpsert {
@@ -189,17 +192,6 @@ where
       .ok_or_else(|| Error::new(ErrorKind::Other, format!("upsert failed")))?;
 
     log::info!("updated device '{}' diagnostics", device_diagnostic.id);
-
-    if let None = device_diagnostic.first_seen {
-      device_diagnostic.first_seen = Some(chrono::Utc::now());
-      collection
-        .replace_one(bson::doc! { "id": &device_diagnostic.id }, &device_diagnostic, None)
-        .await
-        .map_err(|error| {
-          log::warn!("unable to set 'first_seen' on device diagnostic - {error}");
-          Error::new(ErrorKind::Other, format!("{error}"))
-        })?;
-    }
 
     // Store the current timestamp in a hash whose keys are the identity of our devices.
     let activation = kramer::execute(

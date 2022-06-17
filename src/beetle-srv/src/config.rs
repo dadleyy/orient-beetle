@@ -19,13 +19,13 @@ pub struct Auth0Configuration {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct MongoCollectionsConfiguration {
-  pub(crate) users: String,
-  pub(crate) device_diagnostics: String,
+  pub users: String,
+  pub device_diagnostics: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct MongoConfiguration {
   pub(crate) url: String,
-  pub(crate) database: String,
-  pub(crate) collections: MongoCollectionsConfiguration,
+  pub database: String,
+  pub collections: MongoCollectionsConfiguration,
 }

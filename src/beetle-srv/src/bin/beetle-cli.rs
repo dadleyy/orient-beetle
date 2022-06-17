@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use std::io::{Error, ErrorKind, Result};
 
+const MAX_IDLE_TIME_SECONDS: i64 = 60 * 30;
 const HELP_TEXT: &'static str = r#"beetle-cli admin interface
 
 usage:
@@ -32,7 +33,7 @@ struct CommandLineConfig {
 async fn get_connected_page(
   mut connections: (
     &mut async_tls::client::TlsStream<async_std::net::TcpStream>,
-    &mut mongodb::Client,
+    (&mut mongodb::Client, &beetle::config::MongoConfiguration),
   ),
   _pagination: Option<u32>,
 ) -> Result<Vec<beetle::IndexedDevice>> {
@@ -113,7 +114,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
       log::info!("message result - {result:?}");
     }
     CommandLineCommand::PrintConnected => {
-      let page = get_connected_page((&mut stream, &mut mongo), None).await?;
+      let page = get_connected_page((&mut stream, (&mut mongo, &config.mongo)), None).await?;
 
       for dev in &page {
         println!("{}", dev);
@@ -121,13 +122,60 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
     }
 
     CommandLineCommand::CleanDisconnects => {
-      let page = get_connected_page((&mut stream, &mut mongo), None).await?;
+      let page = get_connected_page((&mut stream, (&mut mongo, &config.mongo)), None).await?;
       let mins = chrono::Utc::now();
+
+      let collection = mongo
+        .database(&config.mongo.database)
+        .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
+
+      let cutoff = chrono::Utc::now()
+        .checked_sub_signed(chrono::Duration::seconds(MAX_IDLE_TIME_SECONDS))
+        .ok_or_else(|| {
+          log::warn!("overflow calculation for cutoff");
+          Error::new(ErrorKind::Other, "cutoff time calc overflow")
+        })?;
+
+      log::info!("using cutoff value - {cutoff:?} ({})", cutoff.timestamp_millis());
+      let cutoff_query = bson::doc! { "last_seen": { "$lt": cutoff.timestamp_millis() } };
+      let mut cursor = collection
+        .find(
+          cutoff_query.clone(),
+          Some(mongodb::options::FindOptions::builder().limit(50).build()),
+        )
+        .await
+        .map_err(|error| {
+          log::warn!("failed mongo query - {error}");
+          Error::new(ErrorKind::Other, format!("{error}"))
+        })?;
+
+      let mut count = 0u32;
+      while cursor.advance().await.map_err(|error| {
+        log::warn!("unable to advance cursor - {error}");
+        Error::new(ErrorKind::Other, format!("{error}"))
+      })? {
+        count += 1;
+        log::info!("found diagnostic {:?}", cursor.deserialize_current());
+      }
+
+      log::info!("found {count} diagnostics");
+
+      if count > 0 {
+        let result = collection
+          .delete_many(cutoff_query.clone(), None)
+          .await
+          .map_err(|error| {
+            log::warn!("unable to perform delete_many - {error}");
+            Error::new(ErrorKind::Other, format!("{error}"))
+          })?;
+
+        log::info!("delete complete - {:?}", result);
+      }
 
       for dev in &page {
         let since = mins.signed_duration_since(*dev.last_seen()).num_seconds();
 
-        if since > 60 {
+        if since > MAX_IDLE_TIME_SECONDS {
           kramer::execute(
             &mut stream,
             kramer::Command::Hashes::<&str, &str>(kramer::HashCommand::Del(
