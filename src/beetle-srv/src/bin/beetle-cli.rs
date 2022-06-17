@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use std::io::{Error, ErrorKind, Result};
 
 const HELP_TEXT: &'static str = r#"beetle-cli admin interface
@@ -22,18 +23,21 @@ impl Default for CommandLineCommand {
   }
 }
 
-#[derive(Default)]
+#[derive(Deserialize)]
 struct CommandLineConfig {
-  redis: (String, String, String),
-  command: CommandLineCommand,
+  redis: beetle::config::RedisConfiguration,
+  mongo: beetle::config::MongoConfiguration,
 }
 
 async fn get_connected_page(
-  mut stream: &mut async_tls::client::TlsStream<async_std::net::TcpStream>,
+  mut connections: (
+    &mut async_tls::client::TlsStream<async_std::net::TcpStream>,
+    &mut mongodb::Client,
+  ),
   _pagination: Option<u32>,
 ) -> Result<Vec<beetle::IndexedDevice>> {
   let key_result = kramer::execute(
-    &mut stream,
+    &mut connections.0,
     kramer::Command::Sets::<&str, bool>(kramer::SetCommand::Members(beetle::constants::REGISTRAR_INDEX)),
   )
   .await?;
@@ -45,14 +49,13 @@ async fn get_connected_page(
       for id in &inner {
         if let kramer::ResponseValue::String(id) = id {
           let item = kramer::execute(
-            &mut stream,
+            &mut connections.0,
             kramer::Command::Hashes::<&str, &str>(kramer::HashCommand::Get(
               beetle::constants::REGISTRAR_ACTIVE,
               Some(kramer::Arity::One(&id)),
             )),
           )
           .await?;
-
           log::info!("found device info - {:?}", item);
           items.push((id, item));
 
@@ -83,15 +86,16 @@ async fn get_connected_page(
   }
 }
 
-async fn run(config: CommandLineConfig) -> Result<()> {
-  if config.command == CommandLineCommand::Help {
+async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<()> {
+  if command == CommandLineCommand::Help {
     eprintln!("{}", HELP_TEXT);
     return Ok(());
   }
 
-  let mut stream = beetle::redis::connect(&config.redis.0, &config.redis.1, &config.redis.2).await?;
+  let mut stream = beetle::redis::connect(&config.redis).await?;
+  let mut mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
 
-  match config.command {
+  match command {
     CommandLineCommand::Help => unreachable!(),
     CommandLineCommand::PushString(id, message) => {
       log::debug!("writing '{}' to '{}'", message, id);
@@ -109,7 +113,7 @@ async fn run(config: CommandLineConfig) -> Result<()> {
       log::info!("message result - {result:?}");
     }
     CommandLineCommand::PrintConnected => {
-      let page = get_connected_page(&mut stream, None).await?;
+      let page = get_connected_page((&mut stream, &mut mongo), None).await?;
 
       for dev in &page {
         println!("{}", dev);
@@ -117,7 +121,7 @@ async fn run(config: CommandLineConfig) -> Result<()> {
     }
 
     CommandLineCommand::CleanDisconnects => {
-      let page = get_connected_page(&mut stream, None).await?;
+      let page = get_connected_page((&mut stream, &mut mongo), None).await?;
       let mins = chrono::Utc::now();
 
       for dev in &page {
@@ -157,17 +161,17 @@ fn main() -> Result<()> {
 
   log::info!("environment + logger ready.");
 
-  let redis = std::env::var("REDIS_HOST")
-    .ok()
-    .zip(std::env::var("REDIS_PORT").ok())
-    .zip(std::env::var("REDIS_AUTH").ok())
-    .map(|((h, p), a)| (h, p, a));
+  let contents = std::fs::read_to_string("env.toml")?;
 
-  let mut config = CommandLineConfig::default();
+  let config = toml::from_str::<CommandLineConfig>(&contents).map_err(|error| {
+    log::warn!("invalid toml config file - {error}");
+    Error::new(ErrorKind::Other, "bad-config")
+  })?;
+
   let mut args = std::env::args().skip(1);
   let cmd = args.next();
 
-  config.command = match cmd.as_ref().map(|i| i.as_str()) {
+  let command = match cmd.as_ref().map(|i| i.as_str()) {
     Some("printall") => CommandLineCommand::PrintConnected,
     Some("cleanup") => CommandLineCommand::CleanDisconnects,
     Some("write") => {
@@ -186,9 +190,5 @@ fn main() -> Result<()> {
     }
   };
 
-  if let Some(redis) = redis {
-    config.redis = redis;
-  }
-
-  async_std::task::block_on(run(config))
+  async_std::task::block_on(run(config, command))
 }

@@ -1,20 +1,19 @@
 use std::io::{Error, ErrorKind, Result};
 
-pub async fn connect<S>(host: S, port: S, auth: S) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>>
-where
-  S: AsRef<str>,
-{
+pub async fn connect(
+  config: &crate::config::RedisConfiguration,
+) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>> {
   let connector = async_tls::TlsConnector::default();
   let mut stream = connector
     .connect(
-      host.as_ref(),
-      async_std::net::TcpStream::connect(format!("{}:{}", host.as_ref(), port.as_ref())).await?,
+      &config.host,
+      async_std::net::TcpStream::connect(format!("{}:{}", config.host, config.port)).await?,
     )
     .await?;
 
   let auth_result = kramer::execute(
     &mut stream,
-    kramer::Command::Auth::<&str, bool>(kramer::AuthCredentials::Password(auth.as_ref())),
+    kramer::Command::Auth::<&str, bool>(kramer::AuthCredentials::Password(&config.auth)),
   )
   .await?;
 

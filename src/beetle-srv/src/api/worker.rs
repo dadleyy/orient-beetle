@@ -10,12 +10,7 @@ pub struct Worker {
 
 impl Worker {
   pub(super) async fn redis(&self) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>> {
-    crate::redis::connect(
-      &self.redis_configuration.host,
-      &format!("{}", self.redis_configuration.port),
-      &self.redis_configuration.auth,
-    )
-    .await
+    crate::redis::connect(&self.redis_configuration).await
   }
 
   pub(super) async fn command<S, V>(&self, command: &kramer::Command<S, V>) -> Result<kramer::Response>

@@ -9,8 +9,6 @@ pub struct Configuration {
 
 impl Configuration {
   pub async fn worker(self) -> Result<Worker> {
-    let crate::config::RedisConfiguration { host, port, auth } = self.redis;
-
     let mongo_options = mongodb::options::ClientOptions::parse(&self.mongo.url)
       .await
       .map_err(|error| Error::new(ErrorKind::Other, format!("failed mongodb connection - {error}")))?;
@@ -19,7 +17,7 @@ impl Configuration {
       .map_err(|error| Error::new(ErrorKind::Other, format!("failed mongodb connection - {error}")))?;
 
     Ok(Worker {
-      redis: (host, port, auth),
+      redis: self.redis,
       connection: None,
       mongo: (mongo, self.mongo.clone()),
     })
@@ -27,7 +25,7 @@ impl Configuration {
 }
 
 pub struct Worker {
-  redis: (String, u16, String),
+  redis: crate::config::RedisConfiguration,
   connection: Option<async_tls::client::TlsStream<async_std::net::TcpStream>>,
   mongo: (mongodb::Client, crate::config::MongoConfiguration),
 }
@@ -39,9 +37,7 @@ impl Worker {
     self.connection = match stream {
       None => {
         log::info!("no previous connection, attempting to connect now");
-        crate::redis::connect(&self.redis.0, &format!("{}", self.redis.1), &self.redis.2)
-          .await
-          .map(Some)?
+        crate::redis::connect(&self.redis).await.map(Some)?
       }
 
       Some(mut inner) => {
