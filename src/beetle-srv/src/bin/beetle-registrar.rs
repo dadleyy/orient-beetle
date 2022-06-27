@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind, Result};
 async fn run(config: beetle::registrar::Configuration) -> Result<()> {
   let mut worker = config.worker().await?;
   let mut failures = Vec::with_capacity(3);
-  let mut interval = async_std::stream::interval(std::time::Duration::from_millis(200));
+  let mut interval = async_std::stream::interval(std::time::Duration::from_millis(1000));
 
   while failures.len() < 10 {
     interval.next().await;
@@ -20,10 +20,19 @@ async fn run(config: beetle::registrar::Configuration) -> Result<()> {
     }
   }
 
+  log::warn!("registrar exiting with failures - {failures:?}");
+
   Ok(())
 }
 
 fn main() -> Result<()> {
+  let load_env = std::fs::metadata(".env").map(|meta| meta.is_file()).unwrap_or(false);
+
+  if load_env {
+    let env_result = dotenv::dotenv();
+    println!(".env loaded? {:?}", env_result);
+  }
+
   env_logger::init();
 
   log::info!("environment + logger ready.");

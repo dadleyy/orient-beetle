@@ -63,6 +63,8 @@ impl Worker {
 /// in our pool that devices will pull down to identify themselves. If that amount reaches a
 /// quantity below a specific threshold, fill it back up.
 async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net::TcpStream>) -> Result<usize> {
+  log::debug!("checking pool length");
+
   let output = kramer::execute(
     &mut stream,
     kramer::Command::List::<&str, bool>(kramer::ListCommand::Len(crate::constants::REGISTRAR_AVAILABLE)),

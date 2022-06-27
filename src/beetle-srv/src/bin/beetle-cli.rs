@@ -15,6 +15,7 @@ enum CommandLineCommand {
   Help,
   PrintConnected,
   CleanDisconnects,
+  Provision(String, String),
   PushString(String, String),
 }
 
@@ -37,11 +38,15 @@ async fn get_connected_page(
   ),
   _pagination: Option<u32>,
 ) -> Result<Vec<beetle::IndexedDevice>> {
+  log::info!("fetching page");
+
   let key_result = kramer::execute(
     &mut connections.0,
     kramer::Command::Sets::<&str, bool>(kramer::SetCommand::Members(beetle::constants::REGISTRAR_INDEX)),
   )
   .await?;
+
+  log::info!("key result - {key_result:?}");
 
   match key_result {
     kramer::Response::Array(inner) => {
@@ -98,6 +103,19 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
 
   match command {
     CommandLineCommand::Help => unreachable!(),
+
+    CommandLineCommand::Provision(user, password) => {
+      log::info!("provisioning redis environment with device auth information");
+      let command = kramer::Command::Acl::<&str, &str>(kramer::acl::AclCommand::SetUser(kramer::acl::SetUser {
+        name: &user,
+        password: Some(&password),
+        keys: Some(beetle::constants::REGISTRAR_AVAILABLE),
+        commands: Some("blpop"),
+      }));
+      let result = kramer::execute(&mut stream, &command).await;
+      log::info!("result - {result:?}");
+    }
+
     CommandLineCommand::PushString(id, message) => {
       log::debug!("writing '{}' to '{}'", message, id);
 
@@ -220,6 +238,14 @@ fn main() -> Result<()> {
   let cmd = args.next();
 
   let command = match cmd.as_ref().map(|i| i.as_str()) {
+    Some("provision") => CommandLineCommand::Provision(
+      args
+        .next()
+        .ok_or_else(|| Error::new(ErrorKind::Other, "must provide username to provision command"))?,
+      args
+        .next()
+        .ok_or_else(|| Error::new(ErrorKind::Other, "must provide password to provision command"))?,
+    ),
     Some("printall") => CommandLineCommand::PrintConnected,
     Some("cleanup") => CommandLineCommand::CleanDisconnects,
     Some("write") => {
