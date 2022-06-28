@@ -131,6 +131,14 @@ contents of the `src/beetle-pio/embed/index.html` file from an `index.html` file
 
 --- 
 
+## Nice Third Party Providers for Services Used At Runtime
+
+- redis @ [upstash](https://upstash.com/) - supports tls _and_ `ACL` command management. not really free.
+- mongo @ [cloud.mongodb.com](https://cloud.mongodb.com) - has a free tier for hosted mongodb databases/clusters.
+- oauth @ [auth0](https://manage.auth0.com) - has a free tier for managing your login page.
+
+---
+
 This project was named by combining the name of the development board (fire<i>beetle</i>) with the name of
 the manufacturer of the display being used (_orient_ displays).
 
