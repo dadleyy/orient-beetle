@@ -23,7 +23,8 @@ extern const char * ap_password;
 
 extern const char * redis_host;
 extern const uint32_t redis_port;
-extern const char * redis_auth;
+extern const char * redis_auth_username;
+extern const char * redis_auth_password;
 
 using bus_type = arduino::tft_spi<VSPI, LCD_SS_PIN, SPI_MODE0, (240 * 320) * 2 + 8>;
 using lcd_type = arduino::ili9341v<
@@ -39,7 +40,10 @@ using lcd_type = arduino::ili9341v<
 
 // TODO: explore constructing the wifi + redis managers here. Dealing with the copy
 // and/or movement semantics of their constructors is out of scope for now.
-Engine eng(std::make_pair(ap_ssid, ap_password), std::make_tuple(redis_host, redis_port, redis_auth));
+Engine eng(
+  std::make_pair(ap_ssid, ap_password),
+  std::make_tuple(redis_host, redis_port, std::make_pair(redis_auth_username, redis_auth_password))
+);
 View<lcd_type> view;
 State state;
 
@@ -53,6 +57,7 @@ uint16_t heap_debug_tick_minimum = 25;
 unsigned long MIN_FRAME_DELAY = 200;
 unsigned long last_frame = 0;
 bool failed = false;
+bool prox_ready = false;
 
 void setup(void) {
 #ifndef RELEASE
@@ -75,26 +80,12 @@ void setup(void) {
     i += 1;
   }
 
-  if (strlen(redis_auth) > 60) {
-    failed = true;
-
+  if (vcnl.begin()) {
 #ifndef RELEASE
-    log_e("redis authentication too large");
+    log_e("unable to detect vcnl proximity sensor");
 #endif
-
-    return;
+    prox_ready = true;
   }
-
-  /*
-  if (!vcnl.begin()) {
-#ifndef RELEASE
-    log_d("unable to detect vcnl proximity sensor");
-#endif
-
-    failed = true;
-    return;
-  }
-  */
 
   log_d("boot complete, redis-config. host: %s | port: %d", redis_host, redis_port);
 
@@ -120,11 +111,14 @@ void loop(void) {
   }
 
 #ifndef RELEASE
+  if (prox_ready && heap_debug_tick > heap_debug_tick_minimum) {
+    uint16_t prox = vcnl.readProximity();
+    log_d("proximity: %d", prox);
+  }
+
   heap_debug_tick += 1;
   if (heap_debug_tick > heap_debug_tick_minimum) {
     log_d("free memory before malloc: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    // uint16_t prox = vcnl.readProximity();
-    // log_d("proximity: %d", prox);
   }
 #endif
 

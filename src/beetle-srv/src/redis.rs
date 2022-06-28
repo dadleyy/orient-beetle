@@ -1,5 +1,14 @@
 use std::io::{Error, ErrorKind, Result};
 
+// Helper function to create the key that will be popped from on the device to receive the next
+// message it should display.
+pub fn device_message_queue_id<S>(input: S) -> String
+where
+  S: std::fmt::Display,
+{
+  format!("ob:{input}")
+}
+
 pub async fn connect(
   config: &crate::config::RedisConfiguration,
 ) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>> {

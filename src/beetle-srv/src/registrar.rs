@@ -72,7 +72,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
   .await?;
 
   let should_send = match output {
-    kramer::Response::Item(kramer::ResponseValue::Integer(amount)) if amount < 10 => {
+    kramer::Response::Item(kramer::ResponseValue::Integer(amount)) if amount < 3 => {
       log::debug!("not enough ids, populating");
       true
     }
@@ -90,8 +90,36 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
     return Ok(0);
   }
 
-  let ids = (0..10).map(|_| crate::identity::create()).collect::<Vec<String>>();
+  let ids = (0..3).map(|_| crate::identity::create()).collect::<Vec<String>>();
   let count = ids.len();
+
+  log::info!("creating acl entries for ids");
+
+  for id in &ids {
+    let setuser = kramer::acl::SetUser {
+      name: id.clone(),
+      password: Some(id.clone()),
+      commands: Some("lpop".to_string()),
+      keys: Some(crate::redis::device_message_queue_id(id)),
+    };
+    let command = kramer::Command::Acl::<String, &str>(kramer::acl::AclCommand::SetUser(setuser));
+
+    if let Err(error) = kramer::execute(&mut stream, &command).await {
+      log::warn!("unable to add acl for id '{}' - {error}", id);
+    }
+
+    let setuser = kramer::acl::SetUser {
+      name: id.clone(),
+      password: Some(id.clone()),
+      commands: Some("rpush".to_string()),
+      keys: Some(crate::constants::REGISTRAR_INCOMING.to_string()),
+    };
+    let command = kramer::Command::Acl::<String, &str>(kramer::acl::AclCommand::SetUser(setuser));
+
+    if let Err(error) = kramer::execute(&mut stream, &command).await {
+      log::warn!("unable to add acl for id '{}' - {error}", id);
+    }
+  }
 
   log::info!("populating ids - {:?}", ids);
 

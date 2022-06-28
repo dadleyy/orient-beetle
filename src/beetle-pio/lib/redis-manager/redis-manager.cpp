@@ -2,7 +2,7 @@
 
 namespace redismanager {
 
-  Manager::Manager(std::tuple<const char *, const uint32_t, const char *> config):
+  Manager::Manager(std::tuple<const char *, const uint32_t, std::pair<const char *, const char *>> config):
     _redis_host(std::get<0>(config)),
     _redis_port(std::get<1>(config)),
     _redis_auth(std::get<2>(config)),
@@ -86,7 +86,7 @@ namespace redismanager {
 
   std::optional<Manager::EManagerMessage> Manager::Connected::update(
       const char * _redis_host,
-      const char * _redis_auth,
+      const std::pair<const char *, const char *> & _redis_auth,
       uint32_t _redis_port
   ) {
     _cursor = 0;
@@ -109,16 +109,26 @@ namespace redismanager {
         return Manager::EManagerMessage::FailedConnection;
       }
 
-      log_d("successfully connected to redis host/port ('%s')", _redis_auth);
+      // log_d("successfully connected to redis host/port ('%s')", _redis_auth);
 
       // At this point we have a valid tcp connection using tls and can start writing our redis
       // commands. Start by sending the `AUTH` command.
-      char auth_command [256];
+      char * auth_command = (char *) malloc(sizeof(char) * 256);
       memset(auth_command, '\0', 256);
-      sprintf(auth_command, "*2\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n", strlen(_redis_auth), _redis_auth);
-
+      const char * redis_username = std::get<0>(_redis_auth);
+      const char * redis_password = std::get<1>(_redis_auth);
+      log_d("writing redis auth command %s:%s", redis_username, redis_password);
+      sprintf(
+        auth_command,
+        "*3\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n",
+        strlen(redis_username),
+        redis_username,
+        strlen(redis_password),
+        redis_password
+      );
       // TODO: `_client.write(...)` might be a better choice here
       size_t written = _client.print(auth_command);
+      free(auth_command);
 
       log_d("wrote %d bytes on first message", written);
 
@@ -259,6 +269,22 @@ namespace redismanager {
       _device_id_len = len < MAX_ID_SIZE ? len : MAX_ID_SIZE;
       memcpy(_device_id, message, _device_id_len);
       _certified = ECertificationStage::Identified;
+
+      log_d("writing auth command with new id %s", _device_id);
+      // Now that we have a valid device id, authorize as that.
+      char * auth_command = (char *) malloc(sizeof(char) * 256);
+      memset(auth_command, '\0', 256);
+      sprintf(
+        auth_command,
+        "*3\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n",
+        strlen(_device_id),
+        _device_id,
+        strlen(_device_id),
+        _device_id
+      );
+      _client.print(auth_command);
+      free(auth_command);
+
       write_push();
       return Manager::EManagerMessage::IdentificationReceived;
     }

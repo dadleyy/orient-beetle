@@ -26,9 +26,17 @@ impl Default for CommandLineCommand {
 }
 
 #[derive(Deserialize)]
+struct RegistrarConfiguration {
+  id_consumer_username: Option<String>,
+  id_consumer_password: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct CommandLineConfig {
   redis: beetle::config::RedisConfiguration,
   mongo: beetle::config::MongoConfiguration,
+
+  registrar: RegistrarConfiguration,
 }
 
 async fn get_connected_page(
@@ -110,7 +118,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
         name: &user,
         password: Some(&password),
         keys: Some(beetle::constants::REGISTRAR_AVAILABLE),
-        commands: Some("blpop"),
+        commands: Some("LPOP"),
       }));
       let result = kramer::execute(&mut stream, &command).await;
       log::info!("result - {result:?}");
@@ -123,7 +131,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
         &mut stream,
         kramer::Command::List(kramer::ListCommand::Push(
           (kramer::Side::Left, kramer::Insertion::Always),
-          format!("ob:{}", id),
+          beetle::redis::device_message_queue_id(id),
           kramer::Arity::One(message),
         )),
       )
@@ -142,6 +150,12 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
     CommandLineCommand::CleanDisconnects => {
       let page = get_connected_page((&mut stream, (&mut mongo, &config.mongo)), None).await?;
       let mins = chrono::Utc::now();
+
+      if page.len() == 0 {
+        log::info!("nothing to clean up");
+
+        return Ok(());
+      }
 
       let collection = mongo
         .database(&config.mongo.database)
@@ -189,6 +203,14 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
 
         log::info!("delete complete - {:?}", result);
       }
+
+      kramer::execute(
+        &mut stream,
+        kramer::Command::Acl::<String, &str>(kramer::acl::AclCommand::DelUser(kramer::Arity::Many(
+          page.iter().map(|dev| dev.id().clone()).collect::<Vec<String>>(),
+        ))),
+      )
+      .await?;
 
       for dev in &page {
         let since = mins.signed_duration_since(*dev.last_seen()).num_seconds();
@@ -241,9 +263,17 @@ fn main() -> Result<()> {
     Some("provision") => CommandLineCommand::Provision(
       args
         .next()
+        .or_else(|| {
+          log::info!("no username provided, falling back to 'env.toml'");
+          config.registrar.id_consumer_username.clone()
+        })
         .ok_or_else(|| Error::new(ErrorKind::Other, "must provide username to provision command"))?,
       args
         .next()
+        .or_else(|| {
+          log::info!("no password provided, falling back to 'env.toml'");
+          config.registrar.id_consumer_password.clone()
+        })
         .ok_or_else(|| Error::new(ErrorKind::Other, "must provide password to provision command"))?,
     ),
     Some("printall") => CommandLineCommand::PrintConnected,

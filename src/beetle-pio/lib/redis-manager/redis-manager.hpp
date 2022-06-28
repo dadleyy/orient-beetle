@@ -11,7 +11,7 @@ namespace redismanager {
   
   class Manager final {
     public:
-      explicit Manager(std::tuple<const char *, const uint32_t, const char *>);
+      explicit Manager(std::tuple<const char *, const uint32_t, std::pair<const char *, const char *>>);
       ~Manager() = default;
 
       // Disable Copy
@@ -66,7 +66,11 @@ namespace redismanager {
           Connected(Connected &&) = delete;
 
           uint16_t copy(char *, uint16_t);
-          std::optional<EManagerMessage> update(const char *, const char *, uint32_t);
+          std::optional<EManagerMessage> update(
+            const char *,
+            const std::pair<const char *, const char *>&,
+            uint32_t
+          );
 
         private:
           inline uint16_t write_pop(void);
@@ -95,7 +99,7 @@ namespace redismanager {
 
       const char * _redis_host;
       const uint32_t _redis_port;
-      const char * _redis_auth;
+      std::pair<const char *, const char *> _redis_auth;
       bool _paused;
 
       std::variant<Disconnected, Connected> _state;

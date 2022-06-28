@@ -9,8 +9,12 @@ const char * redis_host = "" REDIS_HOST;
 const uint32_t redis_port = REDIS_PORT;
 #endif
 
-#ifdef REDIS_AUTH
-const char * redis_auth = REDIS_AUTH;
+#ifdef REDIS_AUTH_USERNAME
+const char * redis_auth_username = REDIS_AUTH_USERNAME;
+#endif
+
+#ifdef REDIS_AUTH_PASSWORD
+const char * redis_auth_password = REDIS_AUTH_PASSWORD;
 #endif
 
 #endif

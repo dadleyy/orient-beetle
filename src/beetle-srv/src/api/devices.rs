@@ -55,7 +55,7 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
     .state()
     .command(&kramer::Command::List(kramer::ListCommand::Push(
       (kramer::Side::Left, kramer::Insertion::Always),
-      format!("ob:{}", body.device_id),
+      crate::redis::device_message_queue_id(&body.device_id),
       kramer::Arity::One(body.message),
     )))
     .await?;

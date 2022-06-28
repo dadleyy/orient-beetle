@@ -10,7 +10,7 @@ class Engine final {
   public:
     Engine(
       std::tuple<const char *, const char *>,
-      std::tuple<const char *, uint32_t, const char *>
+      std::tuple<const char *, uint32_t, std::pair<const char *, const char *>>
     );
     ~Engine() = default;
 

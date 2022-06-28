@@ -20,14 +20,14 @@ $ cat ./src/beetle-io/.env
 
 REDIS_PORT=1234
 REDIS_HOST="my-redis.my-host.com"
-REDIS_ID_CONSUMER_AUTH_USERNAME="orient-beetle-device-id-consumer"
-REDIS_ID_CONSUMER_AUTH_PASSWORD="1bc2ad"
+REDIS_AUTH_USERNAME="orient-beetle-device-id-consumer"
+REDIS_AUTH_PASSWORD="1bc2ad"
 ```
 
 This file is read by the [`extra_scripts`][extra_scripts] entry [`load_env.py`][lenv] and will
 automatically attempt to set the correct `-DREDIS_HOST`, `-DREDIS_PORT`, and auth compiler flags.
 
-The values of the `REDIS_ID_CONSUMER_AUTH_USERNAME` and `REDIS_ID_CONSUMER_AUTH_PASSWORD` values
+The values of the `REDIS_AUTH_USERNAME` and `REDIS_AUTH_PASSWORD` values
 require successfully "provisioning" your environment (more on this in the
 [`srv` documentation](#beetle-srv-(web-backend)) below).
 

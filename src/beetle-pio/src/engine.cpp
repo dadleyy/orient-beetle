@@ -2,7 +2,7 @@
 
 Engine::Engine(
   std::tuple<const char *, const char *> ap_config,
-  std::tuple<const char *, uint32_t, const char *> redis_config
+  std::tuple<const char *, uint32_t, std::pair<const char *, const char *>> redis_config
 ): _wifi(ap_config), _redis(redis_config) {
 }
 
