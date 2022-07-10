@@ -35,8 +35,14 @@ jobs:
       - name: "env prep: fill redis ca"
         run: echo $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
 
-      - name: "env prep: create .env"
-        run: echo "" > .env
+      - name: "env prep: redis-host"
+        run: echo "REDIS_HOST=$PIO_REDIS_HOST" >> .env
+      - name: "env prep: redis-port"
+        run: echo "REDIS_PORT=$PIO_REDIS_PORT" >> .env
+      - name: "env prep: redis-user"
+        run: echo "REDIS_AUTH_USERNAME=$PIO_REDIS_AUTH_USERNAME" >> .env
+      - name: "env prep: redis-auth"
+        run: echo "REDIS_AUTH_PASSWORD=$PIO_REDIS_AUTH_PASSWORD" >> .env
 
       - name: "pio: run"
         run: pio run
