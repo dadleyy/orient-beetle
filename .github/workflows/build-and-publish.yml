@@ -32,6 +32,9 @@ jobs:
       - name: "pip: install pio"
         run: pip install --upgrade platformio
 
+      - name: "pio: run"
+        run: pio run
+
   build-ui:
     runs-on: ubuntu-latest
     env:
