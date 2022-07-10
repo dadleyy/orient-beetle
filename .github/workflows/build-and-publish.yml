@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BEETLE_VERSION: "${{ github.sha }}"
+      BEETLE_GPG_KEY: "${{ secrets.BEETLE_CI_GPG }}"
       REDIS_HOST: "${{ secrets.PIO_REDIS_HOST }}"
       REDIS_PORT: "${{ secrets.PIO_REDIS_PORT }}"
       REDIS_AUTH_USERNAME: "${{ secrets.PIO_REDIS_AUTH_USERNAME }}"
@@ -33,6 +34,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
+
+      - name: "import gpg"
+        run: "echo $BEETLE_GPG_KEY > orient-beetle-ci.key && gpg --import orient-beetle-cli.key && rm orient-beetle-ci.key"
+
       - name: "pip: upgrade"
         run: python -m pip install --upgrade pip
       - name: "pip: install pio"
