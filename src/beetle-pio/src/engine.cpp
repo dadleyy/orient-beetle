@@ -8,6 +8,7 @@ Engine::Engine(
 
 void Engine::begin(void) {
   _wifi.begin();
+  _redis.begin();
 }
 
 State Engine::update(State& current) {

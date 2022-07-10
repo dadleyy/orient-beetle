@@ -7,6 +7,7 @@
 
 #include <WiFi.h>
 #include <DNSServer.h>
+#include <Preferences.h>
 #include <WiFiClient.h>
 #include <WiFiServer.h>
 #include <WiFiAP.h>
@@ -124,6 +125,7 @@ namespace wifimanager {
       uint8_t _last_mode;
       std::tuple<const char *, const char *> _ap_config;
       std::variant<ActiveConnection, PendingConfiguration, PendingConnection> _mode;
+      Preferences _preferences;
   };
 }
 

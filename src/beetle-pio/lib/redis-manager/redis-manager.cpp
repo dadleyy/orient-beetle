@@ -11,6 +11,10 @@ namespace redismanager {
   {
   }
 
+  void Manager::begin(void) {
+    _preferences.begin("beetle-redis", false);
+  }
+
   uint16_t Manager::copy(char * destination, uint16_t max) {
     if (_state.index() != 1) {
       return 0;
@@ -32,7 +36,7 @@ namespace redismanager {
           log_d("attempting to move from disconnect to connected");
 
           _paused = false;
-          _state.emplace<Connected>();
+          _state.emplace<Connected>(&_preferences);
         }
         break;
       }
@@ -109,6 +113,34 @@ namespace redismanager {
         return Manager::EManagerMessage::FailedConnection;
       }
 
+      size_t stored_id_len = _preferences->getString("device-id", _device_id, MAX_ID_SIZE);
+
+      if (stored_id_len > 0) {
+        _connected_with_cached_id = true;
+        _device_id_len = stored_id_len;
+        log_d("has stored device id '%s', trying it out.", _device_id);
+
+        _certified = ECertificationStage::Identified;
+
+        log_d("writing auth command with new id %s", _device_id);
+        // Now that we have a valid device id, authorize as that.
+        char * auth_command = (char *) malloc(sizeof(char) * 256);
+        memset(auth_command, '\0', 256);
+        sprintf(
+          auth_command,
+          "*3\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n",
+          strlen(_device_id),
+          _device_id,
+          strlen(_device_id),
+          _device_id
+        );
+        _client.print(auth_command);
+        log_d("\n%s\n", auth_command);
+        free(auth_command);
+
+        return Manager::EManagerMessage::IdentificationReceived;
+      }
+
       // log_d("successfully connected to redis host/port ('%s')", _redis_auth);
 
       // At this point we have a valid tcp connection using tls and can start writing our redis
@@ -157,10 +189,19 @@ namespace redismanager {
       _cursor += 1;
     }
 
+
+    // Explicitly handle wrongpass.
+    if (strcmp(_framebuffer, "-WRONGPASS invalid username-password pair or user is disabled\r\n") == 0) {
+      log_e("wrongpass received, resetting client");
+      reset();
+
+      return std::nullopt;
+    }
+
     // If we are not certified, assume this is our first `+OK` response pulled in off the 
     // `AUTH` command that was issued previously.
     if (_certified == ECertificationStage::CerificationRequested) {
-      log_d("not yet certified with server, skipping pop");
+      log_d("not yet certified with server, skipping pop (pulled %s)", _framebuffer);
 
       // If we had no data, do nothing (we're still waiting for a response).
       if (_cursor == 0) {
@@ -178,6 +219,10 @@ namespace redismanager {
       return std::nullopt;
     }
 
+    if (_cursor > 0 && _certified == ECertificationStage::Identified) {
+      _empty_identified_reads = 0;
+    }
+
     // If we popped something off the queue and it was empty, do nothing.
     if (strcmp(_framebuffer, "$-1\r\n") == 0 || _cursor == 0) {
       if (_certified == ECertificationStage::IdentificationRequested) {
@@ -186,11 +231,25 @@ namespace redismanager {
 
       // If we had nothing but we're identified, write our next pop before moving on.
       if (_certified == ECertificationStage::Identified) {
+        // If there was literally no data to read, increase our counter and check to see
+        // if we're relying on cached credentials. If so, clear it and restart.
+        if (_cursor == 0) {
+          _empty_identified_reads += 1;
+          log_e("empty reads while identified - %d", _empty_identified_reads);
+
+          if (_empty_identified_reads > 200 && _connected_with_cached_id) {
+            reset();
+
+            return std::nullopt;
+          }
+        }
+
         write_pop();
       }
 
       _cursor = 0;
       memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
+
       return std::nullopt;
     }
 
@@ -248,7 +307,7 @@ namespace redismanager {
     // the value returned is not the same as our index it does not appear to be a valid
     // message.
     if ((len != size || len == 0 || stage != 2) && !isint) {
-      log_e("unable to parse message - '%s'", message);
+      log_e("unable to parse message - '\n%s\n'", _framebuffer);
       _cursor = 0;
       memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
       return std::nullopt;
@@ -268,6 +327,11 @@ namespace redismanager {
 
       _device_id_len = len < MAX_ID_SIZE ? len : MAX_ID_SIZE;
       memcpy(_device_id, message, _device_id_len);
+
+      size_t stored_id_len = _preferences->putString("device-id", _device_id);
+      log_d("stored device id (%d bytes)", stored_id_len);
+
+      // We now have our individual identity.
       _certified = ECertificationStage::Identified;
 
       log_d("writing auth command with new id %s", _device_id);
@@ -296,12 +360,25 @@ namespace redismanager {
     return isint ? std::nullopt : std::optional(Manager::EManagerMessage::ReceivedMessage);
   }
 
-  Manager::Connected::Connected():
+  void Manager::Connected::reset(void) {
+    _empty_identified_reads = 0;
+    _certified = ECertificationStage::NotRequested;
+    _client.stop();
+    _preferences->remove("device-id");
+
+    _cursor = 0;
+    memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
+  }
+
+  Manager::Connected::Connected(Preferences* _preferences):
     _certified(ECertificationStage::NotRequested),
     _cursor(0),
     _write_delay(0),
-    _device_id_len(0) {
+    _device_id_len(0),
+    _empty_identified_reads(0),
+    _preferences(_preferences) {
       _framebuffer = (char*) malloc(sizeof(char) * FRAMEBUFFER_SIZE);
+      _device_id = (char*) malloc(sizeof(char) * MAX_ID_SIZE);
       memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
       memset(_device_id, '\0', MAX_ID_SIZE + 1);
   }
@@ -309,6 +386,7 @@ namespace redismanager {
   Manager::Connected::~Connected() {
     log_d("cleaning up redis client connection");
     free(_framebuffer);
+    free(_device_id);
     _client.stop();
   }
 

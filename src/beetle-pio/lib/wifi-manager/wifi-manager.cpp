@@ -4,7 +4,8 @@ namespace wifimanager {
   Manager::Manager(std::tuple<const char *, const char *> ap):
     _last_mode(0),
     _ap_config(ap),
-    _mode(std::in_place_type_t<PendingConfiguration>()) {}
+    _mode(std::in_place_type_t<PendingConfiguration>()) {
+  }
 
   uint8_t Manager::attempt(void) {
     if (_mode.index() == 2) {
@@ -86,8 +87,19 @@ namespace wifimanager {
         char password [MAX_PASSWORD_LENGTH];
         memset(password, '\0', MAX_PASSWORD_LENGTH);
 
-        if (server->frame(ssid, password) == false) { 
-          break;
+        size_t stored_ssid_len = _preferences.getString("ssid", ssid, MAX_SSID_LENGTH);
+        size_t stored_password_len = _preferences.getString("password", password, MAX_PASSWORD_LENGTH);
+
+        log_d("stored ssid len - %d (password %d)", stored_ssid_len, stored_password_len);
+
+        // If we have nothing stored, try to read from our http server.
+        if (stored_ssid_len == 0 || stored_password_len == 0) {
+          memset(ssid, '\0', MAX_SSID_LENGTH);
+          memset(password, '\0', MAX_PASSWORD_LENGTH);
+
+          if (server->frame(ssid, password) == false) { 
+            break;
+          }
         }
 
         // Terminate our hotspot, we have everything we need to make an attempt to
@@ -126,6 +138,11 @@ namespace wifimanager {
         if (WiFi.status() == WL_CONNECTED) {
           log_d("wifi is connected");
           _mode.emplace<ActiveConnection>(0);
+
+          size_t stored_ssid_len = _preferences.putString("ssid", pending->_ssid);
+          size_t stored_password_len = _preferences.putString("password", pending->_password);
+          log_d("stored ssid len %d, password len %d", stored_ssid_len, stored_password_len);
+
           return Manager::EManagerMessage::Connected;
         }
 
@@ -135,6 +152,10 @@ namespace wifimanager {
         // network provided by the user, move back into the AP/configuration mode.
         if (pending->_attempts > MAX_PENDING_CONNECTION_ATTEMPTS) {
           log_d("too many connections failed, resetting");
+
+          // Clear the stored ssid/password.
+          _preferences.remove("ssid");
+          _preferences.remove("password");
 
           // Clear out our connection attempt garbage.
           WiFi.disconnect(true, true);
@@ -158,6 +179,9 @@ namespace wifimanager {
   }
 
   void Manager::begin(void) {
+    log_d("starting preferences");
+    _preferences.begin("beetle-wifi", false);
+
     if (_mode.index() == 1) {
       WiFi.softAP(std::get<0>(_ap_config), std::get<1>(_ap_config), 7, 0, 1);
       IPAddress address = WiFi.softAPIP();

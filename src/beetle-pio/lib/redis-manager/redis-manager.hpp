@@ -4,6 +4,7 @@
 #include <variant>
 #include <optional>
 #include <WiFiClientSecure.h>
+#include <Preferences.h>
 
 #include "wifi-manager.hpp"
 
@@ -30,6 +31,7 @@ namespace redismanager {
         ReceivedMessage,
       };
 
+      void begin(void);
       std::optional<EManagerMessage> frame(std::optional<wifimanager::Manager::EManagerMessage> &message);
       uint16_t copy(char *, uint16_t);
 
@@ -57,7 +59,7 @@ namespace redismanager {
       // connection with our redis host and attempt authentication + "streaming".
       struct Connected final {
         public:
-          Connected();
+          Connected(Preferences*);
           ~Connected();
 
           Connected(const Connected &) = delete;
@@ -72,6 +74,8 @@ namespace redismanager {
             uint32_t
           );
 
+          void reset(void);
+
         private:
           inline uint16_t write_pop(void);
           inline uint16_t write_push(void);
@@ -83,9 +87,14 @@ namespace redismanager {
           char * _framebuffer;
 
           uint8_t _write_delay;
-          char _device_id [MAX_ID_SIZE + 1];
+          char * _device_id;
           uint8_t _device_id_len;
           WiFiClientSecure _client;
+
+          uint8_t _empty_identified_reads;
+          bool _connected_with_cached_id;
+
+          Preferences* _preferences;
 
           friend class Manager;
       };
@@ -101,6 +110,7 @@ namespace redismanager {
       const uint32_t _redis_port;
       std::pair<const char *, const char *> _redis_auth;
       bool _paused;
+      Preferences _preferences;
 
       std::variant<Disconnected, Connected> _state;
   };
