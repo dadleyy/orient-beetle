@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-python@v2
 
       - name: "import gpg"
-        run: "echo \"${{ secrets.BEETLE_CI_GPG }}\" > orient-beetle-ci.key && gpg --import orient-beetle-cli.key && rm orient-beetle-ci.key"
+        run: "echo \"${{ secrets.BEETLE_CI_GPG }}\" > orient-beetle-ci.key && gpg --import orient-beetle-ci.key && rm orient-beetle-ci.key"
 
       - name: "pip: upgrade"
         run: python -m pip install --upgrade pip
