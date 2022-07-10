@@ -45,20 +45,25 @@ jobs:
       - name: "env prep: fill redis ca"
         run: echo $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
       - name: "pio: run"
-        run: pio run
+        run: pio run -e release
 
       - name: "bundle: prepare-dir"
         run: mkdir -p dist/beetle-pio
 
       - name: "bundle: copy-bin"
-        run: gpg -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.bin.pgp .pio/build/debug/firmware.bin
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.bin.pgp .pio/build/debug/firmware.bin
       - name: "bundle: copy-map"
-        run: gpg -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.map.pgp .pio/build/debug/firmware.map
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.map.pgp .pio/build/debug/firmware.map
       - name: "bundle: copy-elf"
-        run: gpg -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.elf.pgp .pio/build/debug/firmware.elf
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.elf.pgp .pio/build/debug/firmware.elf
 
       - name: "bundle: create"
         run: tar cvzf beetle-pio-$BEETLE_VERSION.tar.gz dist
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: "beetle-pio-${{ github.sha }}.tar.gz"
+          path: "./src/beetle-pio/beetle-pio-${{ github.sha }}.tar.gz"
 
   build-ui:
     runs-on: ubuntu-latest
