@@ -51,11 +51,11 @@ jobs:
         run: mkdir -p dist/beetle-pio
 
       - name: "bundle: copy-bin"
-        run: cp .pio/build/debug/firmware.bin dist/beetle-pio/firmware.bin
+        run: gpg -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.bin.pgp .pio/build/debug/firmware.bin
       - name: "bundle: copy-map"
-        run: cp .pio/build/debug/firmware.map dist/beetle-pio/firmware.map
+        run: gpg -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.map.pgp .pio/build/debug/firmware.map
       - name: "bundle: copy-elf"
-        run: cp .pio/build/debug/firmware.elf dist/beetle-pio/firmware.elf
+        run: gpg -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.elf.pgp .pio/build/debug/firmware.elf
 
       - name: "bundle: create"
         run: tar cvzf beetle-pio-$BEETLE_VERSION.tar.gz dist
