@@ -169,6 +169,10 @@ jobs:
         with:
           name: "beetle-ui-${{ github.sha }}.tar.gz"
 
+      - uses: actions/download-artifact@v3
+        with:
+          name: "beetle-pio-${{ github.sha }}.tar.gz"
+
       - name: printall
         run: ls -lah
 
