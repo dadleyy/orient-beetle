@@ -39,67 +39,6 @@ struct CommandLineConfig {
   registrar: RegistrarConfiguration,
 }
 
-async fn get_connected_page(
-  mut connections: (
-    &mut async_tls::client::TlsStream<async_std::net::TcpStream>,
-    (&mut mongodb::Client, &beetle::config::MongoConfiguration),
-  ),
-  _pagination: Option<u32>,
-) -> Result<Vec<beetle::IndexedDevice>> {
-  log::info!("fetching page");
-
-  let key_result = kramer::execute(
-    &mut connections.0,
-    kramer::Command::Sets::<&str, bool>(kramer::SetCommand::Members(beetle::constants::REGISTRAR_INDEX)),
-  )
-  .await?;
-
-  log::info!("key result - {key_result:?}");
-
-  match key_result {
-    kramer::Response::Array(inner) => {
-      let mut items = Vec::with_capacity(inner.len());
-
-      for id in &inner {
-        if let kramer::ResponseValue::String(id) = id {
-          let item = kramer::execute(
-            &mut connections.0,
-            kramer::Command::Hashes::<&str, &str>(kramer::HashCommand::Get(
-              beetle::constants::REGISTRAR_ACTIVE,
-              Some(kramer::Arity::One(&id)),
-            )),
-          )
-          .await?;
-          log::info!("found device info - {:?}", item);
-          items.push((id, item));
-
-          continue;
-        }
-
-        log::warn!("unrecognized item - {id:?}");
-      }
-
-      let items = items
-        .into_iter()
-        .filter_map(|(id, res)| match res {
-          kramer::Response::Item(kramer::ResponseValue::String(i)) => Some((id.clone(), i)),
-          other => {
-            log::warn!("individual item problem - {other:?}");
-            None
-          }
-        })
-        .filter_map(|(i, d)| beetle::IndexedDevice::from_redis(&i, &d))
-        .collect();
-
-      Ok(items)
-    }
-    other => {
-      log::warn!("unrecognized active device list - {other:?}");
-      Err(Error::new(ErrorKind::Other, "unexpected response"))
-    }
-  }
-}
-
 async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<()> {
   if command == CommandLineCommand::Help {
     eprintln!("{}", HELP_TEXT);
@@ -107,7 +46,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
   }
 
   let mut stream = beetle::redis::connect(&config.redis).await?;
-  let mut mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
+  let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
 
   match command {
     CommandLineCommand::Help => unreachable!(),
@@ -139,24 +78,37 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
 
       log::info!("message result - {result:?}");
     }
-    CommandLineCommand::PrintConnected => {
-      let page = get_connected_page((&mut stream, (&mut mongo, &config.mongo)), None).await?;
 
-      for dev in &page {
-        println!("{}", dev);
+    CommandLineCommand::PrintConnected => {
+      let collection = mongo
+        .database(&config.mongo.database)
+        .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
+
+      let mut cursor = collection
+        .find(None, Some(mongodb::options::FindOptions::builder().limit(50).build()))
+        .await
+        .map_err(|error| {
+          log::warn!("failed mongo query - {error}");
+          Error::new(ErrorKind::Other, format!("{error}"))
+        })?;
+
+      while cursor.advance().await.map_err(|error| {
+        log::warn!("unable to advance cursor - {error}");
+        Error::new(ErrorKind::Other, format!("{error}"))
+      })? {
+        match cursor.deserialize_current() {
+          Ok(device) => {
+            println!(
+              "- {}. last seen {:?}. first seen {:?}",
+              device.id, device.last_seen, device.first_seen
+            )
+          }
+          Err(error) => log::warn!("unable to deserialize diagnostic - {error}"),
+        }
       }
     }
 
     CommandLineCommand::CleanDisconnects => {
-      let page = get_connected_page((&mut stream, (&mut mongo, &config.mongo)), None).await?;
-      let mins = chrono::Utc::now();
-
-      if page.len() == 0 {
-        log::info!("nothing to clean up");
-
-        return Ok(());
-      }
-
       let collection = mongo
         .database(&config.mongo.database)
         .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
@@ -181,14 +133,21 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
           Error::new(ErrorKind::Other, format!("{error}"))
         })?;
 
-      let mut count = 0u32;
+      let mut devices = Vec::with_capacity(100);
+
       while cursor.advance().await.map_err(|error| {
         log::warn!("unable to advance cursor - {error}");
         Error::new(ErrorKind::Other, format!("{error}"))
       })? {
-        count += 1;
-        log::info!("found diagnostic {:?}", cursor.deserialize_current());
+        let device = cursor.deserialize_current();
+        log::info!("found diagnostic {:?}", device);
+
+        if let Ok(d) = device {
+          devices.push(d);
+        }
       }
+
+      let count = devices.len();
 
       log::info!("found {count} diagnostics");
 
@@ -204,38 +163,36 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
         log::info!("delete complete - {:?}", result);
       }
 
+      // Cleanup the acl entries of these dead devices.
       kramer::execute(
         &mut stream,
         kramer::Command::Acl::<String, &str>(kramer::acl::AclCommand::DelUser(kramer::Arity::Many(
-          page.iter().map(|dev| dev.id().clone()).collect::<Vec<String>>(),
+          devices.iter().map(|device| device.id.clone()).collect(),
         ))),
       )
       .await?;
 
-      for dev in &page {
-        let since = mins.signed_duration_since(*dev.last_seen()).num_seconds();
+      // Cleanup our redis hash and set.
+      for dev in devices {
+        kramer::execute(
+          &mut stream,
+          kramer::Command::Hashes::<&str, &str>(kramer::HashCommand::Del(
+            beetle::constants::REGISTRAR_ACTIVE,
+            kramer::Arity::One(&dev.id),
+          )),
+        )
+        .await?;
 
-        if since > MAX_IDLE_TIME_SECONDS {
-          kramer::execute(
-            &mut stream,
-            kramer::Command::Hashes::<&str, &str>(kramer::HashCommand::Del(
-              beetle::constants::REGISTRAR_ACTIVE,
-              kramer::Arity::One(dev.id()),
-            )),
-          )
-          .await?;
+        kramer::execute(
+          &mut stream,
+          kramer::Command::Sets::<&str, &str>(kramer::SetCommand::Rem(
+            beetle::constants::REGISTRAR_INDEX,
+            kramer::Arity::One(&dev.id),
+          )),
+        )
+        .await?;
 
-          kramer::execute(
-            &mut stream,
-            kramer::Command::Sets::<&str, &str>(kramer::SetCommand::Rem(
-              beetle::constants::REGISTRAR_INDEX,
-              kramer::Arity::One(dev.id()),
-            )),
-          )
-          .await?;
-
-          log::info!("cleaned up up {}", dev);
-        }
+        log::info!("cleaned up up {:?}", dev);
       }
     }
   }

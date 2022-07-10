@@ -5,15 +5,15 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct User {
-  pub(crate) oid: String,
-  pub(crate) devices: Option<std::collections::HashMap<String, u8>>,
+  pub oid: String,
+  pub devices: Option<std::collections::HashMap<String, u8>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct DeviceDiagnostic {
-  pub(crate) id: String,
+  pub id: String,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
-  pub(crate) first_seen: Option<chrono::DateTime<chrono::Utc>>,
+  pub first_seen: Option<chrono::DateTime<chrono::Utc>>,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
-  pub(crate) last_seen: Option<chrono::DateTime<chrono::Utc>>,
+  pub last_seen: Option<chrono::DateTime<chrono::Utc>>,
 }

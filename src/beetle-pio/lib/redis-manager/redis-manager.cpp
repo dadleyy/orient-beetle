@@ -191,8 +191,15 @@ namespace redismanager {
 
 
     // Explicitly handle wrongpass.
-    if (strcmp(_framebuffer, "-WRONGPASS invalid username-password pair or user is disabled\r\n") == 0) {
+    if (strcmp(_framebuffer, WRONG_PASS_ERR) == 0) {
       log_e("wrongpass received, resetting client");
+      reset();
+
+      return std::nullopt;
+    }
+
+    if (strcmp(_framebuffer, NO_PERM_ERR) == 0) {
+      log_e("permissions lost, resetting client");
       reset();
 
       return std::nullopt;

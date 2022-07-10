@@ -166,6 +166,7 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
 /// with the user identified in the request cookie.
 pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
   let worker = request.state();
+  let devices = worker.device_diagnostic_collection()?;
   let users = worker.users_collection()?;
 
   let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
@@ -178,35 +179,22 @@ pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide
     tide::Error::from_str(422, "bad-payload")
   })?;
 
-  let mut stream = request.state().redis().await.map_err(|error| {
-    log::warn!("unable to establish redis communication - {error}");
-    tide::Error::from_str(500, "bad-server")
-  })?;
+  let found_device = devices.find_one(bson::doc! { "id": &payload.device_id }, None).await;
 
-  let device = crate::IndexedDevice::from_redis(
-    &payload.device_id,
-    &match kramer::execute(
-      &mut stream,
-      kramer::Command::Hashes::<&str, &str>(kramer::HashCommand::Get(
-        crate::constants::REGISTRAR_ACTIVE,
-        Some(kramer::Arity::One(&payload.device_id)),
-      )),
-    )
-    .await?
-    {
-      kramer::Response::Item(kramer::ResponseValue::String(i)) => i,
-      other => {
-        log::warn!("unable to find {} - {other:?}", payload.device_id);
-        return Err(tide::Error::from_str(404, "not-found"));
-      }
-    },
-  )
-  .ok_or_else(|| {
-    log::warn!("no device for  {}", payload.device_id);
-    tide::Error::from_str(404, "not-found")
-  })?;
-
-  log::debug!("user {user:?} requesting {device:?}");
+  match found_device {
+    Ok(Some(diagnostic)) => log::info!("found device for registration - {diagnostic:?}"),
+    Ok(None) => {
+      log::warn!("unable to find '{}'", payload.device_id);
+      return Err(tide::Error::from_str(404, "not-found"));
+    }
+    Err(error) => {
+      log::warn!(
+        "unable to query for '{}' during registration - {error}",
+        payload.device_id
+      );
+      return Err(tide::Error::from_str(404, "not-found"));
+    }
+  }
 
   let query = bson::doc! { "oid": user.oid.clone() };
 
