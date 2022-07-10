@@ -18,6 +18,14 @@
 
 constexpr const char * CONFIGURING = "pending setup";
 
+const char ICN_UP_ARROW = 'A';
+const char ICN_RIGHT_ARROW = 'B';
+const char ICN_DOWN_ARROW = 'C';
+const char ICN_LEFT_ARROW = 'D';
+const char ICN_INFO = 'F';
+const char ICN_WIFI = 'J';
+const char ICN_CHAT_BUBBLE = 'N';
+
 template<class T>
 static void icon_line(T lcd, char icon, const char * message, uint8_t position = 0) {
   using lcd_color = gfx::color<typename T::pixel_type>;
@@ -50,7 +58,7 @@ static void icon_line(T lcd, char icon, const char * message, uint8_t position =
 
   // Draw the message text
   gfx::srect16 rect = text_font.measure_text((gfx::ssize16) dims, {0, 0}, message, text_scale).bounds();
-  gfx::draw::text(bitmap, rect.offset(30, 0), {0, 0}, message, text_font, text_scale, fg, bg, false);
+  gfx::draw::text(bitmap, rect.offset(38, 0), {0, 0}, message, text_font, text_scale, fg, bg, false);
 
   // Finish by drawing the bitmap into the actual screen.
   switch (position) {
@@ -92,16 +100,17 @@ class View final {
 
       if (const ConfiguringState * conf = std::get_if<ConfiguringState>(&state.active)) {
         rm_footer = true;
-        icon_line(_lcd, 'F', "configuring");
+        icon_line(_lcd, ICN_INFO, "configuring");
       } else if (const ConnectingState * con = std::get_if<ConnectingState>(&state.active)) {
         rm_footer = true;
-        icon_line(_lcd, 'E', "connecting");
+        icon_line(_lcd, ICN_WIFI, "connecting");
       } else if (const ConnectedState * con = std::get_if<ConnectedState>(&state.active)) {
         rm_footer = true;
         icon_line(_lcd, 'I', "connected");
       } else if (const WorkingState * work = std::get_if<WorkingState>(&state.active)) {
         bool has_message = work->message_size > 0;
-        icon_line(_lcd, has_message ? 'A' : 'B', has_message ? work->message_content : "working");
+        char icon = has_message ? ICN_CHAT_BUBBLE : ICN_UP_ARROW;
+        icon_line(_lcd, icon, has_message ? work->message_content : "working");
 
         if (work->id_size > 0) {
           // draw footer
@@ -116,7 +125,7 @@ class View final {
             rm_footer = false;
           }
 
-          icon_line(_lcd, 'A', work->id_content, 1);
+          icon_line(_lcd, ICN_INFO, work->id_content, 1);
         }
 
         return;

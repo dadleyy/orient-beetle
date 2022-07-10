@@ -48,17 +48,17 @@ jobs:
         run: pio run -e release
 
       - name: "bundle: prepare-dir"
-        run: mkdir -p dist/beetle-pio
+        run: mkdir -p beetle-pio-dist
 
       - name: "bundle: copy-bin"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.bin.pgp .pio/build/release/firmware.bin
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.bin.pgp .pio/build/release/firmware.bin
       - name: "bundle: copy-map"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.map.pgp .pio/build/release/firmware.map
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.map.pgp .pio/build/release/firmware.map
       - name: "bundle: copy-elf"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o dist/beetle-pio/firmware.elf.pgp .pio/build/release/firmware.elf
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.elf.pgp .pio/build/release/firmware.elf
 
       - name: "bundle: create"
-        run: tar cvzf beetle-pio-$BEETLE_VERSION.tar.gz dist
+        run: tar cvzf beetle-pio-$BEETLE_VERSION.tar.gz beetle-pio-dist
 
       - uses: actions/upload-artifact@v3
         with:
