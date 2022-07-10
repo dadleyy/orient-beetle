@@ -33,6 +33,12 @@ if os.path.exists(".env") and os.path.isfile(".env"):
             redis_port = get_value(line)
             print("found port '%s'" % redis_port)
 
+if "REDIS_AUTH_USERNAME" in os.environ:
+    redis_auth_username = os.environ["REDIS_AUTH_USERNAME"]
+
+if "REDIS_AUTH_PASSWORD" in os.environ:
+    redis_auth_username = os.environ["REDIS_AUTH_PASSWORD"]
+
 if "REDIS_PORT" in os.environ:
     redis_port = os.environ["REDIS_PORT"]
 
