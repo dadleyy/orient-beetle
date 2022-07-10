@@ -1,4 +1,4 @@
-module Route exposing (Message(..), Route(..), RouteInitialization(..), fromUrl, update, view)
+module Route exposing (Message(..), Route(..), RouteInitialization(..), fromUrl, subscriptions, update, view)
 
 import Environment
 import Html
@@ -25,6 +25,16 @@ type Message
     = HomeMessage Route.Home.Message
     | DeviceMessage Route.Device.Message
     | DeviceRegistrationMessage Route.DeviceRegistration.Message
+
+
+subscriptions : Route -> Sub Message
+subscriptions route =
+    case route of
+        Device deviceModel ->
+            Sub.map DeviceMessage (Route.Device.subscriptions deviceModel)
+
+        _ ->
+            Sub.none
 
 
 view : Environment.Environment -> Route -> Html.Html Message

@@ -16,4 +16,5 @@ pub struct DeviceDiagnostic {
   pub first_seen: Option<chrono::DateTime<chrono::Utc>>,
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub last_seen: Option<chrono::DateTime<chrono::Utc>>,
+  pub sent_message_count: Option<u32>,
 }

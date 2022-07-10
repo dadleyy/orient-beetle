@@ -21,6 +21,17 @@ struct RegistrationResponse {
   id: String,
 }
 
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct DeviceInfoPayload {
+  id: String,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  first_seen: Option<chrono::DateTime<chrono::Utc>>,
+  #[serde(with = "chrono::serde::ts_milliseconds_option")]
+  last_seen: Option<chrono::DateTime<chrono::Utc>>,
+  sent_message_count: Option<u32>,
+  current_queue_count: i64,
+}
+
 async fn parse_message(request: &mut tide::Request<super::worker::Worker>) -> tide::Result<MessagePayload> {
   request.body_json::<MessagePayload>().await
 }
@@ -29,6 +40,7 @@ async fn parse_message(request: &mut tide::Request<super::worker::Worker>) -> ti
 ///
 /// Sends a message to the device.
 pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
+  let devices = request.state().device_diagnostic_collection()?;
   let user = request.state().request_authority(&request).await?.ok_or_else(|| {
     log::warn!("no user found");
     tide::Error::from_str(404, "missing-player")
@@ -60,6 +72,17 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
     )))
     .await?;
 
+  if let Err(error) = devices
+    .update_one(
+      bson::doc! { "id": &body.device_id },
+      bson::doc! { "$inc": { "sent_message_count": 1 } },
+      None,
+    )
+    .await
+  {
+    log::warn!("unable to update device diagnostic total message count - {error}");
+  }
+
   tide::Body::from_json(&RegistrationResponse { id: body.device_id })
     .map(|body| tide::Response::builder(200).body(body).build())
 }
@@ -86,6 +109,25 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
     return Err(tide::Error::from_str(400, "not-found"));
   }
 
+  let current_queue_len = match kramer::execute(
+    &mut request.state().redis().await?,
+    &kramer::Command::List::<&String, &String>(kramer::ListCommand::Len(&crate::redis::device_message_queue_id(
+      &query.id,
+    ))),
+  )
+  .await
+  {
+    Ok(kramer::Response::Item(kramer::ResponseValue::Integer(i))) => i,
+    Ok(response) => {
+      log::warn!("unrecognized device message queue len response  - {response:?}");
+      0
+    }
+    Err(error) => {
+      log::warn!("queue len error - {error:?}");
+      0
+    }
+  };
+
   let device_diagnostic = worker
     .device_diagnostic_collection()?
     .find_one(bson::doc! { "id": &query.id }, None)
@@ -93,10 +135,23 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
     .map_err(|error| {
       log::warn!("unable to query device diags - {error}");
       tide::Error::from_str(500, "server-error")
+    })?
+    .ok_or_else(|| {
+      log::warn!("unable to find device diag matching");
+      tide::Error::from_str(404, "not-found")
     })?;
+
   log::debug!("user {:?} requesting info for device {query:?}", user);
 
-  tide::Body::from_json(&device_diagnostic).map(|body| tide::Response::builder(200).body(body).build())
+  let info = DeviceInfoPayload {
+    id: device_diagnostic.id,
+    last_seen: device_diagnostic.last_seen,
+    first_seen: device_diagnostic.first_seen,
+    sent_message_count: device_diagnostic.sent_message_count,
+    current_queue_count: current_queue_len,
+  };
+
+  tide::Body::from_json(&info).map(|body| tide::Response::builder(200).body(body).build())
 }
 
 /// Route: unregister

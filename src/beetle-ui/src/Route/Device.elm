@@ -1,15 +1,28 @@
-module Route.Device exposing (Message(..), Model, default, update, view)
+module Route.Device exposing (Message(..), Model, default, subscriptions, update, view)
 
 import Environment
 import Html
 import Html.Attributes
 import Html.Events
 import Http
+import Json.Decode
 import Json.Encode
+import Time
+
+
+type alias DeviceInfoResponse =
+    { id : String
+    , last_seen : Int
+    , first_seen : Int
+    , sent_message_count : Int
+    , current_queue_count : Int
+    }
 
 
 type Message
     = Loaded (Result Http.Error ())
+    | LoadedDeviceInfo (Result Http.Error DeviceInfoResponse)
+    | Tick Time.Posix
     | AttemptMessage
     | SetMessage String
 
@@ -17,12 +30,18 @@ type Message
 type alias Model =
     { id : String
     , newMessage : ( String, Maybe (Maybe String) )
+    , loadedDevice : Maybe (Result Http.Error DeviceInfoResponse)
     }
 
 
 setMessage : Model -> String -> Model
 setMessage model message =
     { model | newMessage = ( message, Nothing ) }
+
+
+subscriptions : Model -> Sub Message
+subscriptions model =
+    Time.every 1000 Tick
 
 
 getMessage : Model -> String
@@ -52,6 +71,18 @@ view model env =
                 [ Html.Events.onClick AttemptMessage, Html.Attributes.disabled (isBusy model) ]
                 [ Html.text "send" ]
             ]
+        , case model.loadedDevice of
+            Nothing ->
+                Html.div [ Html.Attributes.class "mt-2 pt-2" ] [ Html.text "Loading ..." ]
+
+            Just (Err _) ->
+                Html.div [ Html.Attributes.class "mt-2 pt-2" ] [ Html.text "Failed." ]
+
+            Just (Ok info) ->
+                Html.div [ Html.Attributes.class "mt-2 pt-2" ]
+                    [ Html.div [] [ Html.text ("total messages sent: " ++ String.fromInt info.sent_message_count) ]
+                    , Html.div [] [ Html.text ("current messages queued: " ++ String.fromInt info.current_queue_count) ]
+                    ]
         ]
 
 
@@ -70,19 +101,35 @@ postMessage env model =
         }
 
 
+infoDecoder : Json.Decode.Decoder DeviceInfoResponse
+infoDecoder =
+    Json.Decode.map5 DeviceInfoResponse
+        (Json.Decode.field "id" Json.Decode.string)
+        (Json.Decode.field "last_seen" Json.Decode.int)
+        (Json.Decode.field "first_seen" Json.Decode.int)
+        (Json.Decode.field "sent_message_count" Json.Decode.int)
+        (Json.Decode.field "current_queue_count" Json.Decode.int)
+
+
 fetchDevice : Environment.Environment -> String -> Cmd Message
 fetchDevice env id =
     Http.get
         { url = Environment.apiRoute env ("device-info?id=" ++ id)
-        , expect = Http.expectWhatever Loaded
+        , expect = Http.expectJson LoadedDeviceInfo infoDecoder
         }
 
 
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
+        Tick _ ->
+            ( model, fetchDevice env model.id )
+
         SetMessage messageText ->
             ( setMessage model messageText, Cmd.none )
+
+        LoadedDeviceInfo infoResult ->
+            ( { model | loadedDevice = Just infoResult }, Cmd.none )
 
         Loaded _ ->
             ( { model | newMessage = ( "", Nothing ) }, Cmd.none )
@@ -93,4 +140,4 @@ update env message model =
 
 default : Environment.Environment -> String -> ( Model, Cmd Message )
 default env id =
-    ( { id = id, newMessage = ( "", Nothing ) }, Cmd.batch [ fetchDevice env id ] )
+    ( { id = id, newMessage = ( "", Nothing ), loadedDevice = Nothing }, Cmd.batch [ fetchDevice env id ] )

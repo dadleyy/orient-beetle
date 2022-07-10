@@ -133,8 +133,8 @@ update message model =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
-    Sub.none
+subscriptions model =
+    Maybe.withDefault Sub.none (Maybe.map (Sub.map RouteMessage) (Maybe.map Route.subscriptions model.route))
 
 
 header : Model -> Html.Html Msg
@@ -145,7 +145,7 @@ header model =
 
         Just id ->
             Html.div [ Html.Attributes.class "cont-dark px-4 py-3 flex items-center" ]
-                [ Html.div [] [ Html.text (String.concat [ "oid: ", id ]) ]
+                [ Html.div [ Html.Attributes.class "truncate" ] [ Html.text (String.concat [ "oid: ", id ]) ]
                 , Html.div [ Html.Attributes.class "ml-auto" ]
                     [ Html.a
                         [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ]
@@ -192,7 +192,7 @@ footer : Model -> Html.Html Msg
 footer model =
     Html.div [ Html.Attributes.class "cont-dark px-4 py-2 flex" ]
         [ Html.div [] [ externalLink "https://github.com/dadleyy/orient-beetle" "github" ]
-        , Html.div [ Html.Attributes.class "ml-auto" ]
+        , Html.div [ Html.Attributes.class "ml-auto truncate" ]
             [ Environment.statusFooter model.env |> Html.map EnvironmentMessage ]
         ]
 
