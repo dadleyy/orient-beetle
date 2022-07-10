@@ -37,7 +37,7 @@ if "REDIS_AUTH_USERNAME" in os.environ:
     redis_auth_username = os.environ["REDIS_AUTH_USERNAME"]
 
 if "REDIS_AUTH_PASSWORD" in os.environ:
-    redis_auth_username = os.environ["REDIS_AUTH_PASSWORD"]
+    redis_auth_password = os.environ["REDIS_AUTH_PASSWORD"]
 
 if "REDIS_PORT" in os.environ:
     redis_port = os.environ["REDIS_PORT"]
