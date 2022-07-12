@@ -4,7 +4,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdint>
+#include <array>
 #include <variant>
+#include "esp32-hal-log.h"
 
 struct UnknownState final {
   UnknownState() = default;
@@ -49,6 +51,16 @@ struct ConnectedState final {
   ConnectedState& operator=(const ConnectedState&) = delete;
 };
 
+struct Message final {
+  Message();
+
+  Message(Message&& other) = default;
+  Message& operator=(Message&& other) = default;
+
+  Message(const Message&) = delete;
+  Message& operator=(const Message&) = delete;
+};
+
 struct WorkingState final {
   constexpr static const uint16_t WORKING_BUFFER_SIZE = 2048;
   constexpr static const uint16_t MAX_ID_SIZE = 40;
@@ -60,6 +72,8 @@ struct WorkingState final {
 
   WorkingState(const WorkingState&) = delete;
   WorkingState& operator=(const WorkingState&) = delete;
+
+  std::array<Message, 5> messages;
 
   char * message_content;
   uint16_t message_size;

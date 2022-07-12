@@ -101,6 +101,8 @@ namespace redismanager {
       _certified = ECertificationStage::CerificationRequested;
 
       log_d("attempting to certify redis connection");
+
+      // TODO: figure out how to maybe read this elsewhere to make this library more portable?
       extern const uint8_t redis_root_ca[] asm("_binary_embeds_redis_host_root_ca_pem_start");
 
       _client.setCACert((char *) redis_root_ca);
@@ -115,14 +117,14 @@ namespace redismanager {
 
       size_t stored_id_len = _preferences->getString("device-id", _device_id, MAX_ID_SIZE);
 
+      // If we have a stored device id in our preferences/persistent memory, attempt to authorize
+      // with it and move into the authorization requested stage.
       if (stored_id_len > 0) {
         _connected_with_cached_id = true;
         _device_id_len = stored_id_len;
+
         log_d("has stored device id '%s', trying it out.", _device_id);
 
-        _certified = ECertificationStage::Identified;
-
-        log_d("writing auth command with new id %s", _device_id);
         // Now that we have a valid device id, authorize as that.
         char * auth_command = (char *) malloc(sizeof(char) * 256);
         memset(auth_command, '\0', 256);
@@ -135,16 +137,15 @@ namespace redismanager {
           _device_id
         );
         _client.print(auth_command);
-        log_d("\n%s\n", auth_command);
         free(auth_command);
 
+        _certified = ECertificationStage::AuthorizationRequested;
         return Manager::EManagerMessage::IdentificationReceived;
       }
 
-      // log_d("successfully connected to redis host/port ('%s')", _redis_auth);
-
       // At this point we have a valid tcp connection using tls and can start writing our redis
-      // commands. Start by sending the `AUTH` command.
+      // commands. Start by sending the `AUTH` command using the device id consumer ACL that should
+      // be safe for global use.
       char * auth_command = (char *) malloc(sizeof(char) * 256);
       memset(auth_command, '\0', 256);
       const char * redis_username = std::get<0>(_redis_auth);
@@ -205,6 +206,13 @@ namespace redismanager {
       return std::nullopt;
     }
 
+    if (strcmp(_framebuffer, OK) == 0 && _certified == ECertificationStage::AuthorizationRequested) {
+      log_d("received 'OK' during certification stage '%d'", _certified);
+      _certified = ECertificationStage::Identified;
+
+      return std::nullopt;
+    }
+
     // If we are not certified, assume this is our first `+OK` response pulled in off the 
     // `AUTH` command that was issued previously.
     if (_certified == ECertificationStage::CerificationRequested) {
@@ -215,7 +223,7 @@ namespace redismanager {
         return std::nullopt;
       }
 
-      if (strcmp(_framebuffer, "+OK\r\n") == 0) {
+      if (strcmp(_framebuffer, OK) == 0) {
         log_d("successfully authorized connection to redis");
         _certified = ECertificationStage::Certified;
 
@@ -356,7 +364,7 @@ namespace redismanager {
       _client.print(auth_command);
       free(auth_command);
 
-      write_push();
+      _certified = ECertificationStage::AuthorizationRequested;
       return Manager::EManagerMessage::IdentificationReceived;
     }
 

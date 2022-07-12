@@ -14,17 +14,23 @@ State& State::operator=(State&& other) {
   return *this;
 }
 
+Message::Message() {
+  log_d("allocating message");
+}
+
 WorkingState::WorkingState(uint16_t size):
+  messages({}),
   message_content((char *) malloc(sizeof(char) * WORKING_BUFFER_SIZE)),
   message_size(0),
   id_content((char *) malloc(sizeof(char) * MAX_ID_SIZE)),
   id_size(size) 
 {
+  log_d("creating working state");
   memset(message_content, '\0', WORKING_BUFFER_SIZE);
   memset(id_content, '\0', MAX_ID_SIZE);
 }
 
-WorkingState::WorkingState(WorkingState&& other) {
+WorkingState::WorkingState(WorkingState&& other): messages(std::move(other.messages)) {
   message_content = other.message_content;
   message_size = other.message_size;
 
@@ -39,6 +45,7 @@ WorkingState& WorkingState::operator=(WorkingState&& other) {
   // Steal the pointers
   this->message_content = other.message_content;
   this->id_content = other.id_content;
+  this->messages = std::move(other.messages);
 
   this->message_size = other.message_size;
   this->id_size = other.id_size;
