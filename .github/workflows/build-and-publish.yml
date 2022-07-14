@@ -47,10 +47,8 @@ jobs:
       - name: "pio: run"
         run: pio run -e release
 
-      - name: "ls: platformio framework bootloader"
-        run: ls -lah $HOME/.platformio/packages/framework-arduinoespressif32@3.20000.220418/tools/sdk/esp32/bin
-      - name: "ls: platformio framework partitions"
-        run: ls -lah $HOME/.platformio/packages/framework-arduinoespressif32@3.20000.220418/tools/partitions
+      - name: "ls: platformio packages"
+        run: ls -lah $HOME/.platformio/packages
 
       - name: "bundle: prepare-dir"
         run: mkdir -p beetle-pio-dist
