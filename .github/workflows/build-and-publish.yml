@@ -47,6 +47,11 @@ jobs:
       - name: "pio: run"
         run: pio run -e release
 
+      - name: "ls: platformio framework bootloader"
+        run: ls -lah $HOME/.platformio/packages/framework-arduinoespressif32@3.20000.220418/tools/sdk/esp32/bin
+      - name: "ls: platformio framework partitions"
+        run: ls -lah $HOME/.platformio/packages/framework-arduinoespressif32@3.20000.220418/tools/partitions
+
       - name: "bundle: prepare-dir"
         run: mkdir -p beetle-pio-dist
 
@@ -56,6 +61,8 @@ jobs:
         run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.map.pgp .pio/build/release/firmware.map
       - name: "bundle: copy-elf"
         run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.elf.pgp .pio/build/release/firmware.elf
+      - name: "bundle: copy-partitions"
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/partitions.bin.pgp .pio/build/release/partitions.bin
 
       - name: "bundle: create"
         run: tar cvzf beetle-pio-$BEETLE_VERSION.tar.gz beetle-pio-dist

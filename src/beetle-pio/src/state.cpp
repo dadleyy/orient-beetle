@@ -56,6 +56,24 @@ WorkingState::WorkingState(WorkingState&& other): messages(std::move(other.messa
   other.id_content = nullptr;
 }
 
+std::array<Message, WorkingState::MESSAGE_COUNT>::const_iterator WorkingState::end(void) const {
+  return messages.cend();
+}
+
+std::array<Message, WorkingState::MESSAGE_COUNT>::const_iterator WorkingState::begin(void) const {
+  return messages.cbegin();
+}
+
+Message& WorkingState::next(void) {
+  std::swap(messages[0], messages[WorkingState::MESSAGE_COUNT-1]);
+
+  for (uint8_t i = WorkingState::MESSAGE_COUNT - 1; i > 1; i--) {
+    std::swap(messages[i], messages[i-1]);
+  }
+
+  return messages[0];
+}
+
 WorkingState& WorkingState::operator=(WorkingState&& other) {
   this->id_content = other.id_content;
   this->id_size = other.id_size;

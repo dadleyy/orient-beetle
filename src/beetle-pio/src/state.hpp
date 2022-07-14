@@ -68,22 +68,28 @@ struct Message final {
 };
 
 struct WorkingState final {
-  constexpr static const uint16_t WORKING_BUFFER_SIZE = 10;
-  constexpr static const uint16_t MAX_ID_SIZE = 40;
-  static constexpr const uint8_t MESSAGE_COUNT = 5;
+  public:
+    constexpr static const uint16_t WORKING_BUFFER_SIZE = 10;
+    constexpr static const uint16_t MAX_ID_SIZE = 40;
+    static constexpr const uint8_t MESSAGE_COUNT = 5;
 
-  explicit WorkingState(uint16_t);
-  ~WorkingState();
-  WorkingState(WorkingState&&);
-  WorkingState& operator=(WorkingState&&);
+    explicit WorkingState(uint16_t);
+    ~WorkingState();
+    WorkingState(WorkingState&&);
+    WorkingState& operator=(WorkingState&&);
 
-  WorkingState(const WorkingState&) = delete;
-  WorkingState& operator=(const WorkingState&) = delete;
+    WorkingState(const WorkingState&) = delete;
+    WorkingState& operator=(const WorkingState&) = delete;
 
-  char * id_content;
-  uint16_t id_size;
+    std::array<Message, MESSAGE_COUNT>::const_iterator begin(void) const;
+    std::array<Message, MESSAGE_COUNT>::const_iterator end(void) const;
+    Message& next(void);
 
-  std::array<Message, MESSAGE_COUNT> messages;
+    char * id_content;
+    uint16_t id_size;
+
+  private:
+    std::array<Message, MESSAGE_COUNT> messages;
 };
 
 using StateT = std::variant<

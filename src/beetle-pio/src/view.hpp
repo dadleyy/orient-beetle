@@ -113,10 +113,12 @@ class View final {
       } else if (const WorkingState * work = std::get_if<WorkingState>(&state.active)) {
         bool has_message = false;
 
-        for (uint8_t i = 0; i < WorkingState::MESSAGE_COUNT; i++) {
-          if (work->messages[i].content_size > 0) {
+        uint8_t i = 0;
+        for (auto start = work->begin(); start != work->end(); start++) {
+          if (start->content_size > 0) {
             has_message = true;
-            icon_line(_lcd, ICN_CHAT_BUBBLE, work->messages[i].content, i * 40);
+            icon_line(_lcd, ICN_CHAT_BUBBLE, start->content, i * 40);
+            i += 1;
           }
         }
 
