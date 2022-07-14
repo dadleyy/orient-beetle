@@ -39,8 +39,8 @@ static void icon_line(T lcd, char icon, const char * message, uint8_t position =
 
   const gfx::open_font & text_font = TEXT_FONT;
   const gfx::open_font & icon_font = ICON_FONT;
-  float text_scale = position == 0 ? text_font.scale(30) : text_font.scale(20);
-  float icon_scale = position == 0 ? icon_font.scale(30) : icon_font.scale(20);
+  float text_scale = position == 1 ? text_font.scale(20) : text_font.scale(30);
+  float icon_scale = position == 1 ? icon_font.scale(20) : icon_font.scale(30);
 
   gfx::size16 bounds(240, 30);
   uint8_t * buffer = (uint8_t*) malloc(bmp_type::sizeof_buffer(bounds));
@@ -62,11 +62,14 @@ static void icon_line(T lcd, char icon, const char * message, uint8_t position =
 
   // Finish by drawing the bitmap into the actual screen.
   switch (position) {
+    case 0:
+      gfx::draw::bitmap(lcd, (gfx::srect16) bnds, bitmap, bitmap.bounds());
+      break;
     case 1:
       gfx::draw::bitmap(lcd, (gfx::srect16) bnds.offset(0, bnds.height() - rect.height()), bitmap, bitmap.bounds());
       break;
     default:
-      gfx::draw::bitmap(lcd, (gfx::srect16) bnds, bitmap, bitmap.bounds());
+      gfx::draw::bitmap(lcd, (gfx::srect16) bnds.offset(0, position), bitmap, bitmap.bounds());
       break;
   }
 
@@ -108,9 +111,20 @@ class View final {
         rm_footer = true;
         icon_line(_lcd, 'I', "connected");
       } else if (const WorkingState * work = std::get_if<WorkingState>(&state.active)) {
-        bool has_message = work->message_size > 0;
-        char icon = has_message ? ICN_CHAT_BUBBLE : ICN_UP_ARROW;
-        icon_line(_lcd, icon, has_message ? work->message_content : "working");
+        bool has_message = false;
+
+        uint8_t i = 0;
+        for (auto start = work->begin(); start != work->end(); start++) {
+          if (start->content_size > 0) {
+            has_message = true;
+            icon_line(_lcd, ICN_CHAT_BUBBLE, start->content, i * 40);
+            i += 1;
+          }
+        }
+
+        if (!has_message) {
+          icon_line(_lcd, ICN_CHAT_BUBBLE, "working");
+        }
 
         if (work->id_size > 0) {
           // draw footer

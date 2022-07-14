@@ -54,6 +54,65 @@ isBusy model =
     Tuple.second model.newMessage |> Maybe.map (always True) |> Maybe.withDefault False
 
 
+formatDeviceMonth : Time.Month -> String
+formatDeviceMonth month =
+    case month of
+        Time.Jan ->
+            "01"
+
+        Time.Feb ->
+            "02"
+
+        Time.Mar ->
+            "03"
+
+        Time.Apr ->
+            "04"
+
+        Time.May ->
+            "05"
+
+        Time.Jun ->
+            "06"
+
+        Time.Jul ->
+            "07"
+
+        Time.Aug ->
+            "08"
+
+        Time.Sep ->
+            "09"
+
+        Time.Oct ->
+            "10"
+
+        Time.Nov ->
+            "11"
+
+        Time.Dec ->
+            "12"
+
+
+formatDeviceTime : Int -> String
+formatDeviceTime time =
+    let
+        posixValue =
+            Time.millisToPosix time
+    in
+    String.join "/"
+        [ String.fromInt (Time.toYear Time.utc posixValue)
+        , formatDeviceMonth (Time.toMonth Time.utc posixValue)
+        , String.fromInt (Time.toDay Time.utc posixValue)
+        ]
+        ++ " "
+        ++ String.join ":"
+            [ String.padLeft 2 '0' (String.fromInt (Time.toHour Time.utc posixValue))
+            , String.padLeft 2 '0' (String.fromInt (Time.toMinute Time.utc posixValue))
+            , String.padLeft 2 '0' (String.fromInt (Time.toSecond Time.utc posixValue))
+            ]
+
+
 view : Model -> Environment.Environment -> Html.Html Message
 view model env =
     Html.div
@@ -82,6 +141,8 @@ view model env =
                 Html.div [ Html.Attributes.class "mt-2 pt-2" ]
                     [ Html.div [] [ Html.text ("total messages sent: " ++ String.fromInt info.sent_message_count) ]
                     , Html.div [] [ Html.text ("current messages queued: " ++ String.fromInt info.current_queue_count) ]
+                    , Html.div [] [ Html.text ("last seen: " ++ formatDeviceTime info.last_seen ++ "UTC") ]
+                    , Html.div [] [ Html.text ("first seen: " ++ formatDeviceTime info.first_seen ++ "UTC") ]
                     ]
         ]
 

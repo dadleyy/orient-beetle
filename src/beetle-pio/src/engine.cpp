@@ -73,7 +73,9 @@ State Engine::update(State& current) {
     }
 
     log_d("received message, copying buffer to connected state");
-    w->message_size = _redis.copy(w->message_content, 2048);
+
+    Message& next = w->next();
+    next.content_size = _redis.copy(next.content, 2048);
   }
 
   return next;

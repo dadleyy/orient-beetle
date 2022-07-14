@@ -14,51 +14,77 @@ State& State::operator=(State&& other) {
   return *this;
 }
 
-Message::Message() {
+Message::Message():
+  content((char *) malloc(sizeof(char) * MAX_MESSAGE_SIZE)),
+  content_size(0) {
   log_d("allocating message");
 }
 
+Message::Message(Message&& other):
+  content(other.content),
+  content_size(other.content_size) {
+    other.content = nullptr;
+}
+
+Message& Message::operator=(Message&& other) {
+  this->content = other.content;
+  this->content_size = other.content_size;
+
+  other.content = nullptr;
+
+  return *this;
+}
+
+Message::~Message() {
+  if (content != nullptr) {
+    log_d("releasing memory content");
+    free(content);
+  }
+}
+
 WorkingState::WorkingState(uint16_t size):
-  messages({}),
-  message_content((char *) malloc(sizeof(char) * WORKING_BUFFER_SIZE)),
-  message_size(0),
   id_content((char *) malloc(sizeof(char) * MAX_ID_SIZE)),
-  id_size(size) 
-{
+  id_size(size),
+  messages({}) {
   log_d("creating working state");
-  memset(message_content, '\0', WORKING_BUFFER_SIZE);
   memset(id_content, '\0', MAX_ID_SIZE);
 }
 
 WorkingState::WorkingState(WorkingState&& other): messages(std::move(other.messages)) {
-  message_content = other.message_content;
-  message_size = other.message_size;
-
   id_content = other.id_content;
   id_size = other.id_size;
-
-  other.message_content = nullptr;
   other.id_content = nullptr;
 }
 
-WorkingState& WorkingState::operator=(WorkingState&& other) {
-  // Steal the pointers
-  this->message_content = other.message_content;
-  this->id_content = other.id_content;
-  this->messages = std::move(other.messages);
+std::array<Message, WorkingState::MESSAGE_COUNT>::const_iterator WorkingState::end(void) const {
+  return messages.cend();
+}
 
-  this->message_size = other.message_size;
+std::array<Message, WorkingState::MESSAGE_COUNT>::const_iterator WorkingState::begin(void) const {
+  return messages.cbegin();
+}
+
+Message& WorkingState::next(void) {
+  std::swap(messages[0], messages[WorkingState::MESSAGE_COUNT-1]);
+
+  for (uint8_t i = WorkingState::MESSAGE_COUNT - 1; i > 1; i--) {
+    std::swap(messages[i], messages[i-1]);
+  }
+
+  return messages[0];
+}
+
+WorkingState& WorkingState::operator=(WorkingState&& other) {
+  this->id_content = other.id_content;
   this->id_size = other.id_size;
 
-  other.message_content = nullptr;
+  this->messages = std::move(other.messages);
+
   other.id_content = nullptr;
   return *this;
 }
 
 WorkingState::~WorkingState() {
-  if (message_content != nullptr) {
-    free(message_content);
-  }
   if (id_content != nullptr) {
     free(id_content);
   }
