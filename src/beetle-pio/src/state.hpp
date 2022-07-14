@@ -8,6 +8,8 @@
 #include <variant>
 #include "esp32-hal-log.h"
 
+constexpr const uint32_t MAX_MESSAGE_SIZE = 1024;
+
 struct UnknownState final {
   UnknownState() = default;
   UnknownState(UnknownState&&) = default;
@@ -53,17 +55,22 @@ struct ConnectedState final {
 
 struct Message final {
   Message();
+  ~Message();
 
-  Message(Message&& other) = default;
-  Message& operator=(Message&& other) = default;
+  Message(Message&& other);
+  Message& operator=(Message&& other);
 
   Message(const Message&) = delete;
   Message& operator=(const Message&) = delete;
+
+  char * content;
+  uint32_t content_size;
 };
 
 struct WorkingState final {
-  constexpr static const uint16_t WORKING_BUFFER_SIZE = 2048;
+  constexpr static const uint16_t WORKING_BUFFER_SIZE = 10;
   constexpr static const uint16_t MAX_ID_SIZE = 40;
+  static constexpr const uint8_t MESSAGE_COUNT = 5;
 
   explicit WorkingState(uint16_t);
   ~WorkingState();
@@ -73,13 +80,10 @@ struct WorkingState final {
   WorkingState(const WorkingState&) = delete;
   WorkingState& operator=(const WorkingState&) = delete;
 
-  std::array<Message, 5> messages;
-
-  char * message_content;
-  uint16_t message_size;
-
   char * id_content;
   uint16_t id_size;
+
+  std::array<Message, MESSAGE_COUNT> messages;
 };
 
 using StateT = std::variant<

@@ -73,7 +73,14 @@ State Engine::update(State& current) {
     }
 
     log_d("received message, copying buffer to connected state");
-    w->message_size = _redis.copy(w->message_content, 2048);
+
+    std::swap(w->messages[0], w->messages[WorkingState::MESSAGE_COUNT-1]);
+
+    for (uint8_t i = WorkingState::MESSAGE_COUNT - 1; i > 1; i--) {
+      std::swap(w->messages[i], w->messages[i-1]);
+    }
+
+    w->messages[0].content_size = _redis.copy(w->messages[0].content, 2048);
   }
 
   return next;

@@ -6,8 +6,9 @@ const HELP_TEXT: &'static str = r#"beetle-cli admin interface
 
 usage:
     beetle-cli help
-    beetle-cli printall
-    beetle-cli write <id> <message>
+    beetle-cli printall               - prints known devices via device diagnostics.
+    beetle-cli write <id> <message>   - sends a message to <id>.
+    beetle-cli cleanup                - removes device acl and diagnostics based on last seen.
 "#;
 
 #[derive(PartialEq)]
@@ -98,10 +99,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
       })? {
         match cursor.deserialize_current() {
           Ok(device) => {
-            println!(
-              "- {}. last seen {:?}. first seen {:?}",
-              device.id, device.last_seen, device.first_seen
-            )
+            println!("- {device}")
           }
           Err(error) => log::warn!("unable to deserialize diagnostic - {error}"),
         }
@@ -149,7 +147,12 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
 
       let count = devices.len();
 
-      log::info!("found {count} diagnostics");
+      if count == 0 {
+        println!("all devices active within cuttof time!");
+        return Ok(());
+      }
+
+      println!("- found {count} diagnostics with expired cutoffs, deleting diagnostics");
 
       if count > 0 {
         let result = collection
@@ -161,19 +164,21 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
           })?;
 
         log::info!("delete complete - {:?}", result);
-      }
 
-      // Cleanup the acl entries of these dead devices.
-      kramer::execute(
-        &mut stream,
-        kramer::Command::Acl::<String, &str>(kramer::acl::AclCommand::DelUser(kramer::Arity::Many(
-          devices.iter().map(|device| device.id.clone()).collect(),
-        ))),
-      )
-      .await?;
+        // Cleanup the acl entries of these dead devices.
+        kramer::execute(
+          &mut stream,
+          kramer::Command::Acl::<String, &str>(kramer::acl::AclCommand::DelUser(kramer::Arity::Many(
+            devices.iter().map(|device| device.id.clone()).collect(),
+          ))),
+        )
+        .await?;
+      }
 
       // Cleanup our redis hash and set.
       for dev in devices {
+        println!("  - cleaning up redis resources for device {}", dev.id);
+
         kramer::execute(
           &mut stream,
           kramer::Command::Hashes::<&str, &str>(kramer::HashCommand::Del(
