@@ -63,6 +63,10 @@ jobs:
         run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.elf.pgp .pio/build/release/firmware.elf
       - name: "bundle: copy-partitions"
         run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/partitions.bin.pgp .pio/build/release/partitions.bin
+      - name: "bundle: copy-bootloader"
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/bootloader.bin.pgp $HOME/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin/bootloader_dio_40m.bin
+      - name: "bundle: copy-apploader"
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/apploader.bin.pgp $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
 
       - name: "bundle: create"
         run: tar cvzf beetle-pio-$BEETLE_VERSION.tar.gz beetle-pio-dist
