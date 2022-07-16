@@ -130,7 +130,19 @@ jobs:
           name: "beetle-ui-${{ github.sha }}.tar.gz"
           path: "./src/beetle-ui/beetle-ui-${{ github.sha }}.tar.gz"
 
-  build-srv:
+  build-srv-osx:
+    runs-one: macos-12
+    env:
+      BEETLE_VERSION: "${{ github.sha }}"
+    defaults:
+      run:
+        working-directory: src/beetle-srv
+    steps:
+      - uses: actions/checkout@v2
+      - name: build
+        run: cargo build --release
+
+  build-srv-armv7:
     runs-on: ubuntu-latest
     container:
       image: dadleyy/rust-raspberry-pi-openssl:latest
@@ -202,7 +214,7 @@ jobs:
 
   publish:
     runs-on: ubuntu-latest
-    needs: ["build-srv", "build-ui", "build-pio", "build-updater"]
+    needs: ["build-srv-armv7", "build-srv-osx", "build-ui", "build-pio", "build-updater"]
     steps:
       - uses: actions/download-artifact@v3
         with:
