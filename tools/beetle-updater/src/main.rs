@@ -4,23 +4,23 @@ use clap::Parser;
 use serde::Deserialize;
 use std::io::{Error, ErrorKind, Result};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct UpdaterConfigArtifactNaming {
   starts_with: String,
   ends_with: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct UpdaterConfigExtractionRule {
   destination: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct UpdaterConfigSystemdRule {
   service: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct GithubUpdaterConfig {
   name: String,
   repo: String,
@@ -30,22 +30,36 @@ struct GithubUpdaterConfig {
   systemd: Option<UpdaterConfigSystemdRule>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "kind")]
 enum UpdaterUnitConfig {
   #[serde(rename = "github-release-tarball")]
   GithubRelease(GithubUpdaterConfig),
 }
 
-#[derive(Deserialize, Debug)]
+impl UpdaterUnitConfig {
+  fn name(&self) -> String {
+    match self {
+      UpdaterUnitConfig::GithubRelease(inner) => inner.name.clone(),
+    }
+  }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct UpdaterServerConfig {
+  addr: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 struct UpdaterPollerConfig {
   delay_seconds: u64,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct UpdaterConfig {
   units: Option<Vec<UpdaterUnitConfig>>,
   poller: UpdaterPollerConfig,
+  server: Option<UpdaterServerConfig>,
 }
 
 #[derive(Parser, Deserialize)]
@@ -75,8 +89,25 @@ struct GithubReleaseLatestResponse {
 #[derive(Debug, Default)]
 enum InitialRunFlags {
   Update,
+
+  ToVersion(String),
+
   #[default]
   Nothing,
+}
+
+#[derive(Debug, Default)]
+enum ManualRunRequest {
+  #[default]
+  All,
+
+  Specific(String, Option<String>),
+}
+
+#[derive(Deserialize, Debug)]
+struct ManualRunRequestPayload {
+  name: Option<String>,
+  version: Option<String>,
 }
 
 async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -> Result<()> {
@@ -109,8 +140,13 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
 
   log::debug!("running github release update check (@ {url})");
 
+  let release_url = match flags {
+    InitialRunFlags::ToVersion(version) => format!("{}/releases/tags/{}", url, version),
+    _ => format!("{}/releases/latest", url),
+  };
+
   // Use the `/releases/latest` api route to fetch whatever release was latest.
-  let mut response = surf::get(format!("{}/releases/latest", url))
+  let mut response = surf::get(&release_url)
     .header("Authorization", format!("token {auth_token}"))
     .await
     .map_err(|error| Error::new(ErrorKind::Other, format!("failed to fetch latest - {error}")))
@@ -119,6 +155,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
         Ok(res)
       } else {
         let reason = res.status().canonical_reason();
+        log::warn!("unable to find '{}' -> {reason}", release_url);
         Err(Error::new(ErrorKind::Other, format!("{reason}")))
       }
     })?;
@@ -144,7 +181,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
     current_version,
     semver::Version::parse(latest.name.trim_start_matches("v")).ok(),
   ) {
-    (InitialRunFlags::Update, _, _) => true,
+    (InitialRunFlags::Update, _, _) | (InitialRunFlags::ToVersion(_), _, _) => true,
 
     (_, None, Some(next)) => {
       log::warn!("no current version found, assuming valid update to {next}");
@@ -333,13 +370,20 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
   Ok(())
 }
 
-async fn run(mut config: UpdaterConfig, mut flags: InitialRunFlags) -> Result<()> {
+async fn run(mut config: UpdaterConfig, receiver: async_std::channel::Receiver<ManualRunRequest>) -> Result<()> {
   let mut interval = async_std::stream::interval(std::time::Duration::from_secs(config.poller.delay_seconds));
 
   log::info!("entering working loop for config: {config:#?}");
 
   loop {
     interval.next().await;
+
+    // Attempt to pull a message from our receiver in a non-blocking way.
+    let message = receiver
+      .try_recv()
+      .map(Some)
+      .or_else(|error| if error.is_closed() { Err(error) } else { Ok(None) })
+      .map_err(|error| Error::new(ErrorKind::Other, format!("web listener closed - {error}")))?;
 
     let units = config
       .units
@@ -350,19 +394,27 @@ async fn run(mut config: UpdaterConfig, mut flags: InitialRunFlags) -> Result<()
     let mut next = Vec::with_capacity(units.len());
 
     for unit in units {
+      // Check to see if we have a message that is requesting this specific unit to run.
+      let flags = match &message {
+        Some(ManualRunRequest::Specific(name, ref version_kind)) if name == &unit.name() => version_kind
+          .as_ref()
+          .map(|version| InitialRunFlags::ToVersion(version.clone()))
+          .unwrap_or(InitialRunFlags::Update),
+        _ => InitialRunFlags::Nothing,
+      };
+
+      // Match on the unit kind and run it!
       let result = match unit {
         UpdaterUnitConfig::GithubRelease(ref config) => github_release(&config, &flags).await,
       };
 
       if let Err(error) = result {
-        log::warn!("updater failed on unit - {unit:?} - {error}");
+        log::warn!("updater failed on unit - '{}' - {error}", unit.name());
         continue;
       }
 
       next.push(unit);
     }
-
-    flags = InitialRunFlags::default();
 
     if next.len() == 0 {
       return Err(Error::new(ErrorKind::Other, "no units left"));
@@ -370,6 +422,55 @@ async fn run(mut config: UpdaterConfig, mut flags: InitialRunFlags) -> Result<()
 
     config.units = Some(next);
   }
+}
+
+async fn attempt_run(mut request: tide::Request<async_std::channel::Sender<ManualRunRequest>>) -> tide::Result {
+  log::info!("handling run api request");
+
+  let body = request.body_json::<ManualRunRequestPayload>().await?;
+
+  let message = match (body.name, body.version) {
+    (None, None) => ManualRunRequest::All,
+    (Some(name), None) => ManualRunRequest::Specific(name, None),
+    (Some(name), Some(version)) => ManualRunRequest::Specific(name, Some(version)),
+    (None, Some(_)) => {
+      log::warn!("received version withhout a name, skipping");
+      return Err(tide::Error::from_str(422, "missing 'name' for specific version"));
+    }
+  };
+
+  log::info!("parsed request body - {message:?}");
+
+  if let Err(error) = request.state().send(message).await {
+    log::warn!("unable to send from api - {error}");
+  }
+
+  Ok(tide::Response::new(200))
+}
+
+async fn listen(config: UpdaterServerConfig, sink: async_std::channel::Sender<ManualRunRequest>) -> Result<()> {
+  let mut app = tide::with_state(sink.clone());
+
+  app.at("/run").post(attempt_run);
+
+  let addr = &config.addr;
+  log::info!("http server listening on '{}'", addr);
+
+  // Start our async web listener while _also_ spawning a future that will resolve if our sink
+  // channel is ever closed.
+  futures_lite::future::race(app.listen(addr), async {
+    let mut interval = async_std::stream::interval(std::time::Duration::from_millis(10));
+
+    loop {
+      interval.next().await;
+
+      if sink.is_closed() {
+        log::warn!("manual run sink appears closed, terminating api");
+        return Ok(());
+      }
+    }
+  })
+  .await
 }
 
 fn main() -> Result<()> {
@@ -382,11 +483,24 @@ fn main() -> Result<()> {
   let config_content = std::fs::read(&options.config)?;
   let config = toml::from_slice::<UpdaterConfig>(&config_content)?;
 
-  let mut flags = InitialRunFlags::default();
+  let (run_sender, run_receiver) = async_std::channel::unbounded();
 
-  if options.run_immediately {
-    flags = InitialRunFlags::Update;
-  }
+  let listener_future = async {
+    if options.run_immediately {
+      run_sender.send(ManualRunRequest::default()).await.map_err(|error| {
+        log::warn!("unable to sent initial run - {error}");
+        Error::new(ErrorKind::Other, format!("bad send - {error}"))
+      })?;
+    }
 
-  futures_lite::future::block_on(ex.run(run(config, flags)))
+    match config.clone().server.take() {
+      Some(config) => listen(config, run_sender).await,
+      None => Ok(()),
+    }
+  };
+
+  let runner_future = run(config.clone(), run_receiver);
+  let zipped_futures = futures_lite::future::zip(runner_future, listener_future);
+  let (runner_result, listener_result) = futures_lite::future::block_on(ex.run(zipped_futures));
+  runner_result.and(listener_result)
 }

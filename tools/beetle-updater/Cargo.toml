@@ -10,6 +10,7 @@ log = { version = "^0.4" }
 toml = { version = "^0.5" }
 serde = { version = "^1.0" }
 surf = { version = "^2.3.0" }
+tide = { version = "^0.16" }
 serde_json = { version = "^1.0" }
 async-std = { version = "^1.12.0", features = ["unstable"] }
 async-executor = { version = "^1.4.1" }
