@@ -16,12 +16,18 @@ struct UpdaterConfigExtractionRule {
 }
 
 #[derive(Deserialize, Debug)]
+struct UpdaterConfigSystemdRule {
+  service: String,
+}
+
+#[derive(Deserialize, Debug)]
 struct GithubUpdaterConfig {
   name: String,
   repo: String,
   semver_storage: String,
   artifact_naming: UpdaterConfigArtifactNaming,
   extraction: UpdaterConfigExtractionRule,
+  systemd: Option<UpdaterConfigSystemdRule>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -32,8 +38,14 @@ enum UpdaterUnitConfig {
 }
 
 #[derive(Deserialize, Debug)]
+struct UpdaterPollerConfig {
+  delay_seconds: u64,
+}
+
+#[derive(Deserialize, Debug)]
 struct UpdaterConfig {
   units: Option<Vec<UpdaterUnitConfig>>,
+  poller: UpdaterPollerConfig,
 }
 
 #[derive(Parser, Deserialize)]
@@ -225,9 +237,15 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
   };
 
   let writer_future = async {
+    let mut now = std::time::Instant::now();
+
     loop {
-      async_std::task::sleep(std::time::Duration::from_secs(2)).await;
-      log::info!("still downloading...");
+      async_std::task::sleep(std::time::Duration::from_millis(50)).await;
+
+      if now.elapsed().as_secs() >= 2 {
+        log::info!("still downloading...");
+        now = std::time::Instant::now();
+      }
 
       if let Err(async_std::channel::TryRecvError::Closed) = receiver.try_recv() {
         break;
@@ -295,11 +313,28 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
   let mut file = async_std::fs::File::create(&config.semver_storage).await?;
   async_std::write!(&mut file, "{}", latest.name).await?;
 
+  if let Some(ref service) = config.systemd.as_ref().map(|systemd| &systemd.service) {
+    log::debug!("attempting to restart service '{service}'");
+
+    let output = async_std::process::Command::new("systemctl")
+      .arg("restart")
+      .arg(service)
+      .output()
+      .await?;
+
+    if output.status.success() {
+      log::info!("successfully restarted '{service}'");
+      return Ok(());
+    }
+
+    log::warn!("unable to restart service - {:?}", String::from_utf8(output.stderr));
+  }
+
   Ok(())
 }
 
 async fn run(mut config: UpdaterConfig, mut flags: InitialRunFlags) -> Result<()> {
-  let mut interval = async_std::stream::interval(std::time::Duration::from_secs(1));
+  let mut interval = async_std::stream::interval(std::time::Duration::from_secs(config.poller.delay_seconds));
 
   log::info!("entering working loop for config: {config:#?}");
 
