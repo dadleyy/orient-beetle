@@ -198,7 +198,7 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: "beetle-updater-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
-          path: "./src/beetle-srv/beetle-updater-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
+          path: "./tools/beetle-updater/beetle-updater-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
 
   publish:
     runs-on: ubuntu-latest
