@@ -91,11 +91,14 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
 ///
 /// Returns basic info about the device.
 pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result {
+  let mut now = std::time::Instant::now();
   let worker = request.state();
+
   let user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("no user found");
     tide::Error::from_str(404, "missing-player")
   })?;
+
   let query = request.query::<LookupQuery>()?;
 
   if user
@@ -109,13 +112,14 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
     return Err(tide::Error::from_str(400, "not-found"));
   }
 
-  let current_queue_len = match kramer::execute(
-    &mut request.state().redis().await?,
-    &kramer::Command::List::<&String, &String>(kramer::ListCommand::Len(&crate::redis::device_message_queue_id(
-      &query.id,
-    ))),
-  )
-  .await
+  log::debug!("user loaded in {}ms", now.elapsed().as_millis());
+  now = std::time::Instant::now();
+
+  let current_queue_len = match worker
+    .command(&kramer::Command::List::<&String, &String>(kramer::ListCommand::Len(
+      &crate::redis::device_message_queue_id(&query.id),
+    )))
+    .await
   {
     Ok(kramer::Response::Item(kramer::ResponseValue::Integer(i))) => i,
     Ok(response) => {
@@ -127,6 +131,9 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
       0
     }
   };
+
+  log::debug!("device queue len loaded in {}ms", now.elapsed().as_millis());
+  now = std::time::Instant::now();
 
   let device_diagnostic = worker
     .device_diagnostic_collection()?
@@ -141,7 +148,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
       tide::Error::from_str(404, "not-found")
     })?;
 
-  log::debug!("user {:?} requesting info for device {query:?}", user);
+  log::debug!("device diagnostic loaded in {}ms", now.elapsed().as_millis());
 
   let info = DeviceInfoPayload {
     id: device_diagnostic.id,

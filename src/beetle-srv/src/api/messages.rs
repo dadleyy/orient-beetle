@@ -7,22 +7,19 @@ struct MessagePayload {
 }
 
 pub async fn send_message(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
-  let mut stream = request.state().redis().await?;
-
   let payload = request.body_json::<MessagePayload>().await.map_err(|err| {
     log::warn!("invalid payload - {err}");
     err
   })?;
+  let worker = request.state();
 
   log::debug!("message payload {payload:?}");
-  let find_result = kramer::execute(
-    &mut stream,
-    kramer::Command::Sets(kramer::SetCommand::IsMember(
+  let find_result = worker
+    .command(&kramer::Command::Sets(kramer::SetCommand::IsMember(
       crate::constants::REGISTRAR_INDEX,
       &payload.device,
-    )),
-  )
-  .await?;
+    )))
+    .await?;
 
   let found = match find_result {
     kramer::Response::Item(kramer::ResponseValue::Integer(1)) => true,
@@ -36,15 +33,13 @@ pub async fn send_message(mut request: tide::Request<super::worker::Worker>) -> 
     return Ok(tide::Response::new(404));
   }
 
-  kramer::execute(
-    &mut stream,
-    kramer::Command::List(kramer::ListCommand::Push(
+  worker
+    .command(&kramer::Command::List(kramer::ListCommand::Push(
       (kramer::Side::Right, kramer::Insertion::Always),
       format!("ob:{}", payload.device),
       kramer::Arity::One(&payload.message),
-    )),
-  )
-  .await?;
+    )))
+    .await?;
 
   Ok("".into())
 }

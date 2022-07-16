@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
-use std::io::{Error, ErrorKind, Result};
 
 mod auth;
 mod claims;
 mod devices;
 mod messages;
 mod worker;
+
+pub use worker::Worker;
 
 /// These configuration definitions makes it easy for the web binary to
 /// deserialize a configuration file (e.g toml) and have everything ready
@@ -20,29 +21,10 @@ pub struct WebConfiguration {
 
 #[derive(Deserialize)]
 pub struct Configuration {
-  web: WebConfiguration,
-  redis: crate::config::RedisConfiguration,
-  auth0: crate::config::Auth0Configuration,
-  mongo: crate::config::MongoConfiguration,
-}
-
-impl Configuration {
-  pub async fn worker(self) -> Result<worker::Worker> {
-    // Attempt to connect to mongo early.
-    let mongo_options = mongodb::options::ClientOptions::parse(&self.mongo.url)
-      .await
-      .map_err(|error| Error::new(ErrorKind::Other, format!("failed mongodb connection - {error}")))?;
-
-    let mongo = mongodb::Client::with_options(mongo_options)
-      .map_err(|error| Error::new(ErrorKind::Other, format!("failed mongodb connection - {error}")))?;
-
-    Ok(worker::Worker {
-      web_configuration: self.web,
-      redis_configuration: self.redis,
-      auth0_configuration: self.auth0,
-      mongo: (mongo, self.mongo),
-    })
-  }
+  pub(self) web: WebConfiguration,
+  pub(self) redis: crate::config::RedisConfiguration,
+  pub(self) auth0: crate::config::Auth0Configuration,
+  pub(self) mongo: crate::config::MongoConfiguration,
 }
 
 #[derive(Serialize, Debug)]

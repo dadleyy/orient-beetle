@@ -8,8 +8,9 @@ async fn run(addr: String) -> Result<()> {
     Error::new(ErrorKind::Other, "bad-config")
   })?;
 
-  let worker = config.worker().await?;
+  let worker = beetle::api::Worker::from_config(config).await?;
 
+  log::info!("starting worker @ {addr}");
   beetle::api::new(worker).listen(&addr).await
 }
 

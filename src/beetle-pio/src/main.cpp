@@ -26,11 +26,11 @@ extern const uint32_t redis_port;
 extern const char * redis_auth_username;
 extern const char * redis_auth_password;
 
-using bus_type = arduino::tft_spi<VSPI, LCD_SS_PIN, SPI_MODE0, (240 * 320) * 2 + 8>;
+using bus_type = arduino::tft_spi<VSPI, LCD_PIN_NUM_SS, SPI_MODE0, (240 * 320) * 2 + 8>;
 using lcd_type = arduino::ili9341v<
-  PIN_NUM_DC,
-  PIN_NUM_RST,
-  PIN_NUM_BCKL,
+  LCD_PIN_NUM_DC,
+  LCD_PIN_NUM_RST,
+  LCD_PIN_NUM_BCKL,
   bus_type,
   LCD_ROTATION,
   LCD_BACKLIGHT_HIGH,
@@ -65,12 +65,12 @@ void setup(void) {
 #endif
 
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(PIN_NUM_RST, OUTPUT);
-  pinMode(PIN_NUM_DC, OUTPUT);
-  pinMode(LCD_SS_PIN, OUTPUT);
-  pinMode(PIN_NUM_BCKL, OUTPUT);
+  pinMode(LCD_PIN_NUM_RST, OUTPUT);
+  pinMode(LCD_PIN_NUM_DC, OUTPUT);
+  pinMode(LCD_PIN_NUM_SS, OUTPUT);
+  pinMode(LCD_PIN_NUM_BCKL, OUTPUT);
 
-  digitalWrite(PIN_NUM_BCKL, LOW);
+  digitalWrite(LCD_PIN_NUM_BCKL, LOW);
 
   unsigned char i = 0;
 
@@ -89,11 +89,11 @@ void setup(void) {
 
   log_d("boot complete, redis-config. host: %s | port: %d", redis_host, redis_port);
 
-  digitalWrite(PIN_NUM_RST, HIGH);
+  digitalWrite(LCD_PIN_NUM_RST, HIGH);
   delay(10);
-  digitalWrite(PIN_NUM_RST, LOW);
+  digitalWrite(LCD_PIN_NUM_RST, LOW);
   delay(100);
-  digitalWrite(PIN_NUM_RST, HIGH);
+  digitalWrite(LCD_PIN_NUM_RST, HIGH);
   delay(50);
 
   view.clear();
