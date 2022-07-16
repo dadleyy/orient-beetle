@@ -141,6 +141,16 @@ jobs:
       - uses: actions/checkout@v2
       - name: build
         run: cargo build --release
+      - name: prepare-bundle
+        run: mkdir -p beetle-server-dist/bin
+      - name: "populate-bundle: cli"
+        run: cp target/release/beetle-cli beetle-server-dist/bin/beetle-cli
+      - name: create-bundle
+        run: tar cvzf beetle-server-osx-$BEETLE_VERSION.tar.gz beetle-server-dist
+      - uses: actions/upload-artifact@v3
+        with:
+          name: "beetle-server-osx-${{ github.sha }}.tar.gz"
+          path: "./src/beetle-srv/beetle-server-osx-${{ github.sha }}.tar.gz"
 
   build-srv-armv7:
     runs-on: ubuntu-latest
