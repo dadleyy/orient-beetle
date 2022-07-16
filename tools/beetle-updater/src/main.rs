@@ -212,10 +212,37 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
 
   log::info!("download headers received, receiving bytes");
 
+  // Create two tasks/futures that will resolve when the entire request body has been loaded into
+  // memory. One actually polls the reading and one writes to our logs.
+  let (sender, receiver) = async_std::channel::bounded(1);
+
+  let download_future = async {
+    let result = download_response.body_bytes().await;
+    log::info!("finished download");
+    let _ = sender.send(1).await;
+    drop(sender);
+    result
+  };
+
+  let writer_future = async {
+    loop {
+      async_std::task::sleep(std::time::Duration::from_secs(2)).await;
+      log::info!("still downloading...");
+
+      if let Err(async_std::channel::TryRecvError::Closed) = receiver.try_recv() {
+        break;
+      }
+    }
+
+    true
+  };
+
+  let (bytes, _) = futures_lite::future::zip(download_future, writer_future).await;
+
   // The future awaited up to this point only implies that the header section of our http request
   // has been received. To actually load the contents of the asset file, we need to read the rest
   // of the request into memory.
-  let bytes = download_response.body_bytes().await.map_err(|error| {
+  let bytes = bytes.map_err(|error| {
     log::warn!("{error}");
     Error::new(ErrorKind::Other, "failed-download")
   })?;
