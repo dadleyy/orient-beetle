@@ -131,7 +131,7 @@ jobs:
           path: "./src/beetle-ui/beetle-ui-${{ github.sha }}.tar.gz"
 
   build-srv-osx:
-    runs-one: macos-12
+    runs-on: macos-12
     env:
       BEETLE_VERSION: "${{ github.sha }}"
     defaults:
