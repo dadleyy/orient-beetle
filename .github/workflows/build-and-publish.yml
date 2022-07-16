@@ -232,6 +232,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: ["build-srv-armv7", "build-srv-osx", "build-ui", "build-pio", "build-updater"]
     steps:
+      - uses: actions/checkout@v2
       - name: "set output: short_sha"
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
