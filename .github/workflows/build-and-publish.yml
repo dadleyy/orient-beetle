@@ -139,18 +139,21 @@ jobs:
         working-directory: src/beetle-srv
     steps:
       - uses: actions/checkout@v2
-      - name: build
+      - name: "set output: short_sha"
+        id: vars
+        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+      - name: "build"
         run: cargo build --release
-      - name: prepare-bundle
+      - name: "bundle: prepare"
         run: mkdir -p beetle-server-dist/bin
-      - name: "populate-bundle: cli"
+      - name: "bundle: cli"
         run: cp target/release/beetle-cli beetle-server-dist/bin/beetle-cli
-      - name: create-bundle
-        run: tar cvzf beetle-server-osx-$BEETLE_VERSION.tar.gz beetle-server-dist
+      - name: "bundle: create"
+        run: tar cvzf beetle-server-osx-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-server-dist
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-server-osx-${{ github.sha }}.tar.gz"
-          path: "./src/beetle-srv/beetle-server-osx-${{ github.sha }}.tar.gz"
+          name: "beetle-server-osx-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          path: "./src/beetle-srv/beetle-server-osx-${{ steps.vars.outputs.sha_short }}.tar.gz"
 
   build-srv-armv7:
     runs-on: ubuntu-latest
