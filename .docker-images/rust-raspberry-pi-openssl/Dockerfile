@@ -5,7 +5,7 @@
 # build with:
 # 
 # docker build -t dadleyy/rust-raspberry-pi-openssl:latest .
-FROM rust:1.60.0
+FROM rust:1.62.0
 LABEL homepage="https://github.com/dadleyy/orient-beetle/tree/master/.docker-images/rust-raspberry-pi-openssl"
 
 RUN apt-get update
