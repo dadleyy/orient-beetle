@@ -168,9 +168,41 @@ jobs:
           name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
           path: "./src/beetle-srv/beetle-server-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
 
+  build-updater:
+    runs-on: ubuntu-latest
+    container:
+      image: dadleyy/rust-raspberry-pi-openssl:latest
+    env:
+      BEETLE_VERSION: "${{ github.sha }}"
+    defaults:
+      run:
+        working-directory: tools/beetle-updater
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: build
+        run: cargo build --target armv7-unknown-linux-gnueabihf --release
+        env:
+          OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
+          OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
+
+      - name: prepare-bundle
+        run: mkdir -p beetle-updater-dist/bin
+
+      - name: "populate-bundle"
+        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-srv-updater beetle-updater-dist/bin/
+
+      - name: create-bundle
+        run: tar cvzf beetle-updater-armv7-unknown-linux-gnueabihf-$BEETLE_VERSION.tar.gz beetle-updater-dist
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: "beetle-updater-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
+          path: "./src/beetle-srv/beetle-updater-armv7-unknown-linux-gnueabihf-${{ github.sha }}.tar.gz"
+
   publish:
     runs-on: ubuntu-latest
-    needs: ["build-srv", "build-ui", "build-pio"]
+    needs: ["build-srv", "build-ui", "build-pio", "build-updater"]
     steps:
       - uses: actions/download-artifact@v3
         with:

@@ -1,0 +1,4 @@
+updater.toml
+*.env
+.env
+/target

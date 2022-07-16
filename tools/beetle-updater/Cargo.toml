@@ -1,0 +1,17 @@
+[package]
+name = "beetle-srv-updater"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dotenv = { version = "^0.15" }
+env_logger = { version = "^0.9" }
+log = { version = "^0.4" }
+toml = { version = "^0.5" }
+serde = { version = "^1.0" }
+surf = { version = "^2.3.0" }
+serde_json = { version = "^1.0" }
+async-std = { version = "^1.12.0", features = ["unstable"] }
+async-executor = { version = "^1.4.1" }
+futures-lite = { version = "^1.12.0" }
+clap = { version = "^3.2", features = ["derive"] }
