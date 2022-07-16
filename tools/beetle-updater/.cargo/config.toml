@@ -1,7 +1,2 @@
-[alias]
-reg = "run --bin beetle-registrar"
-web = "run --bin beetle-web"
-cli = "run --bin beetle-cli"
-
 [target.armv7-unknown-linux-gnueabihf]
 linker = "arm-linux-gnueabihf-gcc"
