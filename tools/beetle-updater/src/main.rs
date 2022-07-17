@@ -110,7 +110,13 @@ struct ManualRunRequestPayload {
   version: Option<String>,
 }
 
-async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -> Result<()> {
+#[derive(Debug)]
+enum UpdaterUnitResult {
+  Updated,
+  Nothing,
+}
+
+async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -> Result<UpdaterUnitResult> {
   let run_id = uuid::Uuid::new_v4();
   log::debug!("unit '{}' running @ {:?}", config.name, run_id);
 
@@ -205,7 +211,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
   };
 
   if should_update == false {
-    return Ok(());
+    return Ok(UpdaterUnitResult::Nothing);
   }
 
   log::info!("proceeding with update, checking destination");
@@ -222,7 +228,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
         config.artifact_naming.starts_with,
         config.artifact_naming.ends_with
       );
-      return Ok(());
+      return Ok(UpdaterUnitResult::Nothing);
     }
   };
 
@@ -388,13 +394,13 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
 
     if output.status.success() {
       log::info!("successfully restarted '{service}'");
-      return Ok(());
+      return Ok(UpdaterUnitResult::Updated);
     }
 
     log::warn!("unable to restart service - {:?}", String::from_utf8(output.stderr));
   }
 
-  Ok(())
+  Ok(UpdaterUnitResult::Updated)
 }
 
 async fn run(mut config: UpdaterConfig, receiver: async_std::channel::Receiver<ManualRunRequest>) -> Result<()> {
@@ -437,6 +443,8 @@ async fn run(mut config: UpdaterConfig, receiver: async_std::channel::Receiver<M
       let result = match unit {
         UpdaterUnitConfig::GithubRelease(ref config) => github_release(&config, &flags).await,
       };
+
+      log::info!("unit '{}' check -> {result:?}", unit.name());
 
       if let Err(error) = result {
         log::warn!("updater failed on unit - '{}' - {error}", unit.name());
