@@ -216,7 +216,14 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
     match_prefix && match_suffix
   }) {
     Some(inner) => inner,
-    None => return Ok(()),
+    None => {
+      log::warn!(
+        "no assets maching '{}' '{}' config, skipping",
+        config.artifact_naming.starts_with,
+        config.artifact_naming.ends_with
+      );
+      return Ok(());
+    }
   };
 
   log::info!("found artifact match {} ('{}' @ '{}')", asset.id, asset.name, asset.url);
@@ -342,8 +349,28 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
   // Add the version immedaitely after the configured destination to get the final output directory
   // that we will move our artifact into from the `tmp` directory.
   let full_destination_path = format!("{}/{}", config.extraction.destination, latest.name);
+  let latest_destination_path = format!("{}/latest", config.extraction.destination);
+
+  log::info!(
+    "renaming download to '{}' (symlink to {})",
+    full_destination_path,
+    latest_destination_path
+  );
+
+  // We're going to be using symbolic links to manager having multiple versions living
+  // simultaneously on the same machine.
+  match async_std::fs::metadata(&latest_destination_path).await {
+    Ok(meta) if meta.is_file() || meta.is_symlink() => async_std::fs::remove_file(&latest_destination_path).await?,
+    Ok(meta) if meta.is_dir() => async_std::fs::remove_dir_all(&latest_destination_path).await?,
+    Ok(meta) => return Err(Error::new(ErrorKind::Other, format!("unknown file stat - {meta:?}"))),
+
+    Err(error) if error.kind() == ErrorKind::NotFound => log::info!("existing symlink not found, moving on"),
+    Err(error) => return Err(error),
+  }
+
   async_std::fs::create_dir_all(&full_destination_path).await?;
   async_std::fs::rename(&temp_dir, &full_destination_path).await?;
+  async_std::os::unix::fs::symlink(&full_destination_path, &latest_destination_path).await?;
 
   // Update the version storage file with our new release name.
   log::info!("success, writing new version to storage");
@@ -400,6 +427,9 @@ async fn run(mut config: UpdaterConfig, receiver: async_std::channel::Receiver<M
           .as_ref()
           .map(|version| InitialRunFlags::ToVersion(version.clone()))
           .unwrap_or(InitialRunFlags::Update),
+
+        Some(ManualRunRequest::All) => InitialRunFlags::Update,
+
         _ => InitialRunFlags::Nothing,
       };
 
@@ -487,7 +517,9 @@ fn main() -> Result<()> {
 
   let listener_future = async {
     if options.run_immediately {
-      run_sender.send(ManualRunRequest::default()).await.map_err(|error| {
+      log::warn!("running immediately, sending message");
+
+      run_sender.send(ManualRunRequest::All).await.map_err(|error| {
         log::warn!("unable to sent initial run - {error}");
         Error::new(ErrorKind::Other, format!("bad send - {error}"))
       })?;
