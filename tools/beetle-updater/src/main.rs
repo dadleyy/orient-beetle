@@ -146,6 +146,9 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
 
   log::debug!("running github release update check (@ {url})");
 
+  // Depending on whether or not we're updating to a specific version, we will either use a
+  // tag-specific api endpoint, or the `/latest`, which will return information about the latest
+  // release.
   let release_url = match flags {
     InitialRunFlags::ToVersion(version) => format!("{}/releases/tags/{}", url, version),
     _ => format!("{}/releases/latest", url),
@@ -250,15 +253,13 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
       }
     })?;
 
-  log::info!("locate: {:?}", locate_response.status());
-
   let real_location = locate_response
     .header("Location")
     .and_then(|value| value.get(0))
     .map(|value| value.as_str().to_string())
     .ok_or_else(|| Error::new(ErrorKind::Other, "bad response from github"))?;
 
-  log::info!("found real location, downloading.");
+  log::info!("found real location ({}), downloading.", real_location);
 
   let mut download_response = surf::get(&real_location)
     .await
@@ -354,11 +355,12 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
 
   // Add the version immedaitely after the configured destination to get the final output directory
   // that we will move our artifact into from the `tmp` directory.
-  let full_destination_path = format!("{}/{}", config.extraction.destination, latest.name);
-  let latest_destination_path = format!("{}/latest", config.extraction.destination);
+  let full_buff = std::path::PathBuf::from(&config.extraction.destination);
+  let full_destination_path = full_buff.join(&latest.name);
+  let latest_destination_path = full_buff.join("latest");
 
   log::info!(
-    "renaming download to '{}' (symlink to {})",
+    "renaming download to '{:?}' (symlink to {:?})",
     full_destination_path,
     latest_destination_path
   );
