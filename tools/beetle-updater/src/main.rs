@@ -458,12 +458,19 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
 }
 
 async fn run(mut config: UpdaterConfig, receiver: async_std::channel::Receiver<ManualRunRequest>) -> Result<()> {
-  let mut interval = async_std::stream::interval(std::time::Duration::from_secs(config.poller.delay_seconds));
+  let mut interval = async_std::stream::interval(std::time::Duration::from_millis(500));
+  let mut now = std::time::Instant::now();
 
   log::info!("entering working loop for config: {config:#?}");
 
   loop {
     interval.next().await;
+
+    if now.elapsed().as_secs() < config.poller.delay_seconds {
+      continue;
+    }
+
+    now = std::time::Instant::now();
 
     // Attempt to pull a message from our receiver in a non-blocking way.
     let message = receiver
