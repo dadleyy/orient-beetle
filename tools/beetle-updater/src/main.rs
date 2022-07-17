@@ -17,7 +17,8 @@ struct UpdaterConfigExtractionRule {
 
 #[derive(Deserialize, Debug, Clone)]
 struct UpdaterConfigSystemdRule {
-  service: String,
+  service: Option<String>,
+  services: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -336,28 +337,51 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
     entry.unpack(&entry_destination)?;
   }
 
-  // With our `tmp` directory now succesfully full of good things, we should make sure to prepare
-  // our destination. The only two cases we're dealing with currently are:
-  //
-  // 1. the destination existing -> we rename.
-  // 2. the destination not existing -> we're happy.
-  match async_std::fs::metadata(&config.extraction.destination).await {
-    Ok(meta) if meta.file_type().is_dir() => {
-      let backup = format!("{}.{}.bak", &config.extraction.destination, run_id);
-      log::warn!("{} exists, backing up to {}", config.extraction.destination, backup);
-      async_std::fs::rename(&config.extraction.destination, &backup).await?;
-    }
-    Err(error) if error.kind() == ErrorKind::NotFound => {
-      log::info!("clean destination, moving on");
-    }
-    unknown => log::warn!("unknown destination check - {unknown:?}"),
-  }
-
   // Add the version immedaitely after the configured destination to get the final output directory
   // that we will move our artifact into from the `tmp` directory.
   let full_buff = std::path::PathBuf::from(&config.extraction.destination);
   let full_destination_path = full_buff.join(&latest.name);
   let latest_destination_path = full_buff.join("latest");
+
+  // We're going to be using symbolic links to manager having multiple versions living
+  // simultaneously on the same machine.
+  match async_std::fs::metadata(&latest_destination_path).await {
+    Ok(meta) if meta.is_file() || meta.is_symlink() => {
+      log::warn!("cleaning up FILE existing content at '{:?}'", latest_destination_path);
+      async_std::fs::remove_file(&latest_destination_path).await?
+    }
+    Ok(meta) if meta.is_dir() => {
+      log::warn!("cleaning up DIR existing content at '{:?}'", latest_destination_path);
+      async_std::fs::remove_dir_all(&latest_destination_path).await?
+    }
+    Ok(meta) => return Err(Error::new(ErrorKind::Other, format!("unknown file stat - {meta:?}"))),
+
+    Err(error) if error.kind() == ErrorKind::NotFound => log::info!("existing symlink not found, moving on"),
+    Err(error) => return Err(error),
+  }
+
+  // Check the location that we will be moving to. If it exists, it is likely that we are force
+  // updating the same version on our machine.
+  match async_std::fs::metadata(&full_destination_path).await {
+    Ok(_) => {
+      let mut backup_path = full_destination_path.clone();
+      backup_path.pop();
+      backup_path = backup_path.join(format!("{}-backup-{run_id}", latest.name));
+
+      log::warn!("{:?} exists, backup to {:?}", full_destination_path, backup_path);
+
+      async_std::fs::rename(&full_destination_path, &backup_path)
+        .await
+        .map_err(|error| {
+          log::warn!("unable to cleanup matching old contents - {error}");
+          error
+        })?;
+    }
+    Err(error) if error.kind() == ErrorKind::NotFound => {
+      log::debug!("nothing at {:?}, moving on", full_destination_path)
+    }
+    Err(error) => return Err(error),
+  }
 
   log::info!(
     "renaming download to '{:?}' (symlink to {:?})",
@@ -365,32 +389,60 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
     latest_destination_path
   );
 
-  // We're going to be using symbolic links to manager having multiple versions living
-  // simultaneously on the same machine.
-  match async_std::fs::metadata(&latest_destination_path).await {
-    Ok(meta) if meta.is_file() || meta.is_symlink() => async_std::fs::remove_file(&latest_destination_path).await?,
-    Ok(meta) if meta.is_dir() => async_std::fs::remove_dir_all(&latest_destination_path).await?,
-    Ok(meta) => return Err(Error::new(ErrorKind::Other, format!("unknown file stat - {meta:?}"))),
+  // TODO: maybe consider making this safer; the goal is to make sure all parent directories have
+  // been created before we attempt to put our download from `tmp` to the full path.
+  async_std::fs::create_dir_all(&full_destination_path)
+    .await
+    .map_err(|error| {
+      log::warn!("uanble to create '{:?}' - {error}", full_destination_path);
+      error
+    })?;
 
-    Err(error) if error.kind() == ErrorKind::NotFound => log::info!("existing symlink not found, moving on"),
-    Err(error) => return Err(error),
-  }
+  async_std::fs::rename(&temp_dir, &full_destination_path)
+    .await
+    .map_err(|error| {
+      log::warn!(
+        "uanble to rename '{:?}' -> '{:?}' - {error}",
+        temp_dir,
+        full_destination_path
+      );
+      error
+    })?;
 
-  async_std::fs::create_dir_all(&full_destination_path).await?;
-  async_std::fs::rename(&temp_dir, &full_destination_path).await?;
-  async_std::os::unix::fs::symlink(&full_destination_path, &latest_destination_path).await?;
+  async_std::os::unix::fs::symlink(&full_destination_path, &latest_destination_path)
+    .await
+    .map_err(|error| {
+      log::warn!(
+        "unable to create symlink '{:?}' -> '{:?}' - {error}",
+        full_destination_path,
+        latest_destination_path
+      );
+      error
+    })?;
 
   // Update the version storage file with our new release name.
   log::info!("success, writing new version to storage");
   let mut file = async_std::fs::File::create(&config.semver_storage).await?;
   async_std::write!(&mut file, "{}", latest.name).await?;
 
-  if let Some(ref service) = config.systemd.as_ref().map(|systemd| &systemd.service) {
+  let services = config
+    .systemd
+    .as_ref()
+    .and_then(|systemd_config| {
+      systemd_config
+        .service
+        .as_ref()
+        .map(|service| vec![service.clone()])
+        .or(systemd_config.services.clone())
+    })
+    .unwrap_or_default();
+
+  for service in services {
     log::debug!("attempting to restart service '{service}'");
 
     let output = async_std::process::Command::new("systemctl")
       .arg("restart")
-      .arg(service)
+      .arg(&service)
       .output()
       .await?;
 
