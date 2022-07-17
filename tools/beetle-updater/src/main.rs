@@ -466,18 +466,21 @@ async fn run(mut config: UpdaterConfig, receiver: async_std::channel::Receiver<M
   loop {
     interval.next().await;
 
-    if now.elapsed().as_secs() < config.poller.delay_seconds {
-      continue;
-    }
-
-    now = std::time::Instant::now();
-
     // Attempt to pull a message from our receiver in a non-blocking way.
     let message = receiver
       .try_recv()
       .map(Some)
       .or_else(|error| if error.is_closed() { Err(error) } else { Ok(None) })
       .map_err(|error| Error::new(ErrorKind::Other, format!("web listener closed - {error}")))?;
+
+    // Note: we don't want to actually sleep for the time specified by the user in their
+    // configuration; if we did that we may take longer to receive messages from our http server
+    // than we want to.
+    if now.elapsed().as_secs() < config.poller.delay_seconds && message.is_none() {
+      continue;
+    }
+
+    now = std::time::Instant::now();
 
     let units = config
       .units
