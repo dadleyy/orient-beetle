@@ -114,6 +114,7 @@ struct ManualRunRequestPayload {
 #[derive(Debug)]
 enum UpdaterUnitResult {
   Updated,
+  UpdateAvailable(String),
   Nothing,
 }
 
@@ -137,8 +138,20 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
     .ok();
 
   let current_version = version_data
-    .and_then(|data| String::from_utf8(data).ok())
-    .and_then(|bytes| semver::Version::parse(bytes.trim_start_matches("v")).ok());
+    .and_then(|data| {
+      String::from_utf8(data)
+        .map_err(|error| {
+          log::warn!("unable to parse version storage - {error}");
+        })
+        .ok()
+    })
+    .and_then(|bytes| {
+      semver::Version::parse(bytes.trim_start_matches('v').trim_end())
+        .map_err(|error| {
+          log::warn!("unable to parse semver - {error}");
+        })
+        .ok()
+    });
 
   log::debug!("current version - {current_version:?}");
 
@@ -195,12 +208,14 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
 
     (_, None, Some(next)) => {
       log::warn!("no current version found, assuming valid update to {next}");
-      true
+      return Ok(UpdaterUnitResult::UpdateAvailable(latest.name.clone()));
     }
 
+    // If we had a valid update via comparing versions (and this wasn't an explicit update), return
+    // it back to the polling loop to queue for later.
     (_, Some(current), Some(next)) if next > current => {
       log::info!("new version found ({current} -> {next})");
-      true
+      return Ok(UpdaterUnitResult::UpdateAvailable(latest.name.clone()));
     }
 
     (_, Some(current), Some(next)) if next == current => {
@@ -214,7 +229,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
     }
   };
 
-  if should_update == false {
+  if !should_update {
     return Ok(UpdaterUnitResult::Nothing);
   }
 
@@ -420,11 +435,6 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
       error
     })?;
 
-  // Update the version storage file with our new release name.
-  log::info!("success, writing new version to storage");
-  let mut file = async_std::fs::File::create(&config.semver_storage).await?;
-  async_std::write!(&mut file, "{}", latest.name).await?;
-
   let services = config
     .systemd
     .as_ref()
@@ -433,7 +443,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
         .service
         .as_ref()
         .map(|service| vec![service.clone()])
-        .or(systemd_config.services.clone())
+        .or_else(|| systemd_config.services.clone())
     })
     .unwrap_or_default();
 
@@ -454,10 +464,19 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
     log::warn!("unable to restart service - {:?}", String::from_utf8(output.stderr));
   }
 
+  // Update the version storage file with our new release name.
+  log::info!("success, writing new version to storage");
+  let mut file = async_std::fs::File::create(&config.semver_storage).await?;
+  async_std::write!(&mut file, "{}", latest.name).await?;
+
   Ok(UpdaterUnitResult::Updated)
 }
 
-async fn run(mut config: UpdaterConfig, receiver: async_std::channel::Receiver<ManualRunRequest>) -> Result<()> {
+async fn run(
+  mut config: UpdaterConfig,
+  receiver: async_std::channel::Receiver<ManualRunRequest>,
+  updates: async_std::channel::Sender<VersionMessage>,
+) -> Result<()> {
   let mut interval = async_std::stream::interval(std::time::Duration::from_millis(500));
   let mut now = std::time::Instant::now();
 
@@ -510,15 +529,34 @@ async fn run(mut config: UpdaterConfig, receiver: async_std::channel::Receiver<M
 
       log::info!("unit '{}' check -> {result:?}", unit.name());
 
-      if let Err(error) = result {
-        log::warn!("updater failed on unit - '{}' - {error}", unit.name());
-        continue;
+      match result {
+        Err(error) => {
+          log::warn!("updater failed on unit - '{}' - {error}", unit.name());
+          continue;
+        }
+        Ok(UpdaterUnitResult::UpdateAvailable(version)) => {
+          log::info!("an update '{version}' is available");
+          updates
+            .send(VersionMessage::HasVersion(unit.name(), version))
+            .await
+            .map_err(|error| {
+              log::warn!("unable to send update to api from worker - {error}");
+              Error::new(ErrorKind::Other, format!("{error}"))
+            })?;
+        }
+        Ok(other) => {
+          if let Err(error) = updates.send(VersionMessage::NoVersion).await {
+            log::warn!("unable to send version message to web - {error}");
+            continue;
+          }
+          log::info!("{} completed with {other:?}", unit.name())
+        }
       }
 
       next.push(unit);
     }
 
-    if next.len() == 0 {
+    if next.is_empty() {
       return Err(Error::new(ErrorKind::Other, "no units left"));
     }
 
@@ -526,7 +564,53 @@ async fn run(mut config: UpdaterConfig, receiver: async_std::channel::Receiver<M
   }
 }
 
-async fn attempt_run(mut request: tide::Request<async_std::channel::Sender<ManualRunRequest>>) -> tide::Result {
+#[derive(Debug, Clone)]
+enum VersionMessage {
+  HasVersion(String, String),
+  NoVersion,
+}
+
+#[derive(Clone)]
+struct WebContext(
+  async_std::channel::Sender<ManualRunRequest>,
+  async_std::sync::Arc<async_std::sync::Mutex<Option<(String, String)>>>,
+);
+
+/// Route: attempts to send/queue the version that is currently stored in our web context mutex
+/// back into the run request sink.
+async fn post_commit_update(request: tide::Request<WebContext>) -> tide::Result {
+  log::info!("getting available version");
+  let WebContext(sender, version_mutex) = request.state();
+
+  let mut version = version_mutex.lock().await;
+
+  match version.take() {
+    Some((service, version)) => {
+      if let Err(error) = sender
+        .send(ManualRunRequest::Specific(service.clone(), Some(version.clone())))
+        .await
+      {
+        log::warn!("unable to send queued update - {error}");
+      }
+
+      Ok(format!("{version:?}").into())
+    }
+    None => Ok(tide::Response::new(404)),
+  }
+}
+
+/// Route: returns any available update stored in our web context mutex.
+async fn get_available_update(request: tide::Request<WebContext>) -> tide::Result {
+  log::info!("getting available version");
+  let WebContext(_, version_mutex) = request.state();
+
+  let version = version_mutex.lock().await;
+
+  Ok(format!("{version:?}").into())
+}
+
+/// Route: accepts user input, will attempt to forceably run an update.
+async fn post_attempt_run(mut request: tide::Request<WebContext>) -> tide::Result {
   log::info!("handling run api request");
 
   let body = request.body_json::<ManualRunRequestPayload>().await?;
@@ -543,17 +627,26 @@ async fn attempt_run(mut request: tide::Request<async_std::channel::Sender<Manua
 
   log::info!("parsed request body - {message:?}");
 
-  if let Err(error) = request.state().send(message).await {
+  let WebContext(sender, _) = request.state();
+
+  if let Err(error) = sender.send(message).await {
     log::warn!("unable to send from api - {error}");
   }
 
   Ok(tide::Response::new(200))
 }
 
-async fn listen(config: UpdaterServerConfig, sink: async_std::channel::Sender<ManualRunRequest>) -> Result<()> {
-  let mut app = tide::with_state(sink.clone());
+async fn listen(
+  config: UpdaterServerConfig,
+  sink: async_std::channel::Sender<ManualRunRequest>,
+  updates: async_std::channel::Receiver<VersionMessage>,
+) -> Result<()> {
+  let version_mutex = async_std::sync::Arc::new(async_std::sync::Mutex::new(None));
+  let mut app = tide::with_state(WebContext(sink.clone(), version_mutex.clone()));
 
-  app.at("/run").post(attempt_run);
+  app.at("/run").post(post_attempt_run);
+  app.at("/updates").get(get_available_update);
+  app.at("/commit-update").post(post_commit_update);
 
   let addr = &config.addr;
   log::info!("http server listening on '{}'", addr);
@@ -565,6 +658,29 @@ async fn listen(config: UpdaterServerConfig, sink: async_std::channel::Sender<Ma
 
     loop {
       interval.next().await;
+
+      match updates.try_recv() {
+        Ok(VersionMessage::NoVersion) => {
+          log::info!("web worker cleared update");
+          let mut unlocked_version = version_mutex.lock().await;
+          *unlocked_version = None;
+        }
+
+        Ok(VersionMessage::HasVersion(service, version)) => {
+          log::info!("web worker received update - {version:?}");
+          let mut unlocked_version = version_mutex.lock().await;
+          *unlocked_version = Some((service, version));
+        }
+
+        Err(error) if error == async_std::channel::TryRecvError::Empty => {
+          log::trace!("nothing to receive from update stream");
+        }
+
+        Err(error) => {
+          log::warn!("unable to read from update channel - {error}");
+          return Ok(());
+        }
+      }
 
       if sink.is_closed() {
         log::warn!("manual run sink appears closed, terminating api");
@@ -586,6 +702,7 @@ fn main() -> Result<()> {
   let config = toml::from_slice::<UpdaterConfig>(&config_content)?;
 
   let (run_sender, run_receiver) = async_std::channel::unbounded();
+  let (update_sender, update_receiver) = async_std::channel::unbounded();
 
   let listener_future = async {
     if options.run_immediately {
@@ -598,12 +715,12 @@ fn main() -> Result<()> {
     }
 
     match config.clone().server.take() {
-      Some(config) => listen(config, run_sender).await,
+      Some(config) => listen(config, run_sender, update_receiver).await,
       None => Ok(()),
     }
   };
 
-  let runner_future = run(config.clone(), run_receiver);
+  let runner_future = run(config.clone(), run_receiver, update_sender);
   let zipped_futures = futures_lite::future::zip(runner_future, listener_future);
   let (runner_result, listener_result) = futures_lite::future::block_on(ex.run(zipped_futures));
   runner_result.and(listener_result)
