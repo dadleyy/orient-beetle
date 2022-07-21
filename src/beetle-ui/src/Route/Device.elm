@@ -139,10 +139,10 @@ view model env =
 
             Just (Ok info) ->
                 Html.div [ Html.Attributes.class "mt-2 pt-2" ]
-                    [ Html.div [] [ Html.text ("total messages sent: " ++ String.fromInt info.sent_message_count) ]
-                    , Html.div [] [ Html.text ("current messages queued: " ++ String.fromInt info.current_queue_count) ]
-                    , Html.div [] [ Html.text ("last seen: " ++ formatDeviceTime info.last_seen ++ "UTC") ]
-                    , Html.div [] [ Html.text ("first seen: " ++ formatDeviceTime info.first_seen ++ "UTC") ]
+                    [ Html.div [] [ Html.code [] [ Html.text ("total messages sent: " ++ String.fromInt info.sent_message_count) ] ]
+                    , Html.div [] [ Html.code [] [ Html.text ("current messages queued: " ++ String.fromInt info.current_queue_count) ] ]
+                    , Html.div [] [ Html.code [] [ Html.text ("last seen: " ++ formatDeviceTime info.last_seen ++ "UTC") ] ]
+                    , Html.div [] [ Html.code [] [ Html.text ("first seen: " ++ formatDeviceTime info.first_seen ++ "UTC") ] ]
                     ]
         ]
 
