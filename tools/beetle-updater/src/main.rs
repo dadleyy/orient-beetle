@@ -458,7 +458,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
 
     if output.status.success() {
       log::info!("successfully restarted '{service}'");
-      return Ok(UpdaterUnitResult::Updated);
+      continue;
     }
 
     log::warn!("unable to restart service - {:?}", String::from_utf8(output.stderr));
