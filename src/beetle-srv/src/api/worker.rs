@@ -52,18 +52,43 @@ impl Worker {
     #[allow(unused_assignments)]
     let mut result = Err(Error::new(ErrorKind::Other, "failed send"));
 
-    *lock_result = match lock_result.take() {
-      Some(mut connection) => {
-        log::info!("taken in in {}ms", now.elapsed().as_millis());
-        result = kramer::execute(&mut connection, command).await;
-        Some(connection)
+    let mut retry_count = 0;
+
+    'retries: loop {
+      *lock_result = match lock_result.take() {
+        Some(mut connection) => {
+          log::info!("taken in in {}ms", now.elapsed().as_millis());
+          result = kramer::execute(&mut connection, command).await;
+          Some(connection)
+        }
+        None => {
+          log::warn!("no existing redis connection, establishing now");
+          let mut connection = self.redis().await?;
+          result = kramer::execute(&mut connection, command).await;
+          Some(connection)
+        }
+      };
+
+      if retry_count > 0 {
+        log::warn!("exceeded redis retry count, breaking with current result");
+        break;
       }
-      None => {
-        let mut connection = self.redis().await?;
-        result = kramer::execute(&mut connection, command).await;
-        Some(connection)
+
+      match result {
+        // If we were successful, there is nothing more to do here, exit the loop
+        Ok(_) => break,
+
+        // If we failed due to a broken pipe, clear out our connection and try one more time.
+        Err(error) if error.kind() == ErrorKind::BrokenPipe => {
+          log::warn!("detected broken pipe, re-trying");
+          retry_count += 1;
+          lock_result.take();
+          continue 'retries;
+        }
+
+        Err(error) => return Err(error),
       }
-    };
+    }
 
     result
   }
