@@ -1,0 +1,20 @@
+changelog:
+  categories:
+    - title: cross application changes
+      labels:
+        - beetle-all
+    - title: beetle-pio
+      labels:
+        - beetle-pio
+    - title: beetle-srv
+      labels:
+        - beetle-srv
+    - title: beetle-ui
+      labels:
+        - beetle-ui
+    - title: housekeeping
+      labels:
+        - housekeeping
+    - title: other changes
+      labels:
+        - "*"
