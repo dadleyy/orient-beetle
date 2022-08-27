@@ -44,9 +44,8 @@ impl Worker {
     V: std::fmt::Display,
   {
     let mut now = std::time::Instant::now();
-    log::debug!("starting redis pool lock");
     let mut lock_result = self.redis_pool.lock().await;
-    log::info!("lock in in {}ms", now.elapsed().as_millis());
+    log::trace!("redis 'pool' lock in in {}ms", now.elapsed().as_millis());
     now = std::time::Instant::now();
 
     #[allow(unused_assignments)]
@@ -57,13 +56,18 @@ impl Worker {
     'retries: loop {
       *lock_result = match lock_result.take() {
         Some(mut connection) => {
-          log::info!("taken in in {}ms", now.elapsed().as_millis());
+          log::trace!("redis lock taken in in {}ms", now.elapsed().as_millis());
           result = kramer::execute(&mut connection, command).await;
           Some(connection)
         }
         None => {
           log::warn!("no existing redis connection, establishing now");
-          let mut connection = self.redis().await?;
+
+          let mut connection = self.redis().await.map_err(|error| {
+            log::warn!("unable to connect to redis from previous disconnect - {error}");
+            error
+          })?;
+
           result = kramer::execute(&mut connection, command).await;
           Some(connection)
         }
@@ -86,7 +90,10 @@ impl Worker {
           continue 'retries;
         }
 
-        Err(error) => return Err(error),
+        Err(error) => {
+          log::warn!("redis command failed for {:?}, no retry", error.kind());
+          return Err(error);
+        }
       }
     }
 

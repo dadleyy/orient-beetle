@@ -23,7 +23,7 @@ impl Claims {
       .map(|data| data.claims)
   }
 
-  pub fn for_player<T>(oid: T) -> Self
+  pub fn for_user<T>(oid: T) -> Self
   where
     T: std::fmt::Display,
   {
