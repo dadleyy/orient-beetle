@@ -41,10 +41,20 @@ async fn parse_message(request: &mut tide::Request<super::worker::Worker>) -> ti
 /// Sends a message to the device.
 pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
   let devices = request.state().device_diagnostic_collection()?;
-  let user = request.state().request_authority(&request).await?.ok_or_else(|| {
-    log::warn!("no user found");
-    tide::Error::from_str(404, "missing-player")
-  })?;
+
+  let user = request
+    .state()
+    .request_authority(&request)
+    .await?
+    .ok_or_else(|| {
+      log::warn!("no user found");
+      tide::Error::from_str(404, "missing-player")
+    })
+    .map_err(|error| {
+      log::warn!("unable to determine request authority - {error}");
+      error
+    })?;
+
   let body = parse_message(&mut request).await.map_err(|error| {
     log::warn!("bad device message payload - {error}");
     tide::Error::from_str(422, "bad-request")
@@ -70,7 +80,11 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
       crate::redis::device_message_queue_id(&body.device_id),
       kramer::Arity::One(body.message),
     )))
-    .await?;
+    .await
+    .map_err(|error| {
+      log::warn!("unable to queue message - {error}");
+      error
+    })?;
 
   if let Err(error) = devices
     .update_one(
@@ -112,7 +126,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
     return Err(tide::Error::from_str(400, "not-found"));
   }
 
-  log::debug!("user loaded in {}ms", now.elapsed().as_millis());
+  log::trace!("user loaded in {}ms", now.elapsed().as_millis());
   now = std::time::Instant::now();
 
   let current_queue_len = match worker
@@ -132,7 +146,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
     }
   };
 
-  log::debug!("device queue len loaded in {}ms", now.elapsed().as_millis());
+  log::trace!("device queue len loaded in {}ms", now.elapsed().as_millis());
   now = std::time::Instant::now();
 
   let device_diagnostic = worker
@@ -148,7 +162,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
       tide::Error::from_str(404, "not-found")
     })?;
 
-  log::debug!("device diagnostic loaded in {}ms", now.elapsed().as_millis());
+  log::trace!("device diagnostic loaded in {}ms", now.elapsed().as_millis());
 
   let info = DeviceInfoPayload {
     id: device_diagnostic.id,

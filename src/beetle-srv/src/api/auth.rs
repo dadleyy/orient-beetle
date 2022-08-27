@@ -123,22 +123,22 @@ pub async fn complete(request: tide::Request<super::worker::Worker>) -> tide::Re
     .find_one_and_update(
       query,
       bson::doc! { "$setOnInsert": bson::to_bson(&state).map_err(|error| {
-          log::warn!("unable to serialize new player - {:?}", error);
-          tide::Error::from_str(500, "player-failure")
+          log::warn!("unable to serialize new user - {:?}", error);
+          tide::Error::from_str(500, "user-failure")
         })?,
       },
       options,
     )
     .await
     .map_err(|error| {
-      log::warn!("unable to create new player - {:?}", error);
-      tide::Error::from_str(500, "player-failure")
+      log::warn!("unable to create new user - {:?}", error);
+      tide::Error::from_str(500, "user-failure")
     })?
-    .ok_or(tide::Error::from_str(404, "missing-player"))?;
+    .ok_or(tide::Error::from_str(404, "missing-user"))?;
 
   log::info!("user pulled from db - {:?}", user);
 
-  let jwt = super::claims::Claims::for_player(&user.oid).encode(&worker.web_configuration.session_secret)?;
+  let jwt = super::claims::Claims::for_user(&user.oid).encode(&worker.web_configuration.session_secret)?;
 
   // Create a session and redirect them to the ui.
   let cookie = format!(
@@ -162,7 +162,7 @@ pub async fn identify(request: tide::Request<super::worker::Worker>) -> tide::Re
 
   let user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("no user found");
-    tide::Error::from_str(404, "missing-player")
+    tide::Error::from_str(404, "missing-user")
   })?;
 
   log::debug!("successfully loaded user {:?}", user);

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 mod auth;
 mod claims;
 mod devices;
-mod messages;
+// mod messages;
 mod worker;
 
 pub use worker::Worker;
@@ -60,8 +60,6 @@ async fn missing(_request: tide::Request<worker::Worker>) -> tide::Result {
 
 pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   let mut app = tide::with_state(worker);
-
-  app.at("/send-device-message").post(messages::send_message);
 
   app.at("/auth/redirect").get(auth::redirect);
   app.at("/auth/complete").get(auth::complete);
