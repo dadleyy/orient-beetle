@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 mod auth;
 mod claims;
 mod devices;
-// mod messages;
 mod worker;
 
 pub use worker::Worker;
