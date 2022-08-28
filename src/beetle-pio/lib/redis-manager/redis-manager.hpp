@@ -42,6 +42,10 @@ namespace redismanager {
       constexpr static const uint32_t FRAMEBUFFER_SIZE = 1024;
       constexpr static const uint32_t MAX_ID_SIZE = 36;
 
+      // The amount of attempts to read from our tls connection that return no data
+      // before we attempt to reconnect entirely.
+      constexpr static const uint32_t MAX_EMPTY_READ_RESET = 100;
+
       constexpr static const char * OK = "+OK\r\n";
       constexpr static const char * WRONG_PASS_ERR = "-WRONGPASS invalid username-password pair or user is disabled\r\n";
       constexpr static const char * NO_PERM_ERR = "-NOPERM this user has no permissions to run the 'rpush' command or its subcommand\r\n";

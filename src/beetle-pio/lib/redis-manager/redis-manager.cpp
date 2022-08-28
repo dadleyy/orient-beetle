@@ -252,9 +252,12 @@ namespace redismanager {
         // if we're relying on cached credentials. If so, clear it and restart.
         if (_cursor == 0) {
           _empty_identified_reads += 1;
-          log_e("empty reads while identified - %d", _empty_identified_reads);
 
-          if (_empty_identified_reads > 200 && _connected_with_cached_id) {
+          if (_empty_identified_reads > 10) {
+            log_e("[warning!] empty reads while identified - %d", _empty_identified_reads);
+          }
+
+          if (_empty_identified_reads > MAX_EMPTY_READ_RESET && _connected_with_cached_id) {
             reset();
 
             return std::nullopt;
