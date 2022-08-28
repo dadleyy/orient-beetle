@@ -9,6 +9,9 @@ changelog:
     - title: beetle-srv
       labels:
         - beetle-srv
+    - title: beetle-updater
+      labels:
+        - beetle-updater
     - title: beetle-ui
       labels:
         - beetle-ui
