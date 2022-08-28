@@ -1,44 +1,90 @@
+#![warn(clippy::missing_docs_in_private_items)]
+
+//! This project is meant to run as a daemon that is able to "update"
+//! other background applications running on linux machines. Currently,
+//! the only supported method involves downloading a github release
+//! artifact, unpacking its contents and restarting a systemd unit.
+
 use async_std::io::WriteExt;
 use async_std::stream::StreamExt;
 use clap::Parser;
 use serde::Deserialize;
 use std::io::{Error, ErrorKind, Result};
 
+/// When using the github updater configuration, this struct defines a
+/// "filter" that will be used to find a specific artifact in the set
+/// of artifacts associated with a release; effectively acting as a
+/// dumb version of a regex.
 #[derive(Deserialize, Debug, Clone)]
 struct UpdaterConfigArtifactNaming {
+  /// The hope here is that the artifacts uploaded to github share a
+  /// common prefix across all release versions.
   starts_with: String,
+
+  /// The hope here is that the artifacts uploaded to github share a
+  /// common suffix across all release versions.
   ends_with: String,
 }
 
+/// When using the github updater configuration, we are expecting that
+/// the release artifact is a compressed (tar.gz) file that needs to be
+/// extracted somewhere.
 #[derive(Deserialize, Debug, Clone)]
 struct UpdaterConfigExtractionRule {
+  /// The location on the machine running our daemon that we will extract
+  /// the github release artifact to.
   destination: String,
 }
 
+/// This daemon is currently built around the idea of replacing the single
+/// executable underneath a running systemd unit and restarting it once
+/// complete.
 #[derive(Deserialize, Debug, Clone)]
 struct UpdaterConfigSystemdRule {
+  /// The name of the service (single) to restart.
   service: Option<String>,
+
+  /// The name of the services (multiple) to restart.
   services: Option<Vec<String>>,
 }
 
+/// The primary method of configuring our updater, the github updater config
+/// expects that we will be downloading an artifact attatched to a release that
+/// has been named using semantic versioning, extracting its contents and
+/// restarting a systemd unit.
 #[derive(Deserialize, Debug, Clone)]
 struct GithubUpdaterConfig {
+  /// Our configurations will be stored in a `Hash<name, ...>`; it should be unique.
   name: String,
+
+  /// The name of the repo; this _will_ be used for url generation.
   repo: String,
+
+  /// The location on disk where we can write the last updated version to.
   semver_storage: String,
+
+  /// Filtering conditions to use when deciding what artifact to download.
   artifact_naming: UpdaterConfigArtifactNaming,
+
+  /// What to do with the artifact (how to extract, where to put)
   extraction: UpdaterConfigExtractionRule,
+
+  /// What services to restart.
   systemd: Option<UpdaterConfigSystemdRule>,
 }
 
+/// Over time, this is built to support multiple kinds of updates.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "kind")]
 enum UpdaterUnitConfig {
+  /// The primary updater method; github.
   #[serde(rename = "github-release-tarball")]
   GithubRelease(GithubUpdaterConfig),
 }
 
 impl UpdaterUnitConfig {
+  /// Every configuration variant should be able to be uniquely identified amongst a
+  /// set of multiple configurations.
   fn name(&self) -> String {
     match self {
       UpdaterUnitConfig::GithubRelease(inner) => inner.name.clone(),
@@ -46,86 +92,142 @@ impl UpdaterUnitConfig {
   }
 }
 
+/// By default, the daemon will only "queue" an update if a discrepancy is found. The
+/// server, listening on this address provided by configuration, is what a client will
+/// interact with to actually kick off an update.
 #[derive(Deserialize, Debug, Clone)]
 struct UpdaterServerConfig {
+  /// The address our tcp listener will bind to.
   addr: String,
 }
 
+/// Poller configuration.
 #[derive(Deserialize, Debug, Clone)]
 struct UpdaterPollerConfig {
+  /// How long to wait between attempts to check version discrepancies.
   delay_seconds: u64,
 }
 
+/// This struct represents the "complete" configuration schema we are expecting from the
+/// toml file.
 #[derive(Deserialize, Debug, Clone)]
 struct UpdaterConfig {
+  /// Each unit represents a "strategy" for updating. This could include multiple
+  /// applications.
   units: Option<Vec<UpdaterUnitConfig>>,
+
+  /// Poller configuration.
   poller: UpdaterPollerConfig,
+
+  /// Server configuration.
   server: Option<UpdaterServerConfig>,
 }
 
+/// Command line options struct, provided by clap.
 #[derive(Parser, Deserialize)]
-#[clap(author, version, about, long_about = None)]
+#[clap(author, version = option_env!("BEETLE_UPDATER_VERSION").unwrap_or("dev"), about, long_about = None)]
 struct UpdaterCommandLineOptions {
+  /// The location we will use to open a and deserialize our configuration.
   #[clap(short, long, value_parser)]
   config: String,
 
+  /// If true, will attempt a "run" (checking version discrepency) immediately.
   #[clap(short, long, value_parser)]
   run_immediately: bool,
 }
 
+/// The schema of a github api response for fetching a single asset.
 #[derive(Deserialize, Debug)]
 struct GithubReleaseLatestResponseAsset {
+  /// A github id
   id: u32,
+
+  /// A string
   name: String,
+
+  /// A url
   url: String,
 }
 
+/// The schema of a github api response for fetching the latest release.
 #[derive(Deserialize, Debug)]
 struct GithubReleaseLatestResponse {
+  /// Provided by github.
   id: u32,
+
+  /// The name of the release, hopefully something semver>
   name: String,
+
+  /// The list of assets attached to the release.
   assets: Vec<GithubReleaseLatestResponseAsset>,
 }
 
+/// This enum represents the various "things" our updater should do during a single
+/// run through of an updater strategy.
 #[derive(Debug, Default)]
-enum InitialRunFlags {
+enum SingleRunExecutionStrategy {
+  /// When run with this "strategy", any version discrepency will be subject to an
+  /// update immediately.
   Update,
 
+  /// When run with this "strategy", the updater will attempt to explicitly move to
+  /// the version provided, ignoring version relationships entirely.
   ToVersion(String),
 
+  /// This strategy indicates to the updater that it should only check for version
+  /// discrepencies and _notify_ the daemon.
   #[default]
   Nothing,
 }
 
+/// When receiving requests from a user through our server, this enum represents the
+/// various things we're allowing them to do.
 #[derive(Debug, Default)]
 enum ManualRunRequest {
+  /// When provided, the daemon will run all of it's known updater units.
   #[default]
   All,
 
+  /// When provided, the daemon will run only the specific unit matching the first
+  /// member of our tuple, to the _optionally_ provided version in the second
+  /// positiong.
   Specific(String, Option<String>),
 }
 
+/// The JSON schema of our api request.
 #[derive(Deserialize, Debug)]
 struct ManualRunRequestPayload {
+  /// The name of our unit; if omitted, expect all units to run.
   name: Option<String>,
+
+  /// The version to update to.
   version: Option<String>,
 }
 
+/// A given run attempt will end with various results.
 #[derive(Debug)]
 enum UpdaterUnitResult {
+  /// The updated result here means that a new version has been applied to all
+  /// applications included in our unit.
   Updated,
+
+  /// When run without a specific version to apply, the daemon will return this from
+  /// a run attempt if there was a version discrepancy.
   UpdateAvailable(String),
+
+  /// If nothing, no new version is available, and nothing was applied.
   Nothing,
 }
 
-async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -> Result<UpdaterUnitResult> {
+/// The main function for our github release units.
+async fn github_release(config: &GithubUpdaterConfig, flags: &SingleRunExecutionStrategy) -> Result<UpdaterUnitResult> {
   let run_id = uuid::Uuid::new_v4();
   log::debug!("unit '{}' running @ {:?}", config.name, run_id);
 
   let auth_token = std::env::var("GITHUB_RELEASE_AUTH_TOKEN")
-    .map_err(|_| Error::new(ErrorKind::Other, format!("missing 'GITHUB_RELEASE_AUTH_TOKEN'")))?;
+    .map_err(|_| Error::new(ErrorKind::Other, "missing 'GITHUB_RELEASE_AUTH_TOKEN'".to_string()))?;
 
-  if let InitialRunFlags::Update = flags {
+  if let SingleRunExecutionStrategy::Update = flags {
     log::warn!("{run_id} force initial run");
   }
 
@@ -164,7 +266,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
   // tag-specific api endpoint, or the `/latest`, which will return information about the latest
   // release.
   let release_url = match flags {
-    InitialRunFlags::ToVersion(version) => format!("{}/releases/tags/{}", url, version),
+    SingleRunExecutionStrategy::ToVersion(version) => format!("{}/releases/tags/{}", url, version),
     _ => format!("{}/releases/latest", url),
   };
 
@@ -179,7 +281,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
       } else {
         let reason = res.status().canonical_reason();
         log::warn!("unable to find '{}' -> {reason}", release_url);
-        Err(Error::new(ErrorKind::Other, format!("{reason}")))
+        Err(Error::new(ErrorKind::Other, reason.to_string()))
       }
     })?;
 
@@ -202,9 +304,9 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
   let should_update = match (
     flags,
     current_version,
-    semver::Version::parse(latest.name.trim_start_matches("v")).ok(),
+    semver::Version::parse(latest.name.trim_start_matches('v')).ok(),
   ) {
-    (InitialRunFlags::Update, _, _) | (InitialRunFlags::ToVersion(_), _, _) => true,
+    (SingleRunExecutionStrategy::Update, _, _) | (SingleRunExecutionStrategy::ToVersion(_), _, _) => true,
 
     (_, None, Some(next)) => {
       log::warn!("no current version found, assuming valid update to {next}");
@@ -265,7 +367,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
         Ok(res)
       } else {
         let reason = res.status().canonical_reason();
-        Err(Error::new(ErrorKind::Other, format!("{reason}")))
+        Err(Error::new(ErrorKind::Other, reason.to_string()))
       }
     })?;
 
@@ -285,7 +387,7 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
         Ok(res)
       } else {
         let reason = res.status().canonical_reason();
-        Err(Error::new(ErrorKind::Other, format!("{reason}")))
+        Err(Error::new(ErrorKind::Other, reason.to_string()))
       }
     })?;
 
@@ -472,6 +574,8 @@ async fn github_release(config: &GithubUpdaterConfig, flags: &InitialRunFlags) -
   Ok(UpdaterUnitResult::Updated)
 }
 
+/// The async runtime here is responsible for executing units and pulling messages off
+/// the channel being written to from the api.
 async fn run(
   mut config: UpdaterConfig,
   receiver: async_std::channel::Receiver<ManualRunRequest>,
@@ -514,17 +618,17 @@ async fn run(
       let flags = match &message {
         Some(ManualRunRequest::Specific(name, ref version_kind)) if name == &unit.name() => version_kind
           .as_ref()
-          .map(|version| InitialRunFlags::ToVersion(version.clone()))
-          .unwrap_or(InitialRunFlags::Update),
+          .map(|version| SingleRunExecutionStrategy::ToVersion(version.clone()))
+          .unwrap_or(SingleRunExecutionStrategy::Update),
 
-        Some(ManualRunRequest::All) => InitialRunFlags::Update,
+        Some(ManualRunRequest::All) => SingleRunExecutionStrategy::Update,
 
-        _ => InitialRunFlags::Nothing,
+        _ => SingleRunExecutionStrategy::Nothing,
       };
 
       // Match on the unit kind and run it!
       let result = match unit {
-        UpdaterUnitConfig::GithubRelease(ref config) => github_release(&config, &flags).await,
+        UpdaterUnitConfig::GithubRelease(ref config) => github_release(config, &flags).await,
       };
 
       log::info!("unit '{}' check -> {result:?}", unit.name());
@@ -564,12 +668,18 @@ async fn run(
   }
 }
 
+/// The channel used to communicate new versions between our runner and the web thread.
 #[derive(Debug, Clone)]
 enum VersionMessage {
+  /// The runner has found a new version for a specific unit/service.
   HasVersion(String, String),
+
+  /// The runner has not found a new version for a specific unit/service.
   NoVersion,
 }
 
+/// The webcontext here is a thread-safe structure that can be passed between tcp connections
+/// established by `tide` (our web thread).
 #[derive(Clone)]
 struct WebContext(
   async_std::channel::Sender<ManualRunRequest>,
@@ -636,6 +746,7 @@ async fn post_attempt_run(mut request: tide::Request<WebContext>) -> tide::Resul
   Ok(tide::Response::new(200))
 }
 
+/// The main async entrypoint for our web thread.
 async fn listen(
   config: UpdaterServerConfig,
   sink: async_std::channel::Sender<ManualRunRequest>,

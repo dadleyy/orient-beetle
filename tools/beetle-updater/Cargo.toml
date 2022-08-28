@@ -1,5 +1,7 @@
 [package]
 name = "beetle-srv-updater"
+# note: the version here is unused; compiled executables will print the
+# value of `BEETLE_UPDATER_VERSION` present at compile time.
 version = "0.0.26"
 edition = "2021"
 
@@ -8,7 +10,7 @@ dotenv = { version = "^0.15" }
 env_logger = { version = "^0.9" }
 log = { version = "^0.4" }
 toml = { version = "^0.5" }
-serde = { version = "^1.0" }
+serde = { version = "^1.0", features = ["derive"] }
 surf = { version = "^2.3.0" }
 tide = { version = "^0.16" }
 serde_json = { version = "^1.0" }
