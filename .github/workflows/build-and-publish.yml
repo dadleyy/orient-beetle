@@ -135,6 +135,7 @@ jobs:
           path: "./src/beetle-ui/beetle-ui-${{ steps.vars.outputs.sha_short }}.tar.gz"
 
   build-srv-osx:
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: macos-12
     env:
       BEETLE_VERSION: "${{ github.sha }}"
