@@ -91,7 +91,7 @@ impl Worker {
         }
 
         Err(error) => {
-          log::warn!("redis command failed for {:?}, no retry", error.kind());
+          log::warn!("redis command failed for ({:?}) ({:?}), no retry", error, error.kind());
           return Err(error);
         }
       }
