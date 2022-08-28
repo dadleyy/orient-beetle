@@ -87,8 +87,12 @@ namespace wifimanager {
         char password [MAX_PASSWORD_LENGTH];
         memset(password, '\0', MAX_PASSWORD_LENGTH);
 
-        size_t stored_ssid_len = _preferences.getString("ssid", ssid, MAX_SSID_LENGTH);
-        size_t stored_password_len = _preferences.getString("password", password, MAX_PASSWORD_LENGTH);
+        size_t stored_ssid_len = _preferences.isKey("ssid")
+          ? _preferences.getString("ssid", ssid, MAX_SSID_LENGTH)
+          : 0;
+        size_t stored_password_len = _preferences.isKey("password")
+          ? _preferences.getString("password", password, MAX_PASSWORD_LENGTH)
+          : 0;
 
         log_d("stored ssid len - %d (password %d)", stored_ssid_len, stored_password_len);
 

@@ -115,7 +115,9 @@ namespace redismanager {
         return Manager::EManagerMessage::FailedConnection;
       }
 
-      size_t stored_id_len = _preferences->getString("device-id", _device_id, MAX_ID_SIZE);
+      size_t stored_id_len = _preferences->isKey("device-id")
+        ?  _preferences->getString("device-id", _device_id, MAX_ID_SIZE)
+        : 0;
 
       // If we have a stored device id in our preferences/persistent memory, attempt to authorize
       // with it and move into the authorization requested stage.
