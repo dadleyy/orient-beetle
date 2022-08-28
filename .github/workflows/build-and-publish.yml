@@ -213,7 +213,9 @@ jobs:
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
 
-      - name: clippy
+      - name: "clippy: install"
+        run: rustup component add clippy
+      - name: "clippy: run"
         run: cargo clippy
 
       - name: build
