@@ -28,7 +28,7 @@ uuid = { version = "^1.0", features = ["v4"] }
 tide = { version = "^0.16" }
 async-std = { version = "^1.0", features = ["attributes"] }
 async-tls = { version = "^0.10" }
-kramer = { version = "^1.3", features = ["kramer-async", "acl"] }
+kramer = { git = "https://github.com/sizethree/kramer.git", branch = "readline-fix", features = ["kramer-async", "acl"] }
 chrono = { version = "^0.4" }
 serde = { version = "^1.0" }
 serde_json = { version = "^1.0" }

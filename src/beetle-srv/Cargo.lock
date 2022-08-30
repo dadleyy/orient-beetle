@@ -1285,9 +1285,8 @@ dependencies = [
 
 [[package]]
 name = "kramer"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b666c6e449e88e36940c6e1bc986bd2f51429e4c0a8d6bb53f03e2d6d2ad8d44"
+version = "1.3.1"
+source = "git+https://github.com/sizethree/kramer.git?branch=readline-fix#ba2d55175fa3061d77c7eac3846755a63feeb4bf"
 dependencies = [
  "async-std",
 ]
