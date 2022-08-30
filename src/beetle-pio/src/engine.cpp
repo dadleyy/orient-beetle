@@ -55,8 +55,8 @@ State Engine::update(State& current) {
   if (now_working) {
     next.active.emplace<WorkingState>(_redis.id_size());
     WorkingState * w = std::get_if<WorkingState>(&next.active);
-    log_d("moved into working state with id size '%d' -> '%s'", _redis.id_size(), w->id_content);
     _redis.copy_id(w->id_content, _redis.id_size());
+    log_d("moved into working state with id size '%d' (id: '%s')", _redis.id_size(), w->id_content);
     return next;
   }
 
@@ -64,17 +64,19 @@ State Engine::update(State& current) {
     redis_update == redismanager::Manager::EManagerMessage::ReceivedMessage
     && std::get_if<WorkingState>(&next.active);
 
+  // If we received a redis message update and we're currently "working", attempt to
+  // copy our redis message into the next available string buffer.
   if (has_message) {
-    WorkingState * w = std::get_if<WorkingState>(&next.active);
+    WorkingState * working_state = std::get_if<WorkingState>(&next.active);
 
-    if (!w) {
+    if (!working_state) {
       log_e("received message, but redis not yet connected. strange");
       return next;
     }
 
     log_d("received message, copying buffer to connected state");
 
-    Message& next = w->next();
+    Message& next = working_state->next();
     next.content_size = _redis.copy(next.content, 2048);
   }
 

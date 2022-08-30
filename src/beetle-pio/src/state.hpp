@@ -30,7 +30,7 @@ struct ConfiguringState final {
 
 struct ConnectingState final {
   ConnectingState(): attempt(0) {}
-  ConnectingState(uint8_t a): attempt(a) {}
+  explicit ConnectingState(uint8_t a): attempt(a) {}
   ConnectingState(ConnectingState&& other) { attempt = other.attempt; }
   ConnectingState& operator=(ConnectingState&& other) {
     this->attempt = other.attempt;

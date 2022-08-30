@@ -81,10 +81,10 @@ void setup(void) {
   }
 
   if (vcnl.begin()) {
-#ifndef RELEASE
-    log_e("unable to detect vcnl proximity sensor");
-#endif
+    log_d("vcnl proximity sensor detected!");
     prox_ready = true;
+  } else {
+    log_e("[warning] no vcnl proximity sensor detected!");
   }
 
   log_d("boot complete, redis-config. host: %s | port: %d", redis_host, redis_port);
@@ -111,15 +111,13 @@ void loop(void) {
   }
 
 #ifndef RELEASE
-  if (prox_ready && heap_debug_tick > heap_debug_tick_minimum) {
+  bool print_debug_info = heap_debug_tick > heap_debug_tick_minimum;
+  if (print_debug_info) {
     uint16_t prox = vcnl.readProximity();
-    log_d("proximity: %d", prox);
+    log_d("proximity (enabled %d): %d", prox_ready, prox);
+    log_d("free memory before update: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   }
-
   heap_debug_tick += 1;
-  if (heap_debug_tick > heap_debug_tick_minimum) {
-    log_d("free memory before malloc: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-  }
 #endif
 
   last_frame = now;
@@ -129,8 +127,8 @@ void loop(void) {
   view.render(state);
 
 #ifndef RELEASE
-  if (heap_debug_tick > heap_debug_tick_minimum) {
-    log_d("free memory after malloc: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  if (print_debug_info) {
+    log_d("free memory after update: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     heap_debug_tick = 0;
   }
 #endif

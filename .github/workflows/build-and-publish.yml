@@ -46,6 +46,8 @@ jobs:
         run: pip install --upgrade platformio
       - name: "env prep: fill redis ca"
         run: echo $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
+      - name: "pio: check"
+        run: pio check
       - name: "pio: run"
         run: pio run -e release
 
