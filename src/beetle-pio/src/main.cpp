@@ -3,9 +3,9 @@
 #include "Adafruit_VCNL4010.h"
 #include <tft_spi.hpp>
 #include <gfx.hpp>
+#include <ili9341.hpp>
 
 // Internal libraries
-#include "ili9341v.hpp"
 #include "wifi-manager.hpp"
 #include "redis-manager.hpp"
 
