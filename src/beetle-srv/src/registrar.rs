@@ -63,8 +63,6 @@ impl Worker {
 /// in our pool that devices will pull down to identify themselves. If that amount reaches a
 /// quantity below a specific threshold, fill it back up.
 async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net::TcpStream>) -> Result<usize> {
-  log::debug!("checking pool length");
-
   let output = kramer::execute(
     &mut stream,
     kramer::Command::List::<&str, bool>(kramer::ListCommand::Len(crate::constants::REGISTRAR_AVAILABLE)),
@@ -176,7 +174,6 @@ where
   .await?;
 
   if let kramer::Response::Item(kramer::ResponseValue::String(id)) = taken {
-    log::debug!("device '{}' submitted registration", id);
     let collection = db
       .database(&dbc.database)
       .collection::<crate::types::DeviceDiagnostic>(&dbc.collections.device_diagnostics);
@@ -221,8 +218,6 @@ where
       })?
       .ok_or_else(|| Error::new(ErrorKind::Other, format!("upsert failed")))?;
 
-    log::info!("updated device '{}' diagnostics", device_diagnostic.id);
-
     // Store the current timestamp in a hash whose keys are the identity of our devices.
     let activation = kramer::execute(
       &mut stream,
@@ -242,9 +237,9 @@ where
       crate::constants::REGISTRAR_INDEX,
       kramer::Arity::One(id.as_str()),
     ));
-    let activation = kramer::execute(&mut stream, setter).await?;
+    kramer::execute(&mut stream, setter).await?;
 
-    log::trace!("device indexing - {:?}", activation);
+    log::info!("updated device '{}' diagnostics", device_diagnostic.id);
   }
 
   Ok(0usize)

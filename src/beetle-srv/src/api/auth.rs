@@ -45,7 +45,7 @@ where
     return None;
   }
 
-  log::debug!("loaded info with status '{}', attempting to parse", res.status());
+  log::trace!("loaded info with status '{}', attempting to parse", res.status());
   res.body_json::<UserInfo>().await.ok()
 }
 
