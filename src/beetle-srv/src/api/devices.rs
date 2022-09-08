@@ -60,12 +60,11 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
     tide::Error::from_str(422, "bad-request")
   })?;
 
-  if user
+  if !user
     .devices
     .as_ref()
     .map(|list| list.contains_key(&body.device_id))
     .unwrap_or(false)
-    == false
   {
     log::warn!("'{}' has no access to device '{}'", user.oid, body.device_id);
     return Err(tide::Error::from_str(400, "not-found"));
@@ -115,12 +114,11 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
 
   let query = request.query::<LookupQuery>()?;
 
-  if user
+  if !user
     .devices
     .as_ref()
     .map(|list| list.contains_key(&query.id))
     .unwrap_or(false)
-    == false
   {
     log::warn!("'{}' has no access to device '{}'", user.oid, query.id);
     return Err(tide::Error::from_str(400, "not-found"));
@@ -197,7 +195,7 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
     Some(mut device_map) => {
       log::trace!("device unregister -> found device map - {device_map:?}");
 
-      if device_map.remove(&payload.device_id).is_some() == false {
+      if device_map.remove(&payload.device_id).is_none() {
         return Ok(tide::Response::builder(422).build());
       }
 

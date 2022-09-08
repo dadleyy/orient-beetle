@@ -109,7 +109,7 @@ impl Worker {
       .map(|claims| claims.oid)
       .unwrap_or_default();
 
-    if oid.len() == 0 {
+    if oid.is_empty() {
       return Ok(None);
     }
 

@@ -20,8 +20,8 @@ fn main() -> Result<()> {
 
   let addr = std::env::var("BEETLE_WEB_ADDR")
     .ok()
-    .or(std::env::args().skip(1).next())
-    .unwrap_or("0.0.0.0:8337".into());
+    .or_else(|| std::env::args().nth(1))
+    .unwrap_or_else(|| "0.0.0.0:8337".into());
 
   async_std::task::block_on(run(addr))
 }

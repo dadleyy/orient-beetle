@@ -84,7 +84,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
     }
   };
 
-  if should_send == false {
+  if !should_send {
     return Ok(0);
   }
 
@@ -216,20 +216,7 @@ where
         log::warn!("unable to upsert device diagnostic - {error}");
         Error::new(ErrorKind::Other, format!("{error}"))
       })?
-      .ok_or_else(|| Error::new(ErrorKind::Other, format!("upsert failed")))?;
-
-    // Store the current timestamp in a hash whose keys are the identity of our devices.
-    let activation = kramer::execute(
-      &mut stream,
-      kramer::Command::Hashes(kramer::HashCommand::Set(
-        crate::constants::REGISTRAR_ACTIVE,
-        kramer::Arity::One((id.as_str(), chrono::Utc::now().to_rfc3339())),
-        kramer::Insertion::Always,
-      )),
-    )
-    .await?;
-
-    log::trace!("device activation - {:?}", activation);
+      .ok_or_else(|| Error::new(ErrorKind::Other, "upsert failed"))?;
 
     // Store the device identity in a set; this will allow us to iterate over the list of
     // active ids more easily later.

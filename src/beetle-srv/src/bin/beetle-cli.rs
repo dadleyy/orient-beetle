@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::io::{Error, ErrorKind, Result};
 
 const MAX_IDLE_TIME_SECONDS: i64 = 60 * 30;
-const HELP_TEXT: &'static str = r#"beetle-cli admin interface
+const HELP_TEXT: &str = r#"beetle-cli admin interface
 
 usage:
     beetle-cli help
@@ -93,6 +93,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
           Error::new(ErrorKind::Other, format!("{error}"))
         })?;
 
+      #[allow(clippy::blocks_in_if_conditions)]
       while cursor.advance().await.map_err(|error| {
         log::warn!("unable to advance cursor - {error}");
         Error::new(ErrorKind::Other, format!("{error}"))
@@ -133,6 +134,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
 
       let mut devices = Vec::with_capacity(100);
 
+      #[allow(clippy::blocks_in_if_conditions)]
       while cursor.advance().await.map_err(|error| {
         log::warn!("unable to advance cursor - {error}");
         Error::new(ErrorKind::Other, format!("{error}"))
@@ -181,15 +183,6 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
 
         kramer::execute(
           &mut stream,
-          kramer::Command::Hashes::<&str, &str>(kramer::HashCommand::Del(
-            beetle::constants::REGISTRAR_ACTIVE,
-            kramer::Arity::One(&dev.id),
-          )),
-        )
-        .await?;
-
-        kramer::execute(
-          &mut stream,
           kramer::Command::Sets::<&str, &str>(kramer::SetCommand::Rem(
             beetle::constants::REGISTRAR_INDEX,
             kramer::Arity::One(&dev.id),
@@ -221,7 +214,7 @@ fn main() -> Result<()> {
   let mut args = std::env::args().skip(1);
   let cmd = args.next();
 
-  let command = match cmd.as_ref().map(|i| i.as_str()) {
+  let command = match cmd.as_deref() {
     Some("provision") => CommandLineCommand::Provision(
       args
         .next()

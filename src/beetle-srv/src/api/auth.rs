@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(debug_assertions)]
-const COOKIE_SET_FLAGS: &'static str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly";
+const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly";
 
 #[cfg(not(debug_assertions))]
-const COOKIE_SET_FLAGS: &'static str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly; Secure";
+const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly; Secure";
 
 #[derive(Debug, Deserialize)]
 struct AuthCodeResponse {
@@ -78,7 +78,7 @@ pub async fn complete(request: tide::Request<super::worker::Worker>) -> tide::Re
     .url()
     .query_pairs()
     .find_map(|(k, v)| if k == "code" { Some(v) } else { None })
-    .ok_or(tide::Error::from_str(404, "no-code"))?;
+    .ok_or_else(|| tide::Error::from_str(404, "no-code"))?;
 
   log::debug!("attempting to exchange code for token");
 
@@ -96,7 +96,7 @@ pub async fn complete(request: tide::Request<super::worker::Worker>) -> tide::Re
 
   let token = token_from_response(&mut response)
     .await
-    .ok_or(tide::Error::from_str(404, "token-exchange"))?;
+    .ok_or_else(|| tide::Error::from_str(404, "token-exchange"))?;
 
   log::debug!("loaded token from response");
 
@@ -134,7 +134,7 @@ pub async fn complete(request: tide::Request<super::worker::Worker>) -> tide::Re
       log::warn!("unable to create new user - {:?}", error);
       tide::Error::from_str(500, "user-failure")
     })?
-    .ok_or(tide::Error::from_str(404, "missing-user"))?;
+    .ok_or_else(|| tide::Error::from_str(404, "missing-user"))?;
 
   log::info!("user pulled from db - {:?}", user);
 
@@ -181,8 +181,8 @@ pub async fn redirect(request: tide::Request<super::worker::Worker>) -> tide::Re
     &[
       ("client_id", auth0.client_id.as_str()),
       ("redirect_uri", auth0.redirect_uri.as_str()),
-      ("response_type", &"code"),
-      ("scope", &"openid profile email"),
+      ("response_type", "code"),
+      ("scope", "openid profile email"),
     ],
   )?;
   Ok(tide::Redirect::temporary(url.to_string()).into())
