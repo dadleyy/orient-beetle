@@ -13,7 +13,7 @@ async fn run(config: beetle::registrar::Configuration) -> Result<()> {
     match worker.work().await {
       Err(error) => failures.push(format!("{error}")),
       Ok(()) => {
-        if failures.len() != 0 {
+        if !failures.is_empty() {
           log::info!("recovered from failures: {}", failures.drain(0..).collect::<String>());
         }
       }

@@ -28,11 +28,11 @@ impl std::fmt::Display for DeviceDiagnostic {
     let start = self
       .first_seen
       .map(|time| format_datetime(&time))
-      .unwrap_or("n/a".to_string());
+      .unwrap_or_else(|| "n/a".to_string());
     let end = self
       .last_seen
       .map(|time| format_datetime(&time))
-      .unwrap_or("n/a".to_string());
+      .unwrap_or_else(|| "n/a".to_string());
 
     let last = self
       .last_seen

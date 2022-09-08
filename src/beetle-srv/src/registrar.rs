@@ -63,8 +63,6 @@ impl Worker {
 /// in our pool that devices will pull down to identify themselves. If that amount reaches a
 /// quantity below a specific threshold, fill it back up.
 async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net::TcpStream>) -> Result<usize> {
-  log::debug!("checking pool length");
-
   let output = kramer::execute(
     &mut stream,
     kramer::Command::List::<&str, bool>(kramer::ListCommand::Len(crate::constants::REGISTRAR_AVAILABLE)),
@@ -86,7 +84,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
     }
   };
 
-  if should_send == false {
+  if !should_send {
     return Ok(0);
   }
 
@@ -176,7 +174,6 @@ where
   .await?;
 
   if let kramer::Response::Item(kramer::ResponseValue::String(id)) = taken {
-    log::debug!("device '{}' submitted registration", id);
     let collection = db
       .database(&dbc.database)
       .collection::<crate::types::DeviceDiagnostic>(&dbc.collections.device_diagnostics);
@@ -219,22 +216,7 @@ where
         log::warn!("unable to upsert device diagnostic - {error}");
         Error::new(ErrorKind::Other, format!("{error}"))
       })?
-      .ok_or_else(|| Error::new(ErrorKind::Other, format!("upsert failed")))?;
-
-    log::info!("updated device '{}' diagnostics", device_diagnostic.id);
-
-    // Store the current timestamp in a hash whose keys are the identity of our devices.
-    let activation = kramer::execute(
-      &mut stream,
-      kramer::Command::Hashes(kramer::HashCommand::Set(
-        crate::constants::REGISTRAR_ACTIVE,
-        kramer::Arity::One((id.as_str(), chrono::Utc::now().to_rfc3339())),
-        kramer::Insertion::Always,
-      )),
-    )
-    .await?;
-
-    log::trace!("device activation - {:?}", activation);
+      .ok_or_else(|| Error::new(ErrorKind::Other, "upsert failed"))?;
 
     // Store the device identity in a set; this will allow us to iterate over the list of
     // active ids more easily later.
@@ -242,9 +224,9 @@ where
       crate::constants::REGISTRAR_INDEX,
       kramer::Arity::One(id.as_str()),
     ));
-    let activation = kramer::execute(&mut stream, setter).await?;
+    kramer::execute(&mut stream, setter).await?;
 
-    log::trace!("device indexing - {:?}", activation);
+    log::info!("updated device '{}' diagnostics", device_diagnostic.id);
   }
 
   Ok(0usize)

@@ -60,12 +60,11 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
     tide::Error::from_str(422, "bad-request")
   })?;
 
-  if user
+  if !user
     .devices
     .as_ref()
     .map(|list| list.contains_key(&body.device_id))
     .unwrap_or(false)
-    == false
   {
     log::warn!("'{}' has no access to device '{}'", user.oid, body.device_id);
     return Err(tide::Error::from_str(400, "not-found"));
@@ -115,12 +114,11 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
 
   let query = request.query::<LookupQuery>()?;
 
-  if user
+  if !user
     .devices
     .as_ref()
     .map(|list| list.contains_key(&query.id))
     .unwrap_or(false)
-    == false
   {
     log::warn!("'{}' has no access to device '{}'", user.oid, query.id);
     return Err(tide::Error::from_str(400, "not-found"));
@@ -172,6 +170,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
     current_queue_count: current_queue_len,
   };
 
+  log::debug!("user '{}' fetched device '{}'", user.oid, info.id);
   tide::Body::from_json(&info).map(|body| tide::Response::builder(200).body(body).build())
 }
 
@@ -183,7 +182,7 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
   let users = worker.users_collection()?;
 
   let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
-    log::warn!("no user found");
+    log::warn!("device unregister -> no user found");
     tide::Error::from_str(404, "missing-player")
   })?;
 
@@ -194,14 +193,15 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
 
   match user.devices.take() {
     Some(mut device_map) => {
-      log::debug!("found device map - {device_map:?}");
+      log::trace!("device unregister -> found device map - {device_map:?}");
 
-      if device_map.remove(&payload.device_id).is_some() == false {
+      if device_map.remove(&payload.device_id).is_none() {
         return Ok(tide::Response::builder(422).build());
       }
 
       // Update our user handle
-      let query = bson::doc! { "oid": user.oid.clone() };
+      let oid = user.oid.clone();
+      let query = bson::doc! { "oid": &oid };
       let updated = crate::types::User {
         devices: Some(device_map),
         ..user
@@ -227,6 +227,7 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
           tide::Error::from_str(500, "player-failure")
         })?;
 
+      log::info!("user '{}' unregistered device '{}'", oid, payload.device_id);
       Ok(tide::Response::builder(200).build())
     }
     None => {
@@ -246,21 +247,21 @@ pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide
   let users = worker.users_collection()?;
 
   let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
-    log::warn!("no user found");
+    log::warn!("device-register -> no user found");
     tide::Error::from_str(404, "missing-player")
   })?;
 
   let payload = request.body_json::<RegistrationPayload>().await.map_err(|error| {
-    log::warn!("invalid request payload - {error}");
+    log::warn!("device-register -> invalid request payload - {error}");
     tide::Error::from_str(422, "bad-payload")
   })?;
 
   let found_device = devices.find_one(bson::doc! { "id": &payload.device_id }, None).await;
 
   match found_device {
-    Ok(Some(diagnostic)) => log::info!("found device for registration - {diagnostic:?}"),
+    Ok(Some(diagnostic)) => log::trace!("device-register -> found device for registration - {diagnostic:?}"),
     Ok(None) => {
-      log::warn!("unable to find '{}'", payload.device_id);
+      log::warn!("device-register -> unable to find '{}'", payload.device_id);
       return Err(tide::Error::from_str(404, "not-found"));
     }
     Err(error) => {
@@ -309,6 +310,11 @@ pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide
       tide::Error::from_str(500, "player-failure")
     })?;
 
+  log::info!(
+    "device-register -> user '{}' registered '{}'",
+    updated.oid,
+    payload.device_id
+  );
   tide::Body::from_json(&RegistrationResponse { id: payload.device_id })
     .map(|body| tide::Response::builder(200).body(body).build())
 }

@@ -14,9 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: build
+      - name: "install clippy"
+        run: rustup component add clippy
+      - name: "build"
         run: cargo build
-      - name: test
+      - name: "clippy"
+        run: cargo clippy
+      - name: "test"
         run: cargo test
 
   build-pio:

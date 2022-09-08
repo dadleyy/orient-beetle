@@ -109,11 +109,11 @@ impl Worker {
       .map(|claims| claims.oid)
       .unwrap_or_default();
 
-    if oid.len() == 0 {
+    if oid.is_empty() {
       return Ok(None);
     }
 
-    log::debug!("attempting to identify via {:?}", oid);
+    log::trace!("attempting to identify via {:?}", oid);
     let users = self.users_collection()?;
     let query = bson::doc! { "oid": oid.clone() };
 
