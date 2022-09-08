@@ -90,11 +90,11 @@ class View final {
       gfx::draw::filled_rectangle(_lcd, (gfx::srect16) _lcd.bounds(), lcd_color::black);
     }
 
-    void flip_screen(typename T::EScreenOrientation orientation) {
-      _lcd.rotate(orientation);
-    }
-
     void render(const State& state) {
+      if (!init) {
+        init_driver();
+      }
+
       auto bnds = _lcd.bounds();
       gfx::ssize16 dims = (gfx::ssize16) _lcd.dimensions();
 
@@ -152,7 +152,7 @@ class View final {
       bmp_type icon_bmp(header_size, icon_buf);
       gfx::draw::filled_rectangle(icon_bmp, (gfx::srect16) bnds, lcd_color::black);
       gfx::srect16 text_rect = icon_font.measure_text((gfx::ssize16) dims, {0, 0}, "ABCDEF", icon_scale).bounds();
-      gfx::draw::text(icon_bmp, text_rect, {0, 0}, "ABCDEF", icon_font, icon_scale, lcd_color::white, lcd_color::black, false);
+      gfx::draw::text(icon_bmp, text_rect, {0, 0}, "ABCDEF", icon_font, icon_scale, lcd_color::red, lcd_color::black, false);
       gfx::draw::bitmap(_lcd, (gfx::srect16) bnds.offset(0, bnds.height() - text_rect.height()), icon_bmp, icon_bmp.bounds().offset(0, 0));
       free(icon_buf);
     }
@@ -160,6 +160,136 @@ class View final {
   private:
     T _lcd;
     bool rm_footer;
+    bool init = false;
+
+    // TODO: we're still working on the oddities related to the ili9341v driver that is present in 
+    // the orient-display that is being used.
+    void init_driver(void) {
+      init = true;
+      T::bus::begin_write();
+      T::bus::begin_transaction();
+      T::driver::send_command(0x01);  // Command: Software Reset
+      T::driver::send_command(0xCF);  // Command: Power Control.
+      T::driver::send_data8(0x00);
+      T::driver::send_data8(0xC1);
+      T::driver::send_data8(0x30);
+      T::driver::send_command(0xED);  // Command: Power On Sequence Control.
+      T::driver::send_data8(0x64);
+      T::driver::send_data8(0x03);
+      T::driver::send_data8(0x12);
+      T::driver::send_data8(0x81);
+      T::driver::send_command(0xE8);  // Command: Driver Timing Control.
+      T::driver::send_data8(0x85);
+      T::driver::send_data8(0x00);
+      T::driver::send_data8(0x78);
+      T::driver::send_command(0xCB);  // Command: Power Control.
+      T::driver::send_data8(0x39);
+      T::driver::send_data8(0x2C);
+      T::driver::send_data8(0x00);
+      T::driver::send_data8(0x34);
+      T::driver::send_data8(0x02);
+      T::driver::send_command(0xF7);  // Command: Pump Ratio Control.
+      T::driver::send_data8(0x20);
+      T::driver::send_command(0xEA);  // Command: Driver Timing Control C.
+      T::driver::send_data8(0x00);
+      T::driver::send_data8(0x00);
+
+      T::driver::send_command(0xB1);  // Command: Frame Rate Control.
+      T::driver::send_data8(0x00);
+      T::driver::send_data8(0x1B);
+
+      T::driver::send_command(0xC0);  // Command: Power Control 1.
+      T::driver::send_data8(0x21);
+      T::driver::send_command(0xC1);  // Command: Power Control 2.
+      T::driver::send_data8(0x11);
+
+      T::driver::send_command(0xC5);  // Command: VCOM control 1.
+      T::driver::send_data8(0x3e);
+      T::driver::send_data8(0x28);
+      T::driver::send_command(0xC7);  // Command: VCOM control 2.
+      T::driver::send_data8(0x86);
+      T::driver::send_command(0x36);  // Command: Memory Access Control.
+      T::driver::send_data8(0x08);
+      T::driver::send_command(0x3A);  // Command: COLMOD: Pixel Format Set.
+      T::driver::send_data8(0x55);
+      T::driver::send_command(0xB1);  // Command: Frame Rate Control.
+      T::driver::send_data8(0x00);
+      T::driver::send_data8(0x13);
+      T::driver::send_command(0xB6);  // Command: Display Function control.
+      T::driver::send_data8(0x08);
+      T::driver::send_data8(0x82);
+      T::driver::send_data8(0x27);
+      T::driver::send_command(0xF2);  // Command: Enable 3G.
+      T::driver::send_data8(0x00);
+      T::driver::send_command(0x26);  // Command: Gamma Set
+      T::driver::send_data8(0x01);
+
+      T::driver::send_command(0xE0);  // Command: Pos Gamma Correction.
+      T::driver::send_data8(0x0F);
+      T::driver::send_data8(0x31);
+      T::driver::send_data8(0x2B);
+      T::driver::send_data8(0x0C);
+      T::driver::send_data8(0x0E);
+      T::driver::send_data8(0x08);
+      T::driver::send_data8(0x4E);
+      T::driver::send_data8(0xF1);
+      T::driver::send_data8(0x37);
+      T::driver::send_data8(0x07);
+      T::driver::send_data8(0x10);
+      T::driver::send_data8(0x03);
+      T::driver::send_data8(0x0E);
+      T::driver::send_data8(0x09);
+      T::driver::send_data8(0x00);
+      T::driver::send_command(0xE1);  // Command: Neg Gamma Correction.
+      T::driver::send_data8(0x00);
+      T::driver::send_data8(0x0E);
+      T::driver::send_data8(0x14);
+      T::driver::send_data8(0x03);
+      T::driver::send_data8(0x11);
+      T::driver::send_data8(0x07);
+      T::driver::send_data8(0x31);
+      T::driver::send_data8(0xC1);
+      T::driver::send_data8(0x48);
+      T::driver::send_data8(0x08);
+      T::driver::send_data8(0x0F);
+      T::driver::send_data8(0x0C);
+      T::driver::send_data8(0x31);
+      T::driver::send_data8(0x36);
+      T::driver::send_data8(0x0F);
+      T::driver::send_command(0x11);  // Command: Sleep OUT.
+      T::bus::end_transaction();
+      T::bus::end_write();
+
+      delay(120);
+
+      T::bus::begin_write();
+      T::bus::begin_transaction();
+      T::driver::send_command(0x29);  // Command: Display ON.
+      T::bus::end_transaction();
+      T::bus::end_write();
+
+      T::bus::begin_write();
+      T::bus::begin_transaction();
+      T::driver::send_command(0x36);  // Command: Memory Access Control.
+      T::driver::send_data8(0x00);
+      T::driver::send_command(0xB6);  // Command: Display Function
+      T::driver::send_data8(0x0A);
+      T::driver::send_data8(0xA2);
+
+      T::driver::send_command(0x11);  // Command: Sleep OUT
+      T::bus::end_transaction();
+      T::bus::end_write();
+
+      delay(120);
+
+      T::bus::begin_write();
+      T::bus::begin_transaction();
+      T::driver::send_command(0x29);  // Command: Display ON
+      T::driver::send_command(0xb0);  // Command: RGB Interface control
+      T::driver::send_data8(0x80);
+      T::bus::end_transaction();
+      T::bus::end_write();
+    }
 };
 
 #endif
