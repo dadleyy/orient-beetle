@@ -43,10 +43,15 @@ static lv_disp_draw_buf_t draw_buf;
 static lv_color_t buf[TFT_WIDTH * 10];
 
 static lv_style_t screen_style;
-lv_obj_t *screen;
+lv_obj_t* screen;
 
 static lv_style_t label_style;
-lv_obj_t *label;
+lv_obj_t* label;
+
+lv_obj_t * message_row;
+
+constexpr const uint8_t label_count = 4;
+lv_obj_t* message_labels[label_count];
 
 Adafruit_VCNL4010 vcnl;
 
@@ -120,6 +125,7 @@ void setup(void) {
   disp_drv.hor_res = TFT_WIDTH;
   disp_drv.ver_res = TFT_HEIGHT;
   disp_drv.draw_buf = &draw_buf;
+  // disp_drv.antialiasing = 2;
 
   // Most importantly here - attach the draw callback that will actually take our image
   // data buffer and write it to the TFT screen.
@@ -129,18 +135,33 @@ void setup(void) {
 
   // Create our screen style, attach it to the screen.
   lv_style_init(&screen_style);
-  lv_style_set_bg_color(&screen_style, lv_color_make(0xff, 0x00, 0x00));
+  lv_style_set_bg_color(&screen_style, lv_color_make(0x00, 0x00, 0x00));
+
   screen = lv_obj_create(NULL);
   lv_obj_add_style(screen, &screen_style, 0);
+  lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
 
   // Create our label within the screen.
   lv_style_init(&label_style);
-  lv_style_set_text_color(&label_style, lv_color_make(0x00, 0x00, 0x00));
-  lv_style_set_text_font(&label_style, &lv_font_montserrat_28);
+  lv_style_set_text_color(&label_style, lv_color_make(0xfe, 0xfe, 0xfe));
+  lv_style_set_text_font(&label_style, &lv_font_montserrat_18);
+
+  message_row = lv_obj_create(screen);
+  lv_obj_set_size(message_row, TFT_WIDTH, TFT_HEIGHT);
+  lv_obj_set_scrollbar_mode(message_row, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_add_style(message_row, &screen_style, 0);
+  lv_obj_align(message_row, LV_ALIGN_TOP_MID, 0, 5);
+  lv_obj_set_flex_flow(message_row, LV_FLEX_FLOW_COLUMN);
+
+  for (uint8_t i = 0; i < label_count; i++) {
+    message_labels[i]= lv_label_create(message_row);
+    lv_obj_align(message_labels[i], LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_add_style(message_labels[i], &label_style, 0);
+  }
 
   label = lv_label_create(screen);
   lv_obj_add_style(label, &label_style, 0);
-  lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_align(label, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
   log_i("lvgl ready.");
 
@@ -169,12 +190,31 @@ void loop(void) {
     log_d("proximity (enabled %d): %d", prox_ready, prox);
     log_d("free memory before update: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   }
-  lv_label_set_text(label, print_debug_info ? "hello" : "bye");
-  lv_scr_load(screen);
 #endif
 
   // Apply updates.
   state = eng.update(state, now);
+
+  if (std::get_if<WorkingState>(&state.active)) {
+    WorkingState * working_state = std::get_if<WorkingState>(&state.active);
+
+    lv_label_set_text(label, working_state->id_content);
+
+    uint8_t i = 0;
+    for (auto message = working_state->begin(); message != working_state->end(); message++) {
+      if (message->content_size > 0 && i < label_count) {
+        lv_label_set_text(message_labels[i], message->content);
+        i += 1;
+      }
+    }
+  } else {
+    for (uint8_t i = 0; i < label_count; i++) {
+      lv_label_set_text(message_labels[i], "");
+    }
+    lv_label_set_text(label, "...");
+  }
+
+  lv_scr_load(screen);
 
   // Update the lvgl internal timer
   lv_tick_inc(now - last_frame);

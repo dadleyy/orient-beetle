@@ -23,6 +23,7 @@ Message::Message():
 Message::Message(Message&& other):
   content(other.content),
   content_size(other.content_size) {
+    other.content_size = 0;
     other.content = nullptr;
 }
 
@@ -31,6 +32,7 @@ Message& Message::operator=(Message&& other) {
   this->content_size = other.content_size;
 
   other.content = nullptr;
+  other.content_size = 0;
 
   return *this;
 }

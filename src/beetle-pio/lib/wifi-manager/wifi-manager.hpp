@@ -46,7 +46,7 @@ namespace wifimanager {
       constexpr static const char * CONNECTION_PREFIX = "GET /connect?";
       constexpr static uint16_t SERVER_BUFFER_CAPACITY = 1024;
       constexpr static uint8_t MAX_CLIENT_BLANK_READS = 5;
-      constexpr static uint16_t MAX_PENDING_CONNECTION_ATTEMPTS = 50;
+      constexpr static uint16_t MAX_PENDING_CONNECTION_ATTEMPTS = 100;
       constexpr static uint16_t MAX_CONNECTION_INTERRUPTS = 500;
       constexpr static uint16_t MAX_HEADER_SIZE = 512;
 

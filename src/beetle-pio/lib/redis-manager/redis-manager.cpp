@@ -89,10 +89,14 @@ namespace redismanager {
   // Connected state copy - consume the framebuffer into our destination.
   uint16_t Manager::Connected::copy(char * destination, uint16_t size) {
     if (_cursor == 0 || _authorization_stage != EAuthorizationStage::FullyAuthorized) {
+      log_e("attempted to copy an empty message");
       return 0;
     }
 
     uint16_t amount = _cursor < size ? _cursor : size;
+
+    log_d("copying (size %d) message - '%s'", amount, _framebuffer);
+
     memcpy(destination, _framebuffer, amount);
     _cursor = 0;
     memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
@@ -235,9 +239,11 @@ namespace redismanager {
           return std::nullopt;
         }
 
+        auto parse_result = is_empty ? 0 : parse_framebuffer();
+
         // Its all good if we received an empty string. Just go ahead and reset our
         // count, writing a new fresh message.
-        if (is_empty) {
+        if (is_empty || (parse_result == 3 && _last_written_pop == false)) {
           _empty_identified_reads = 0;
           _pending_response = false;
           log_d("nothing-burger, going ahead with potential message send");
@@ -245,16 +251,18 @@ namespace redismanager {
           return std::nullopt;
         }
 
-        auto parse_result = parse_framebuffer();
-
         // Be very specific about what we consider a valid message.
         if (parse_result != 2) {
+          // Reset our cursor; we don't want it looking like we have a message.
+          _cursor = 0;
+
           _pending_response = false;
           log_e("strange parse result while authorized - '%s'", _framebuffer);
           _strange_thing_count = _strange_thing_count + 1;
           return std::nullopt;
         }
 
+        _strange_thing_count = 0;
         strcpy(_framebuffer, _parsed_message);
 
         if (strcmp(_framebuffer, "__reset__") == 0) {
@@ -323,6 +331,7 @@ namespace redismanager {
   inline uint8_t Manager::Connected::parse_framebuffer(void) {
     memset(_parsed_message, '\0', PARSED_MESSAGE_SIZE);
 
+    bool is_integer = false;
     uint8_t parsing_stage = 0;
     uint8_t stage_length = 0;
     uint8_t parsed_length = 0;
@@ -349,6 +358,7 @@ namespace redismanager {
       current_token++;
 
       if ((tok == '$' || tok == ':') && parsing_stage == 0) {
+        is_integer = tok == ':';
         parsing_stage = 1;
         stage_length = 0;
         continue;
@@ -372,12 +382,12 @@ namespace redismanager {
       stage_length += 1;
     }
 
-    if (parsing_stage == 2 && parsed_length > 0) {
-      log_d("parsed message - '%s'", _parsed_message);
+    if (parsing_stage == 2 && parsed_length > 0 && !is_integer) {
+      log_d("parsed message (from '%s') - '%s' (len %d)", _framebuffer, _parsed_message, parsed_length);
       return 2;
     }
 
-    return 1;
+    return is_integer ? 3 : 1;
   }
 
   Manager::Connected::Connected(Preferences* _preferences):

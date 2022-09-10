@@ -62,6 +62,7 @@ namespace redismanager {
 
       constexpr static const char * EMPTY_RESPONSE = "$-1\r\n";
       constexpr static const char * OK = "+OK\r\n";
+      constexpr static const char * PUSH_OK = ":1\r\n";
       constexpr static const char * WRONG_PASS_ERR = "-WRONGPASS invalid username-password pair or user is disabled\r\n";
       constexpr static const char * NO_PERM_ERR = "-NOPERM this user has no permissions to run the 'rpush' command or its subcommand\r\n";
 
@@ -143,8 +144,8 @@ namespace redismanager {
 
           uint8_t _strange_thing_count = 0;
 
-          microtim::MicroTimer _timer = microtim::MicroTimer(200);
-          microtim::MicroTimer _write_timer = microtim::MicroTimer(1000);
+          microtim::MicroTimer _timer = microtim::MicroTimer(100);
+          microtim::MicroTimer _write_timer = microtim::MicroTimer(500);
           bool _pending_response = false;
           bool _last_written_pop = false;
 
