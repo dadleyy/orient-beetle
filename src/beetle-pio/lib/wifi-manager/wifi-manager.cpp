@@ -14,7 +14,13 @@ namespace wifimanager {
     return 0;
   }
 
-  std::optional<Manager::EManagerMessage> Manager::frame() {
+  std::optional<Manager::EManagerMessage> Manager::update(uint32_t current_time) {
+    auto timer_result = _timer.update(current_time);
+
+    if (timer_result != 1) {
+      return std::nullopt;
+    }
+
     unsigned int modi = _mode.index();
 
 #ifndef RELEASE
@@ -87,21 +93,26 @@ namespace wifimanager {
         char password [MAX_PASSWORD_LENGTH];
         memset(password, '\0', MAX_PASSWORD_LENGTH);
 
-        size_t stored_ssid_len = _preferences.isKey("ssid")
+        size_t stored_ssid_len = _checked_stored_values == false && _preferences.isKey("ssid")
           ? _preferences.getString("ssid", ssid, MAX_SSID_LENGTH)
           : 0;
-        size_t stored_password_len = _preferences.isKey("password")
+        size_t stored_password_len = _checked_stored_values == false && _preferences.isKey("password")
           ? _preferences.getString("password", password, MAX_PASSWORD_LENGTH)
           : 0;
 
-        log_d("stored ssid len - %d (password %d)", stored_ssid_len, stored_password_len);
+        if (_checked_stored_values == false) {
+          _checked_stored_values = true;
+          log_d("stored ssid len - %d (password %d)", stored_ssid_len, stored_password_len);
+        }
 
         // If we have nothing stored, try to read from our http server.
         if (stored_ssid_len == 0 || stored_password_len == 0) {
           memset(ssid, '\0', MAX_SSID_LENGTH);
           memset(password, '\0', MAX_PASSWORD_LENGTH);
 
-          if (server->frame(ssid, password) == false) { 
+          // If the server _also_ doesn't have an ssid or password available for us, break
+          // out of this arm of our state switch statement.
+          if (server->update(ssid, password) == false) { 
             break;
           }
         }
@@ -198,7 +209,7 @@ namespace wifimanager {
     log_d("soft ap not started");
   }
 
-  bool Manager::PendingConfiguration::frame(char * ssid, char * password) {
+  bool Manager::PendingConfiguration::update(char * ssid, char * password) {
       WiFiClient client = available();
 
       // If we are running in AP mode and have no http connection to our server, move right along.

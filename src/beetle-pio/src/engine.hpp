@@ -19,7 +19,7 @@ class Engine final {
     Engine& operator=(const Engine&) = delete;
 
     void begin(void);
-    State update(State&);
+    State update(State&, uint32_t);
 
   private:
     wifimanager::Manager _wifi;
