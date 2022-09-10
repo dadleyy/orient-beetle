@@ -14,7 +14,7 @@ namespace wifimanager {
     return 0;
   }
 
-  std::optional<Manager::EManagerMessage> Manager::frame(uint32_t current_time) {
+  std::optional<Manager::EManagerMessage> Manager::update(uint32_t current_time) {
     auto timer_result = _timer.update(current_time);
 
     if (timer_result != 1) {
@@ -112,7 +112,7 @@ namespace wifimanager {
 
           // If the server _also_ doesn't have an ssid or password available for us, break
           // out of this arm of our state switch statement.
-          if (server->frame(ssid, password) == false) { 
+          if (server->update(ssid, password) == false) { 
             break;
           }
         }
@@ -209,7 +209,7 @@ namespace wifimanager {
     log_d("soft ap not started");
   }
 
-  bool Manager::PendingConfiguration::frame(char * ssid, char * password) {
+  bool Manager::PendingConfiguration::update(char * ssid, char * password) {
       WiFiClient client = available();
 
       // If we are running in AP mode and have no http connection to our server, move right along.

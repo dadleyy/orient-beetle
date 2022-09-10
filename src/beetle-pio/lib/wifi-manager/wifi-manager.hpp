@@ -39,7 +39,7 @@ namespace wifimanager {
       };
 
       void begin(void);
-      std::optional<EManagerMessage> frame(uint32_t);
+      std::optional<EManagerMessage> update(uint32_t);
       uint8_t attempt(void);
 
     private:
@@ -72,7 +72,7 @@ namespace wifimanager {
           PendingConfiguration(const PendingConfiguration&) = delete;
           PendingConfiguration & operator=(const PendingConfiguration&) = delete;
 
-          bool frame(char *, char *);
+          bool update(char *, char *);
           void begin(IPAddress addr);
 
         private:

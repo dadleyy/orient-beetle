@@ -14,8 +14,8 @@ void Engine::begin(void) {
 State Engine::update(State& current, uint32_t current_time) {
   State next(std::move(current));
 
-  std::optional<wifimanager::Manager::EManagerMessage> wifi_update = _wifi.frame(current_time);
-  std::optional<redismanager::Manager::EManagerMessage> redis_update = _redis.frame(wifi_update, current_time);
+  std::optional<wifimanager::Manager::EManagerMessage> wifi_update = _wifi.update(current_time);
+  std::optional<redismanager::Manager::EManagerMessage> redis_update = _redis.update(wifi_update, current_time);
 
   if (wifi_update) {
     switch (*wifi_update) {

@@ -27,7 +27,7 @@ namespace redismanager {
   }
 
   // The main "tick" function of our redis manager.
-  std::optional<Manager::EManagerMessage> Manager::frame(
+  std::optional<Manager::EManagerMessage> Manager::update(
     std::optional<wifimanager::Manager::EManagerMessage> &message,
     uint32_t current_time
   ) {

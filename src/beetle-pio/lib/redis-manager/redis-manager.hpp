@@ -37,7 +37,7 @@ namespace redismanager {
 
       // Update - given a message from the wifi manager and the current time, perform logic
       // based on our current state.
-      std::optional<EManagerMessage> frame(std::optional<wifimanager::Manager::EManagerMessage>&, uint32_t);
+      std::optional<EManagerMessage> update(std::optional<wifimanager::Manager::EManagerMessage>&, uint32_t);
 
       // Copy the latest message (if any) into the destination.
       uint16_t copy(char *, uint16_t);
