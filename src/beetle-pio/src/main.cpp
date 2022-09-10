@@ -4,6 +4,8 @@
 #include "TFT_eSPI.h"
 #include "lvgl.h"
 #include "font/lv_font.h"
+#include "jelle.h"
+#include "icon_font.h"
 
 // Internal libraries
 #include "microtim.hpp"
@@ -27,6 +29,9 @@ extern const uint32_t redis_port;
 extern const char * redis_auth_username;
 extern const char * redis_auth_password;
 
+LV_FONT_DECLARE(jelle);
+// LV_FONT_DECLARE(icon_font);
+
 // TODO: explore constructing the wifi + redis managers here. Dealing with the copy
 // and/or movement semantics of their constructors is out of scope for now.
 Engine eng(
@@ -45,8 +50,11 @@ static lv_color_t buf[TFT_WIDTH * 10];
 static lv_style_t screen_style;
 lv_obj_t* screen;
 
+lv_obj_t * status_column;
 static lv_style_t label_style;
-lv_obj_t* label;
+lv_obj_t* status_label;
+static lv_style_t icon_label_style;
+lv_obj_t* status_icon_label;
 
 lv_obj_t * message_row;
 
@@ -111,43 +119,46 @@ void setup(void) {
   log_i("tft screen ready, initializing lvgl");
 
   //
-  // LVGL initialization
+  // lvgl initialization.
+  //
+
   lv_init();
-
-  // Register a logging callback that will use the log methods from esp_log.h
   lv_log_register_print_cb(view_debug);
-
-  // Allocate memory for our draw buffer
   lv_disp_draw_buf_init(&draw_buf, buf, NULL, TFT_WIDTH * 10);
 
-  // Initialize the driver, set important properties
   lv_disp_drv_init(&disp_drv);
   disp_drv.hor_res = TFT_WIDTH;
   disp_drv.ver_res = TFT_HEIGHT;
   disp_drv.draw_buf = &draw_buf;
-  // disp_drv.antialiasing = 2;
-
-  // Most importantly here - attach the draw callback that will actually take our image
-  // data buffer and write it to the TFT screen.
   disp_drv.flush_cb = display_flush;
-
   lv_disp_drv_register(&disp_drv);
 
+  //
+  // Style allocation
   // Create our screen style, attach it to the screen.
   lv_style_init(&screen_style);
   lv_style_set_bg_color(&screen_style, lv_color_make(0x00, 0x00, 0x00));
+  lv_style_set_border_width(&screen_style, 0);
+  lv_style_set_outline_width(&screen_style, 0);
 
+  // Create our text styles (one for icons, one for text);
+  lv_style_init(&icon_label_style);
+  lv_style_set_text_color(&icon_label_style, lv_color_make(0xfe, 0xfe, 0xfe));
+  lv_style_set_text_font(&icon_label_style, &icon_font);
+
+  lv_style_init(&label_style);
+  lv_style_set_text_color(&label_style, lv_color_make(0xfe, 0xfe, 0xfe));
+  lv_style_set_text_font(&label_style, &jelle);
+
+  //
+  // Object allocation
   screen = lv_obj_create(NULL);
   lv_obj_add_style(screen, &screen_style, 0);
   lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
 
-  // Create our label within the screen.
-  lv_style_init(&label_style);
-  lv_style_set_text_color(&label_style, lv_color_make(0xfe, 0xfe, 0xfe));
-  lv_style_set_text_font(&label_style, &lv_font_montserrat_18);
-
+  // Message section allocations.
   message_row = lv_obj_create(screen);
-  lv_obj_set_size(message_row, TFT_WIDTH, TFT_HEIGHT);
+  lv_obj_set_size(message_row, TFT_WIDTH, TFT_HEIGHT - 30);
   lv_obj_set_scrollbar_mode(message_row, LV_SCROLLBAR_MODE_OFF);
   lv_obj_add_style(message_row, &screen_style, 0);
   lv_obj_align(message_row, LV_ALIGN_TOP_MID, 0, 5);
@@ -159,9 +170,24 @@ void setup(void) {
     lv_obj_add_style(message_labels[i], &label_style, 0);
   }
 
-  label = lv_label_create(screen);
-  lv_obj_add_style(label, &label_style, 0);
-  lv_obj_align(label, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+  // Status section allocations.
+  status_column = lv_obj_create(screen);
+  lv_obj_set_size(status_column, TFT_WIDTH, 30);
+  lv_obj_set_scrollbar_mode(status_column, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_align(status_column, LV_ALIGN_BOTTOM_MID, 0, 5);
+  lv_obj_add_style(status_column, &screen_style, 0);
+
+  status_label = lv_label_create(status_column);
+  lv_obj_add_style(status_label, &label_style, 0);
+  lv_obj_align(status_label, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+
+  status_icon_label = lv_label_create(status_column);
+  lv_obj_add_style(status_icon_label, &icon_label_style, 0);
+  lv_obj_align(status_icon_label, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+
+  //
+  // lvgl resources ready.
+  //
 
   log_i("lvgl ready.");
 
@@ -197,8 +223,9 @@ void loop(void) {
 
   if (std::get_if<WorkingState>(&state.active)) {
     WorkingState * working_state = std::get_if<WorkingState>(&state.active);
+    lv_label_set_text(status_icon_label, "F");
 
-    lv_label_set_text(label, working_state->id_content);
+    lv_label_set_text(status_label, working_state->id_content);
 
     uint8_t i = 0;
     for (auto message = working_state->begin(); message != working_state->end(); message++) {
@@ -211,7 +238,9 @@ void loop(void) {
     for (uint8_t i = 0; i < label_count; i++) {
       lv_label_set_text(message_labels[i], "");
     }
-    lv_label_set_text(label, "...");
+
+    lv_label_set_text(status_icon_label, "J");
+    lv_label_set_text(status_label, "connecting...");
   }
 
   lv_scr_load(screen);
