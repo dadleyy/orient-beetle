@@ -4,7 +4,7 @@
 #include "TFT_eSPI.h"
 #include "lvgl.h"
 #include "font/lv_font.h"
-#include "jelle.h"
+#include "jelle_font.h"
 #include "icon_font.h"
 
 // Internal libraries
@@ -19,7 +19,6 @@
 
 #include "engine.hpp"
 #include "state.hpp"
-// #include "view.hpp"
 
 extern const char * ap_ssid;
 extern const char * ap_password;
@@ -28,9 +27,6 @@ extern const char * redis_host;
 extern const uint32_t redis_port;
 extern const char * redis_auth_username;
 extern const char * redis_auth_password;
-
-LV_FONT_DECLARE(jelle);
-// LV_FONT_DECLARE(icon_font);
 
 // TODO: explore constructing the wifi + redis managers here. Dealing with the copy
 // and/or movement semantics of their constructors is out of scope for now.
@@ -66,6 +62,9 @@ Adafruit_VCNL4010 vcnl;
 #ifndef RELEASE
 microtim::MicroTimer _debug_timer(5000);
 #endif
+
+microtim::MicroTimer _prox_timer(5000);
+bool _prox_state = true;
 
 uint32_t last_frame = 0;
 bool failed = false;
@@ -209,6 +208,28 @@ void loop(void) {
   auto now = millis();
 
   uint16_t prox = prox_ready ? vcnl.readProximity() : 0;
+
+  // Proximity sensor LED on/off.
+  if (prox_ready) {
+    if (prox > 6000) {
+      _prox_timer = std::move(microtim::MicroTimer(5000));
+
+      if (!_prox_state) {
+        log_d("turning on LED");
+        digitalWrite(LCD_PIN_NUM_BCKL, HIGH);
+      }
+
+      _prox_state = true;
+    }
+
+    if (_prox_timer.update(now) == 1) {
+      if (_prox_state) {
+        log_d("turning off LED");
+        digitalWrite(LCD_PIN_NUM_BCKL, LOW);
+      }
+      _prox_state = false;
+    }
+  }
 
 #ifndef RELEASE
   bool print_debug_info = _debug_timer.update(now) == 1;

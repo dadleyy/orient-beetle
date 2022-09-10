@@ -27,8 +27,23 @@ namespace microtim {
         return 0;
       }
 
+      // Disable copies.
       MicroTimer& operator=(const MicroTimer&) = delete;
       MicroTimer(const MicroTimer&) = delete;
+
+      MicroTimer(MicroTimer &&other):
+        _interval(other._interval),
+        _remaining(other._remaining),
+        _last_time(other._last_time) {
+      }
+
+      MicroTimer& operator=(MicroTimer &&other) {
+        this->_interval = other._interval;
+        this->_remaining = other._remaining;
+        this->_last_time = other._last_time;
+
+        return *this;
+      }
 
     private:
         uint32_t _interval;
