@@ -63,6 +63,7 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/auth/redirect").get(auth::redirect);
   app.at("/auth/complete").get(auth::complete);
   app.at("/auth/identify").get(auth::identify);
+  app.at("/auth/logout").get(auth::logout);
 
   app.at("/devices/register").post(devices::register);
   app.at("/devices/unregister").post(devices::unregister);

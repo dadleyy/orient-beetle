@@ -1,7 +1,8 @@
 {
   "name": "beetle-ui",
-  "version": "0.0.0",
+  "version": "0.0.0-do-not-use",
   "description": "beetle ui. all npm/node dependencies are means-to-and-end. please see Makefile",
+  "private": true,
   "scripts": {
     "tsc": "tsc",
     "pug": "pug",

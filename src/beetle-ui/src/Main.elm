@@ -47,7 +47,7 @@ defaultModel : Environment.Configuration -> Url.Url -> Nav.Key -> ( Model, Cmd M
 defaultModel flags url key =
     let
         env =
-            Environment.default flags
+            Environment.default flags key
 
         ( route, loader ) =
             case Route.fromUrl env url of
@@ -141,15 +141,24 @@ header : Model -> Html.Html Msg
 header model =
     case Environment.getId model.env of
         Nothing ->
-            Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ] []
+            Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ]
+                [ Html.text "Orient Beetle."
+                ]
 
         Just id ->
             Html.div [ Html.Attributes.class "cont-dark px-4 py-3 flex items-center" ]
                 [ Html.div [ Html.Attributes.class "truncate" ] [ Html.text (String.concat [ "oid: ", id ]) ]
-                , Html.div [ Html.Attributes.class "ml-auto" ]
-                    [ Html.a
-                        [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ]
-                        [ Html.text "home" ]
+                , Html.div [ Html.Attributes.class "ml-auto flex items-center" ]
+                    [ Html.div []
+                        [ Html.a
+                            [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ]
+                            [ Html.text "home" ]
+                        ]
+                    , Html.div [ Html.Attributes.class "ml-2" ]
+                        [ Html.a
+                            [ Html.Attributes.href model.env.configuration.logoutUrl ]
+                            [ Html.text "logout" ]
+                        ]
                     ]
                 ]
 

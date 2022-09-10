@@ -37,6 +37,14 @@ input {
   @apply flex-1;
 }
 
+h2 {
+  @apply text-xl;
+}
+
+h3 {
+  @apply text-lg;
+}
+
 button:not(:disabled) {
   @apply bg-sky-500;
   @apply text-white;

@@ -6,6 +6,8 @@ const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly
 #[cfg(not(debug_assertions))]
 const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly; Secure";
 
+const COOKIE_CLEAR_FLAGS: &str = "Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; SameSite=Strict; HttpOnly";
+
 #[derive(Debug, Deserialize)]
 struct AuthCodeResponse {
   access_token: String,
@@ -153,6 +155,23 @@ pub async fn complete(request: tide::Request<super::worker::Worker>) -> tide::Re
   Ok(response)
 }
 
+/// Route: logout
+///
+/// A simple redirect with a cookie-clearing header.
+pub async fn logout(request: tide::Request<super::worker::Worker>) -> tide::Result {
+  let worker = request.state();
+
+  log::debug!("redirecting user with logout cookie");
+
+  let cookie = format!("{}=; {}", &worker.web_configuration.session_cookie, COOKIE_CLEAR_FLAGS);
+  let response = tide::Response::builder(302)
+    .header("Set-Cookie", cookie)
+    .header("Location", &worker.web_configuration.ui_redirect)
+    .build();
+
+  Ok(response)
+}
+
 /// Route: identify
 ///
 /// This route attempts to load the user information from our db based on the session cookied
@@ -165,7 +184,7 @@ pub async fn identify(request: tide::Request<super::worker::Worker>) -> tide::Re
     tide::Error::from_str(404, "missing-user")
   })?;
 
-  log::debug!("successfully loaded user {:?}", user);
+  log::trace!("successfully loaded user {:?}", user);
 
   tide::Body::from_json(&user).map(|b| tide::Response::builder(200).body(b).build())
 }

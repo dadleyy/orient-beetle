@@ -1,5 +1,6 @@
 module Route.DeviceRegistration exposing (Message(..), Model, default, update, view)
 
+import Browser.Navigation as Nav
 import Environment
 import Html
 import Html.Attributes
@@ -46,8 +47,8 @@ update env message model =
 
         RegisteredDevice result ->
             case result of
-                Ok id ->
-                    ( { model | newDevice = ( "", Nothing ), alert = Just (Happy "Success") }, Cmd.none )
+                Ok registrationRes ->
+                    ( model, Nav.pushUrl env.navKey ("/devices/" ++ registrationRes.id) )
 
                 Err error ->
                     ( { model | newDevice = ( "", Nothing ), alert = Just (Warning "Failed") }, Cmd.none )
