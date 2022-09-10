@@ -7,6 +7,7 @@
 #include <Preferences.h>
 
 #include "wifi-manager.hpp"
+#include "microtim.hpp"
 
 namespace redismanager {
   
@@ -31,24 +32,35 @@ namespace redismanager {
         ReceivedMessage,
       };
 
+      // Initialization - prepare our internal state
       void begin(void);
-      std::optional<EManagerMessage> frame(std::optional<wifimanager::Manager::EManagerMessage> &message);
+
+      // Update - given a message from the wifi manager and the current time, perform logic
+      // based on our current state.
+      std::optional<EManagerMessage> frame(std::optional<wifimanager::Manager::EManagerMessage>&, uint32_t);
+
+      // Copy the latest message (if any) into the destination.
       uint16_t copy(char *, uint16_t);
 
+      // Return the size of our id.
       uint8_t id_size(void);
       uint8_t copy_id(char *, uint8_t);
 
     private:
       constexpr static const uint32_t FRAMEBUFFER_SIZE = 1024;
+      constexpr static const uint32_t PARSED_MESSAGE_SIZE = 1024;
       constexpr static const uint32_t MAX_ID_SIZE = 36;
 
       // The amount of attempts to read from our tls connection that return no data
       // before we attempt to reconnect.
       constexpr static const uint32_t MAX_EMPTY_READ_RESET = 100;
 
+      constexpr static const uint8_t OUTBOUND_BUFFER_SIZE = 200;
+
       // The amount of times we reset our connection before we will re-request a new device id.
       constexpr static const uint8_t MAX_RESETS_RECREDENTIALIZE = 5;
 
+      constexpr static const char * EMPTY_RESPONSE = "$-1\r\n";
       constexpr static const char * OK = "+OK\r\n";
       constexpr static const char * WRONG_PASS_ERR = "-WRONGPASS invalid username-password pair or user is disabled\r\n";
       constexpr static const char * NO_PERM_ERR = "-NOPERM this user has no permissions to run the 'rpush' command or its subcommand\r\n";
@@ -58,15 +70,17 @@ namespace redismanager {
       // - `ob:i` -> device notifies it is online
       constexpr static const char REDIS_REGISTRATION_POP [] = "*2\r\n$4\r\nLPOP\r\n$4\r\nob:r\r\n";
 
-      enum ECertificationStage {
+      enum EAuthorizationStage {
         NotRequested,             // <- connects + writes auth
-        AuthorizationRequested,   // <- reads `+OK`
+        AuthorizationRequested,   // <- reads `+OK` (skipped if id is in preferences).
         AuthorizationReceived,    // <- writes registrar-pop
-        IdentificationRequested,  // <- reads id
+        IdentificationRequested,  // <- reads id (skipped if id is in preferences).
         AuthorizationAttempted,   // <- waiting for response from `AUTH`
         FullyAuthorized,          // <- reads messages
       };
 
+      // Internal State Variant: Connected
+      //
       // Once our wifi manager has established connection, we will open up a tls-backed tcp
       // connection with our redis host and attempt authentication + "streaming".
       struct Connected final {
@@ -83,32 +97,30 @@ namespace redismanager {
           std::optional<EManagerMessage> update(
             const char *,
             const std::pair<const char *, const char *>&,
+            uint32_t,
             uint32_t
           );
 
           void reset(void);
 
         private:
-          inline uint16_t write_push(void);
-          inline uint16_t write_pop(void);
           std::optional<EManagerMessage> connect(
             const char *,
             const std::pair<const char *, const char *>&,
             uint32_t
           );
+          inline uint16_t write_message(uint32_t);
+          inline uint8_t parse_framebuffer(void);
 
-          ECertificationStage _certified;
+          EAuthorizationStage _authorization_stage;
 
           // The `_cursor` represents the last index of our framebuffer we have pushed into.
           uint16_t _cursor;
 
           // This memory is filled every update with the contents of our tcp connection.
           char * _framebuffer;
-
-          // FIXME: This is being used as a poor version of gating the frequency that we will
-          // attempt to write pop/push messages. This is somehow related to the `main.cpp`
-          // interval.
-          uint8_t _write_delay;
+          char * _outbound_buffer;
+          char * _parsed_message;
 
           // Credential storage.
           char * _device_id;
@@ -129,13 +141,20 @@ namespace redismanager {
 
           Preferences* _preferences;
 
+          uint8_t _strange_thing_count = 0;
+
+          microtim::MicroTimer _timer = microtim::MicroTimer(200);
+          microtim::MicroTimer _write_timer = microtim::MicroTimer(1000);
+          bool _pending_response = false;
+          bool _last_written_pop = false;
+
           friend class Manager;
       };
 
+      // Internal State Variant: Disconnected
+      //
       // Until our wifi manager is connected, this state represents doing nothing.
       struct Disconnected final {
-        uint8_t tick = 0;
-
         bool update(std::optional<wifimanager::Manager::EManagerMessage> &message);
       };
 

@@ -12,6 +12,8 @@
 #include <WiFiServer.h>
 #include <WiFiAP.h>
 
+#include "microtim.hpp"
+
 namespace wifimanager {
 
   class Manager final {
@@ -37,14 +39,14 @@ namespace wifimanager {
       };
 
       void begin(void);
-      std::optional<EManagerMessage> frame();
+      std::optional<EManagerMessage> frame(uint32_t);
       uint8_t attempt(void);
 
     private:
       constexpr static const char * CONNECTION_PREFIX = "GET /connect?";
       constexpr static uint16_t SERVER_BUFFER_CAPACITY = 1024;
       constexpr static uint8_t MAX_CLIENT_BLANK_READS = 5;
-      constexpr static uint16_t MAX_PENDING_CONNECTION_ATTEMPTS = 200;
+      constexpr static uint16_t MAX_PENDING_CONNECTION_ATTEMPTS = 50;
       constexpr static uint16_t MAX_CONNECTION_INTERRUPTS = 500;
       constexpr static uint16_t MAX_HEADER_SIZE = 512;
 
@@ -123,9 +125,15 @@ namespace wifimanager {
       };
 
       uint8_t _last_mode;
+
       std::tuple<const char *, const char *> _ap_config;
       std::variant<ActiveConnection, PendingConfiguration, PendingConnection> _mode;
       Preferences _preferences;
+
+      // When we're in our pending state, we only want to check the flash memory using
+      // the preferences library once.
+      bool _checked_stored_values = false;
+      microtim::MicroTimer _timer = microtim::MicroTimer(100);
   };
 }
 
