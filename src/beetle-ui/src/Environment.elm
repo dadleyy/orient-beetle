@@ -10,12 +10,15 @@ module Environment exposing
     , default
     , getId
     , getLoadedId
+    , getLocalizedContent
     , isLoaded
     , normalizeUrlPath
     , statusFooter
     , update
     )
 
+import Browser.Navigation as Nav
+import Dict
 import Html
 import Http
 import Json.Decode
@@ -37,6 +40,8 @@ type alias Configuration =
     { api : String
     , root : String
     , loginUrl : String
+    , logoutUrl : String
+    , localization : List ( String, String )
     }
 
 
@@ -44,6 +49,7 @@ type alias Environment =
     { configuration : Configuration
     , status : Maybe (Result String StatusResponse)
     , session : Maybe (Result String Session)
+    , navKey : Nav.Key
     }
 
 
@@ -52,11 +58,12 @@ type Message
     | LoadedSession (Result Http.Error Session)
 
 
-default : Configuration -> Environment
-default configuration =
+default : Configuration -> Nav.Key -> Environment
+default configuration key =
     { configuration = configuration
     , status = Nothing
     , session = Nothing
+    , navKey = key
     }
 
 
@@ -171,3 +178,12 @@ buildRoutePath : Environment -> String -> String
 buildRoutePath env path =
     String.concat
         [ env.configuration.root, path ]
+
+
+getLocalizedContent : Environment -> String -> Maybe String
+getLocalizedContent env key =
+    let
+        matchingKeys =
+            List.filter (\item -> Tuple.first item == key) env.configuration.localization
+    in
+    List.head matchingKeys |> Maybe.map Tuple.second

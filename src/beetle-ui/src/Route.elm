@@ -3,6 +3,8 @@ module Route exposing (Message(..), Route(..), RouteInitialization(..), fromUrl,
 import Environment
 import Html
 import Html.Attributes
+import Html.Parser
+import Html.Parser.Util as HTP
 import Route.Device
 import Route.DeviceRegistration
 import Route.Home
@@ -42,13 +44,7 @@ view env route =
     case route of
         Login ->
             Html.div [ Html.Attributes.class "px-4 py-3" ]
-                [ Html.a
-                    [ Html.Attributes.href env.configuration.loginUrl
-                    , Html.Attributes.rel "noopener"
-                    , Html.Attributes.target "_self"
-                    ]
-                    [ Html.text "login" ]
-                ]
+                [ renderLogin env ]
 
         Home inner ->
             Route.Home.view inner env |> Html.map HomeMessage
@@ -161,3 +157,27 @@ fromUrl env url =
     Environment.getLoadedId env
         |> Maybe.map (routeLoadedEnv env normalizedUrl)
         |> Maybe.withDefault (Matched ( Nothing, Cmd.none ))
+
+
+renderLogin : Environment.Environment -> Html.Html Message
+renderLogin env =
+    let
+        loginContentText =
+            Maybe.withDefault "" (Environment.getLocalizedContent env "login_page")
+
+        loginContentDom =
+            Result.withDefault [] (Result.map HTP.toVirtualDom (Html.Parser.run loginContentText))
+    in
+    Html.div [ Html.Attributes.class "flex items-start" ]
+        [ Html.div [ Html.Attributes.class "flex-1 pr-3" ] loginContentDom
+        , Html.div [ Html.Attributes.class "flex-1 pl-3" ]
+            [ Html.div []
+                [ Html.a
+                    [ Html.Attributes.href env.configuration.loginUrl
+                    , Html.Attributes.rel "noopener"
+                    , Html.Attributes.target "_self"
+                    ]
+                    [ Html.text "Login" ]
+                ]
+            ]
+        ]

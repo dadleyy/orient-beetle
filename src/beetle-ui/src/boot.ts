@@ -5,9 +5,34 @@ type Environment = {
   api: string,
   root: string,
   loginUrl: string,
+  logoutUrl: string,
   version: string,
   release: boolean,
+  localization: Array<[string, string]>,
 };
+
+const REPO_URL = 'https://github.com/dadleyy/orient-beetle';
+
+const LOCALIZATION = [
+  [
+    'login_page', 
+    `<h2>Orient Beetle</h2>
+
+    <div class="my-4">
+      <p>This project is meant to explore the esp32 microcontroller, rendering to a tft
+      display, and managing the content of that rendering by some process running in the
+      "cloud".</p>
+
+      <p>All source code is available on <a href="${REPO_URL}">github</a>,
+      including the hardware required and links to vendors where purchase may be
+      executed.</p>
+    </div>
+
+    <h3>Latest Update:</h3>
+    <div><iframe width="560" height="315" src="https://www.youtube.com/embed/L9s3ADROPVQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+    `,
+  ],
+];
 
 (function () {
   function parse(input: string): Environment | undefined {
@@ -30,7 +55,7 @@ type Environment = {
     }
 
     console.info(`booting application with ${JSON.stringify(environment)}`);
-    const flags = { ...environment };
+    const flags = { ...environment, localization: LOCALIZATION };
     Elm.Main.init({ flags });
   }
 

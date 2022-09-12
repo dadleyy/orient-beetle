@@ -102,6 +102,11 @@ impl Worker {
     result
   }
 
+  /// Given a request, this method will attempt to determine what kind of authority we are
+  /// processing with.
+  ///
+  /// TODO: back this with redis for a more secure + controllable session store. For now
+  /// we are ultimately relying on the json web token secret to prevent spoofing.
   pub(super) async fn request_authority(&self, request: &tide::Request<Self>) -> Result<Option<crate::types::User>> {
     let oid = request
       .cookie(&self.web_configuration.session_cookie)

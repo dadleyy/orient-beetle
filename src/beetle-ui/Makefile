@@ -59,9 +59,9 @@ $(RELEASE_BOOT_JS): $(BOOT_JS)
 # CSS
 ##
 
-$(MAIN_CSS): ./src/main.css $(MAIN_JS)
+$(MAIN_CSS): ./src/main.css $(ELM_SOURCES) ./src/index.pug src/boot.ts
 	$(NPM) run tailwind -- --input $< --output $@
 
 # relies on sass compiling vanilla `.css` correctly.
-$(RELEASE_MAIN_CSS): ./src/main.css $(MAIN_CSS)
+$(RELEASE_MAIN_CSS): ./src/main.css $(ELM_SOURCES)
 	$(NPM) run tailwind -- --minify --input $< --output $@

@@ -190,6 +190,7 @@ void setup(void) {
 
   log_i("lvgl ready.");
 
+#ifndef DISABLE_PROXIMITY
   if (vcnl.begin()) {
     log_d("vcnl proximity sensor detected!");
     prox_ready = true;
@@ -197,8 +198,12 @@ void setup(void) {
     log_e("[warning] no vcnl proximity sensor detected!");
     failed = true;
   }
+#else
+  prox_ready = false;
+  log_e("[notice] proximity functionality disabled at compile time");
+#endif
 
-  log_d("boot complete, redis-config. host: %s | port: %d", redis_host, redis_port);
+  log_i("boot complete, redis-config. host: %s | port: %d", redis_host, redis_port);
   eng.begin();
 
   digitalWrite(LCD_PIN_NUM_BCKL, HIGH);
@@ -206,6 +211,7 @@ void setup(void) {
 
 void loop(void) {
   auto now = millis();
+
 
   uint16_t prox = prox_ready ? vcnl.readProximity() : 0;
 
