@@ -13,6 +13,8 @@ type Environment = {
 
 const REPO_URL = 'https://github.com/dadleyy/orient-beetle';
 
+// TODO: incorporate this into the project somewhere else. Would probably require some additional
+// build tooling. Skimping on that for now.
 const LOCALIZATION = [
   [
     'login_page', 
@@ -29,7 +31,7 @@ const LOCALIZATION = [
     </div>
 
     <h3>Latest Update:</h3>
-    <div><iframe width="560" height="315" src="https://www.youtube.com/embed/L9s3ADROPVQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+    <div><iframe width="100%" src="https://www.youtube.com/embed/SwGfOSLR5tA" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
     `,
   ],
 ];

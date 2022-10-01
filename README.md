@@ -3,6 +3,8 @@
 A project that incorporates a wifi-enabled microcontroller, a tft/lcd display and
 a proximity sensor.
 
+For general platform architecture documentation, see [`.docs/architecture.md`][arch].
+
 ## Beetle PIO (Firmware)
 
 The firmware for the application lives in [`src/beetle-pio`][fm-rd] and can be compiled
@@ -148,3 +150,4 @@ the manufacturer of the display being used (_orient_ displays).
 [extra_scripts]: https://docs.platformio.org/en/latest/scripting/actions.html
 [lenv]: ./src/beetle-pio/load_env.py
 [fm-rd]: ./src/beetle-pio/README.md
+[arch]: ./.docs/architecture.md
