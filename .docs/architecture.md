@@ -1,5 +1,10 @@
 # General Platform Architecture
 
+At a high level, the architecture of the platform is based on four components - a web backend,
+a web frontend, and the individual devices, with a redis database being leveraged as a message
+broker and authentication system for the devices:
+
+![general-architecture](https://user-images.githubusercontent.com/1545348/193424612-715ae3a7-9215-4199-8a95-07fc158ad794.png)
 
 ### Device Authorization
 
