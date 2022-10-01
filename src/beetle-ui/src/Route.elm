@@ -168,9 +168,8 @@ renderLogin env =
         loginContentDom =
             Result.withDefault [] (Result.map HTP.toVirtualDom (Html.Parser.run loginContentText))
     in
-    Html.div [ Html.Attributes.class "flex items-start" ]
-        [ Html.div [ Html.Attributes.class "flex-1 pr-3" ] loginContentDom
-        , Html.div [ Html.Attributes.class "flex-1 pl-3" ]
+    Html.div [ Html.Attributes.class "lg:flex items-start" ]
+        [ Html.div [ Html.Attributes.class "lg:flex-1 lg:pl-3" ]
             [ Html.div []
                 [ Html.a
                     [ Html.Attributes.href env.configuration.loginUrl
@@ -180,4 +179,5 @@ renderLogin env =
                     [ Html.text "Login" ]
                 ]
             ]
+        , Html.div [ Html.Attributes.class "lg:flex-1 lg:pr-3" ] loginContentDom
         ]
