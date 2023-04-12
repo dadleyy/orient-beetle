@@ -53,15 +53,18 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
     CommandLineCommand::Help => unreachable!(),
 
     CommandLineCommand::Provision(user, password) => {
-      log::info!("provisioning redis environment with device auth information");
+      log::info!("provisioning redis environment with burn-in auth information");
+
       let command = kramer::Command::Acl::<&str, &str>(kramer::acl::AclCommand::SetUser(kramer::acl::SetUser {
         name: &user,
         password: Some(&password),
         keys: Some(beetle::constants::REGISTRAR_AVAILABLE),
         commands: Some("LPOP"),
       }));
+
       let result = kramer::execute(&mut stream, &command).await;
-      log::info!("result - {result:?}");
+      log::info!("result from {command:?} - {result:?}");
+      println!("ok");
     }
 
     CommandLineCommand::PushString(id, message) => {
@@ -78,6 +81,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
       .await?;
 
       log::info!("message result - {result:?}");
+      println!("ok");
     }
 
     CommandLineCommand::PrintConnected => {
@@ -93,17 +97,24 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
           Error::new(ErrorKind::Other, format!("{error}"))
         })?;
 
+      let mut count = 0;
+
       #[allow(clippy::blocks_in_if_conditions)]
       while cursor.advance().await.map_err(|error| {
         log::warn!("unable to advance cursor - {error}");
         Error::new(ErrorKind::Other, format!("{error}"))
       })? {
+        count += 1;
         match cursor.deserialize_current() {
           Ok(device) => {
             println!("- {device}")
           }
           Err(error) => log::warn!("unable to deserialize diagnostic - {error}"),
         }
+      }
+
+      if count == 0 {
+        println!("no devices found");
       }
     }
 

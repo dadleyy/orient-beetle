@@ -1,17 +1,26 @@
 use async_std::sync::{Arc, Mutex};
 use std::io::{Error, ErrorKind, Result};
 
+/// The type shared by all web worker requests.
 #[derive(Clone)]
 pub struct Worker {
+  /// The original web configuration.
   pub(super) web_configuration: super::WebConfiguration,
+  /// The original redis configuration.
   pub(super) redis_configuration: crate::config::RedisConfiguration,
+  /// The original auth0 configuration.
   pub(super) auth0_configuration: crate::config::Auth0Configuration,
+
+  /// Our shared mongo client + configuration.
   mongo: (mongodb::Client, crate::config::MongoConfiguration),
 
+  /// The redis TCP connection. This is not a "pool" just yet; we're currently only using a single
+  /// tcp connection across all connections.
   redis_pool: Arc<Mutex<Option<async_tls::client::TlsStream<async_std::net::TcpStream>>>>,
 }
 
 impl Worker {
+  /// Builds a worker from the configuration provided by our crate.
   pub async fn from_config(config: super::Configuration) -> Result<Self> {
     // Attempt to connect to mongo early.
     let mongo_options = mongodb::options::ClientOptions::parse(&config.mongo.url)
@@ -34,10 +43,12 @@ impl Worker {
     })
   }
 
+  /// Connects to redis. This is only used if we do not already have a connection.
   async fn redis(&self) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>> {
     crate::redis::connect(&self.redis_configuration).await
   }
 
+  /// Attempts to execute a command against the redis instance.
   pub(super) async fn command<S, V>(&self, command: &kramer::Command<S, V>) -> Result<kramer::Response>
   where
     S: std::fmt::Display,
@@ -128,6 +139,7 @@ impl Worker {
     })
   }
 
+  /// Wraps the mongodb client and returns our collection.
   pub(super) fn device_diagnostic_collection(&self) -> Result<mongodb::Collection<crate::types::DeviceDiagnostic>> {
     Ok(
       self
@@ -138,6 +150,7 @@ impl Worker {
     )
   }
 
+  /// Wraps the mongodb client and returns our collection.
   pub(super) fn users_collection(&self) -> Result<mongodb::Collection<crate::types::User>> {
     Ok(
       self

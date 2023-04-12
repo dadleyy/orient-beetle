@@ -481,7 +481,7 @@ namespace redismanager {
 
     // TODO: `_client.write(...)` might be a better choice here
     size_t written = _client.print(_outbound_buffer);
-    log_d("requested authenicated session using burn-in credentials (%d bytes)", written);
+    log_d("requested authenticated session w/ burn-in creds (%d bytes)", written);
 
     return std::nullopt;
   }
@@ -527,7 +527,7 @@ namespace redismanager {
       log_i("writing receiving pop");
       _last_written_pop = true;
       uint8_t keysize = strlen(_device_id) + 3;
-      sprintf(_outbound_buffer, "*2\r\n$4\r\nLPOP\r\n$%d\r\nob:%s\r\n", keysize, _device_id);
+      sprintf(_outbound_buffer, "*2\r\n$5\r\nBLPOP\r\n$%d\r\nob:%s\r\n", keysize, _device_id);
     } else {
       log_i("writing diagnostic push");
       _last_written_pop = false;

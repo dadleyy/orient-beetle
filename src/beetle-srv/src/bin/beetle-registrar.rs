@@ -5,10 +5,21 @@ async fn run(config: beetle::registrar::Configuration) -> Result<()> {
   let mut worker = config.worker().await?;
   let mut failures = Vec::with_capacity(3);
   let mut interval = async_std::stream::interval(std::time::Duration::from_millis(1000));
+  let mut last_debug = std::time::Instant::now();
+  let mut frames = 0u8;
 
   while failures.len() < 10 {
     interval.next().await;
     log::trace!("attempting worker frame");
+
+    let now = std::time::Instant::now();
+    if now.duration_since(last_debug).as_secs() > 4 || frames == 255 {
+      last_debug = now;
+      log::info!("registar still working ({frames} frames since last interval)...");
+      frames = 0;
+    }
+
+    frames += 1;
 
     match worker.work().await {
       Err(error) => failures.push(format!("{error}")),

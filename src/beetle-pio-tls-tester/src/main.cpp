@@ -7,7 +7,9 @@ bool done = false;
 
 void setup(void) {
   Serial.begin(115200);
+  delay(5000);
 
+  log_d("starting connection to %s:%s", WIFI_SSID, WIFI_PASSWORD);
   WiFi.setHostname("orient-beetle");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }

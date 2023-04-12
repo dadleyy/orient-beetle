@@ -12,7 +12,7 @@ def get_value(line):
     return line.split("=")[1].lstrip('"').rstrip().rstrip('"')
 
 if os.path.isfile("./embeds/redis_host_root_ca.pem") != True:
-    raise Exception("Missing 'redis_host_root_ca.pem' file, please see README.md")
+    raise Exception("Missing './embeds/redis_host_root_ca.pem' file, please see README.md")
 
 if os.path.exists(".env") and os.path.isfile(".env"):
     print("loading dotenv file")

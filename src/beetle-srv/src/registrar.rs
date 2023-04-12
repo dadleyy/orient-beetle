@@ -1,13 +1,22 @@
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind, Result};
 
+/// If no value is provided in the api, this value will be used as the minimum amount of entries in
+/// our pool that we need. If the current amount is less than this, we will generate ids for and
+/// store them in the system.
+const DEFAULT_POOL_MINIMUM: u8 = 3;
+
+/// The publicly deserializable interface for our registrar worker configuration.
 #[derive(Deserialize, Clone)]
 pub struct Configuration {
+  /// The redis configuration.
   redis: crate::config::RedisConfiguration,
+  /// The mongo configuration.
   mongo: crate::config::MongoConfiguration,
 }
 
 impl Configuration {
+  /// Builds a worker from whatever we were able to serialize from our configuration inputs.
   pub async fn worker(self) -> Result<Worker> {
     let mongo_options = mongodb::options::ClientOptions::parse(&self.mongo.url)
       .await
@@ -24,13 +33,19 @@ impl Configuration {
   }
 }
 
+/// The container that will be passed around to various registrar internal functions.
 pub struct Worker {
+  /// The redis configuration.
   redis: crate::config::RedisConfiguration,
+  /// The TCP connection we have to our redis host, if we currently have one.
   connection: Option<async_tls::client::TlsStream<async_std::net::TcpStream>>,
+  /// The mongo client + configuration
   mongo: (mongodb::Client, crate::config::MongoConfiguration),
 }
 
 impl Worker {
+  /// The main execution api of our worker. Inside here we perform the responsibilities of
+  /// updating our pool if necessary, and marking whatever devices we've heard from as "active".
   pub async fn work(&mut self) -> Result<()> {
     let stream = self.connection.take();
 
@@ -42,7 +57,11 @@ impl Worker {
 
       Some(mut inner) => {
         log::trace!("active redis connection, checking pool");
-        let amount = fill_pool(&mut inner).await?;
+        let amount = fill_pool(
+          &mut inner,
+          self.redis.registration_pool_minimum.unwrap_or(DEFAULT_POOL_MINIMUM),
+        )
+        .await?;
 
         if amount > 0 {
           log::info!("filled pool with '{}' new ids", amount)
@@ -62,7 +81,7 @@ impl Worker {
 /// The main thing our worker will be responsible for is to count the amount of available ids
 /// in our pool that devices will pull down to identify themselves. If that amount reaches a
 /// quantity below a specific threshold, fill it back up.
-async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net::TcpStream>) -> Result<usize> {
+async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net::TcpStream>, min: u8) -> Result<usize> {
   let output = kramer::execute(
     &mut stream,
     kramer::Command::List::<&str, bool>(kramer::ListCommand::Len(crate::constants::REGISTRAR_AVAILABLE)),
@@ -70,7 +89,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
   .await?;
 
   let should_send = match output {
-    kramer::Response::Item(kramer::ResponseValue::Integer(amount)) if amount < 3 => {
+    kramer::Response::Item(kramer::ResponseValue::Integer(amount)) if amount < min as i64 => {
       log::debug!("not enough ids, populating");
       true
     }
@@ -88,7 +107,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
     return Ok(0);
   }
 
-  let ids = (0..3).map(|_| crate::identity::create()).collect::<Vec<String>>();
+  let ids = (0..min).map(|_| crate::identity::create()).collect::<Vec<String>>();
   let count = ids.len();
 
   log::info!("creating acl entries for ids");
@@ -136,15 +155,22 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
   Ok(count)
 }
 
+/// This type is used by mongo when an existing record is _not_ found.
 #[derive(Serialize)]
 struct DeviceDiagnosticSetOnInsert {
+  /// When inserting, start with the current timestamp .
   #[serde(with = "chrono::serde::ts_milliseconds")]
   first_seen: chrono::DateTime<chrono::Utc>,
 }
 
+/// If mongo already has an entry for this device, this type will be used for the "update" portion
+/// of our request.
 #[derive(Serialize)]
 struct DeviceDiagnosticUpsert<'a> {
+  /// The id of our device.
   id: &'a String,
+
+  /// The timestamp we should now be updating.
   #[serde(with = "chrono::serde::ts_milliseconds")]
   last_seen: chrono::DateTime<chrono::Utc>,
 }

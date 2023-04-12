@@ -1,11 +1,24 @@
+#ifdef XIAO
+#ifdef FIREBEETLE
+static_assert(1=0, "Error! Either xiao OR firebeetle must be selected, not both.");
+#endif
+#endif
+
 #include <Arduino.h>
 
+#ifdef XIAO
+#include <Wire.h>
+#include <SPI.h>
+#endif
+
+#ifdef FIREBEETLE
 #include "Adafruit_VCNL4010.h"
 #include "TFT_eSPI.h"
 #include "lvgl.h"
 #include "font/lv_font.h"
 #include "jelle_font.h"
 #include "icon_font.h"
+#endif
 
 // Internal libraries
 #include "microtim.hpp"
@@ -37,6 +50,7 @@ Engine eng(
 
 State state;
 
+#ifdef FIREBEETLE
 // Rendering constructs:
 TFT_eSPI tft(TFT_WIDTH, TFT_HEIGHT);
 static lv_disp_drv_t disp_drv;
@@ -58,6 +72,7 @@ constexpr const uint8_t label_count = 4;
 lv_obj_t* message_labels[label_count];
 
 Adafruit_VCNL4010 vcnl;
+#endif
 
 #ifndef RELEASE
 microtim::MicroTimer _debug_timer(5000);
@@ -74,6 +89,7 @@ void view_debug(const char * view_log) {
   log_d("lvgl: %s", view_log);
 }
 
+#ifdef FIREBEETLE
 void display_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
   uint32_t w = ( area->x2 - area->x1 + 1 );
   uint32_t h = ( area->y2 - area->y1 + 1 );
@@ -85,29 +101,33 @@ void display_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
 
   lv_disp_flush_ready(disp);
 }
+#endif
 
 void setup(void) {
 #ifndef RELEASE
   Serial.begin(115200);
 #endif
 
+#ifdef FIREBEETLE
   pinMode(LED_BUILTIN, OUTPUT);
-
   // Turn off the display while booting.
   pinMode(LCD_PIN_NUM_BCKL, OUTPUT);
   digitalWrite(LCD_PIN_NUM_BCKL, LOW);
+#endif
 
   unsigned char i = 0;
 
   while (i < 12) {
+#ifdef FIREBEETLE
     digitalWrite(LED_BUILTIN, i % 2 == 0 ? HIGH : LOW);
+#endif
     delay(500);
     i += 1;
   }
 
+#ifdef FIREBEETLE
   tft.begin();
   tft.setRotation(3);
-  // tft.invertDisplay(true);
 
   if (tft.initDMA() != 1) {
     failed = true;
@@ -189,6 +209,7 @@ void setup(void) {
   //
 
   log_i("lvgl ready.");
+#endif
 
 #ifndef DISABLE_PROXIMITY
   if (vcnl.begin()) {
@@ -206,15 +227,16 @@ void setup(void) {
   log_i("boot complete, redis-config. host: %s | port: %d", redis_host, redis_port);
   eng.begin();
 
+#ifdef FIREBEETLE
   digitalWrite(LCD_PIN_NUM_BCKL, HIGH);
+#endif
 }
 
 void loop(void) {
   auto now = millis();
 
-
+#ifndef DISABLE_PROXIMITY
   uint16_t prox = prox_ready ? vcnl.readProximity() : 0;
-
   // Proximity sensor LED on/off.
   if (prox_ready) {
     if (prox > 6000) {
@@ -236,11 +258,14 @@ void loop(void) {
       _prox_state = false;
     }
   }
+#endif
 
 #ifndef RELEASE
   bool print_debug_info = _debug_timer.update(now) == 1;
   if (print_debug_info) {
+#ifndef DISABLE_PROXIMITY
     log_d("proximity (enabled %d): %d", prox_ready, prox);
+#endif
     log_d("free memory before update: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   }
 #endif
@@ -250,31 +275,39 @@ void loop(void) {
 
   if (std::get_if<WorkingState>(&state.active)) {
     WorkingState * working_state = std::get_if<WorkingState>(&state.active);
+#ifdef FIREBEETLE
     lv_label_set_text(status_icon_label, "F");
-
     lv_label_set_text(status_label, working_state->id_content);
+#endif
 
     uint8_t i = 0;
     for (auto message = working_state->begin(); message != working_state->end(); message++) {
+#ifdef FIREBEETLE
       if (message->content_size > 0 && i < label_count) {
         lv_label_set_text(message_labels[i], message->content);
         i += 1;
       }
+#endif
     }
   } else {
+#ifdef FIREBEETLE
     for (uint8_t i = 0; i < label_count; i++) {
       lv_label_set_text(message_labels[i], "");
     }
+#endif
 
+#ifdef FIREBEETLE
     lv_label_set_text(status_icon_label, "J");
     lv_label_set_text(status_label, "connecting...");
+#endif
   }
 
+#ifdef FIREBEETLE
   lv_scr_load(screen);
-
   // Update the lvgl internal timer
   lv_tick_inc(now - last_frame);
   lv_timer_handler();
+#endif
 
   last_frame = now;
 #ifndef RELEASE

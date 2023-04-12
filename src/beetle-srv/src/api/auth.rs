@@ -1,32 +1,53 @@
 use serde::{Deserialize, Serialize};
 
+/// The flags that will be used to set our cookie when not using https.
 #[cfg(debug_assertions)]
 const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly";
 
+/// The flags that will be used to set our cookie when using https.
 #[cfg(not(debug_assertions))]
 const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly; Secure";
 
+/// The flags of our `Set-Cookie` header used to clear the cookie.
 const COOKIE_CLEAR_FLAGS: &str = "Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; SameSite=Strict; HttpOnly";
 
+/// The schema of the Auth0 code -> token exchange api.
 #[derive(Debug, Deserialize)]
 struct AuthCodeResponse {
+  /// The access token that can be used to get information from the Auth0 api.
   access_token: String,
 }
 
+/// The schema of the Auth0 user information api.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct UserInfo {
+  /// The identity provider id.
   sub: String,
+
+  #[allow(clippy::missing_docs_in_private_items)]
   nickname: String,
+  #[allow(clippy::missing_docs_in_private_items)]
   email: String,
+  #[allow(clippy::missing_docs_in_private_items)]
   picture: String,
 }
 
+/// The schema of the Auth0 api for exchanging codes for tokens.
 #[derive(Debug, Serialize)]
 struct AuthCodeRequest {
+  #[allow(clippy::missing_docs_in_private_items)]
   grant_type: String,
+
+  #[allow(clippy::missing_docs_in_private_items)]
   client_id: String,
+
+  #[allow(clippy::missing_docs_in_private_items)]
   client_secret: String,
+
+  #[allow(clippy::missing_docs_in_private_items)]
   redirect_uri: String,
+
+  #[allow(clippy::missing_docs_in_private_items)]
   code: String,
 }
 
@@ -51,6 +72,7 @@ where
   res.body_json::<UserInfo>().await.ok()
 }
 
+/// Attempts to parse the body of a request from Auth0 for receiving an access_token.
 async fn token_from_response(response: &mut surf::Response) -> Option<String> {
   let status = response.status();
 
@@ -204,5 +226,5 @@ pub async fn redirect(request: tide::Request<super::worker::Worker>) -> tide::Re
       ("scope", "openid profile email"),
     ],
   )?;
-  Ok(tide::Redirect::temporary(url.to_string()).into())
+  Ok(tide::Redirect::temporary(url).into())
 }

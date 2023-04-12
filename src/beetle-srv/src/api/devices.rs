@@ -1,37 +1,57 @@
 use serde::{Deserialize, Serialize};
 
+/// The payload for looking up a device by id.
 #[derive(Debug, Deserialize)]
 struct LookupQuery {
+  /// The id of a device in question.
   id: String,
 }
 
+/// The api used to send messages to a device.
 #[derive(Debug, Deserialize)]
 struct MessagePayload {
+  /// The id of the device.
   device_id: String,
+  /// The contents of the message.
   message: String,
 }
 
+/// The schema of our api to registration of a device.
 #[derive(Debug, Deserialize)]
 struct RegistrationPayload {
+  /// The id of the device.
   device_id: String,
 }
 
+/// The schema of responses sent from the registration api.
 #[derive(Debug, Serialize)]
 struct RegistrationResponse {
+  /// The id of the device registered.
   id: String,
 }
 
+/// The schema of responses sent from the device api.
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct DeviceInfoPayload {
+  /// The device id.
   id: String,
+
+  /// The timestamp of the first occurance of a pop from our device.
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   first_seen: Option<chrono::DateTime<chrono::Utc>>,
+
+  /// The timestamp of the last occurance of a pop from our device.
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   last_seen: Option<chrono::DateTime<chrono::Utc>>,
+
+  /// The amount of messages sent to this device. A `None` represents some unknown state.
   sent_message_count: Option<u32>,
+
+  /// How man messages are currently pending.
   current_queue_count: i64,
 }
 
+/// Parses the payload from our message api. This should live in the request handler.
 async fn parse_message(request: &mut tide::Request<super::worker::Worker>) -> tide::Result<MessagePayload> {
   request.body_json::<MessagePayload>().await
 }
