@@ -52,8 +52,12 @@ jobs:
         run: echo $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
       - name: "pio: check"
         run: pio check
-      - name: "pio: run"
-        run: pio run -e release
+
+      - name: "pio: run firebeetle"
+        run: pio run -e firebeetle
+
+      - name: "pio: run xiao"
+        run: pio run -e xiao
 
       - name: "ls: platformio -> tools"
         run: ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin
@@ -64,13 +68,13 @@ jobs:
         run: mkdir -p beetle-pio-dist
 
       - name: "bundle: copy-bin"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.bin.pgp .pio/build/release/firmware.bin
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.bin.pgp .pio/build/firebeetle/firmware.bin
       - name: "bundle: copy-map"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.map.pgp .pio/build/release/firmware.map
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.map.pgp .pio/build/firebeetle/firmware.map
       - name: "bundle: copy-elf"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.elf.pgp .pio/build/release/firmware.elf
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.elf.pgp .pio/build/firebeetle/firmware.elf
       - name: "bundle: copy-partitions"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/partitions.bin.pgp .pio/build/release/partitions.bin
+        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/partitions.bin.pgp .pio/build/firebeetle/partitions.bin
       - name: "bundle: copy-bootloader"
         run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/bootloader.bin.pgp $HOME/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin/bootloader_dio_40m.bin
       - name: "bundle: copy-apploader"
