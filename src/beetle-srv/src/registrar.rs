@@ -116,7 +116,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
     let setuser = kramer::acl::SetUser {
       name: id.clone(),
       password: Some(id.clone()),
-      commands: Some("lpop".to_string()),
+      commands: Some(vec!["lpop".to_string(), "blpop".to_string()]),
       keys: Some(crate::redis::device_message_queue_id(id)),
     };
     let command = kramer::Command::Acl::<String, &str>(kramer::acl::AclCommand::SetUser(setuser));
@@ -128,7 +128,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
     let setuser = kramer::acl::SetUser {
       name: id.clone(),
       password: Some(id.clone()),
-      commands: Some("rpush".to_string()),
+      commands: Some(vec!["rpush".to_string()]),
       keys: Some(crate::constants::REGISTRAR_INCOMING.to_string()),
     };
     let command = kramer::Command::Acl::<String, &str>(kramer::acl::AclCommand::SetUser(setuser));

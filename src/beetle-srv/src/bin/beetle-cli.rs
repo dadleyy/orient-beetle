@@ -59,7 +59,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
         name: &user,
         password: Some(&password),
         keys: Some(beetle::constants::REGISTRAR_AVAILABLE),
-        commands: Some("LPOP"),
+        commands: Some(vec!["LPOP", "BLPOP"]),
       }));
 
       let result = kramer::execute(&mut stream, &command).await;
