@@ -48,8 +48,16 @@ jobs:
         run: python -m pip install --upgrade pip
       - name: "pip: install pio"
         run: pip install --upgrade platformio
+
+      - name: "pio: upgrade"
+        run: pio upgrade
+
+      - name: "pio: pkg update"
+        run: pio pkg update
+
       - name: "env prep: fill redis ca"
         run: echo $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
+
       - name: "pio: check"
         run: pio check
 
