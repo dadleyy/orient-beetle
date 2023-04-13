@@ -5,9 +5,39 @@
 WiFiClientSecure _client;
 bool done = false;
 
+// Shamelessly taken from examples online.
+void listNetworks() {
+  Serial.println("** Scan Networks **");
+  int numSsid = WiFi.scanNetworks(false, true);
+  if (numSsid == -1) {
+    Serial.println("Couldn't get a wifi connection");
+    while (true);
+  }
+
+  Serial.print("number of available networks:");
+  Serial.println(numSsid);
+  for (int thisNet = 0; thisNet < numSsid; thisNet++) {
+    Serial.print(thisNet);
+    Serial.print(") ");
+    Serial.print(WiFi.SSID(thisNet));
+    Serial.print("\tSignal: ");
+    Serial.print(WiFi.RSSI(thisNet));
+    Serial.print(" dBm");
+  }
+}
+
 void setup(void) {
   Serial.begin(115200);
+
   delay(5000);
+
+  WiFi.begin();
+  WiFi.disconnect();
+  WiFi.mode(WIFI_STA);
+
+  delay(1000);
+
+  listNetworks();
 
   log_d("starting connection to %s:%s", WIFI_SSID, WIFI_PASSWORD);
   WiFi.setHostname("orient-beetle");

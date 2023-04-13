@@ -61,54 +61,81 @@ jobs:
 
       - name: "ls: platformio -> tools"
         run: ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin
+
       - name: "ls: platformio -> partitions"
         run: ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions
 
-      - name: "bundle: prepare-dir"
+      - name: "bundle(firebeetle): prepare-dir"
         run: mkdir -p beetle-pio-dist/firebeetle
 
-      - name: "bundle: copy-bin"
+      - name: "bundle(firebeetle): copy-bin"
         run: |
           gpg --trust-model always -e -r 99D22D47AA5053FC -o \
             beetle-pio-dist/firebeetle/firmware.bin.pgp \
             .pio/build/firebeetle/firmware.bin
-      - name: "bundle: copy-map"
+      - name: "bundle(firebeetle): copy-map"
         run: |
           gpg --trust-model always -e -r 99D22D47AA5053FC -o \
             beetle-pio-dist/firebeetle/firmware.map.pgp \
             .pio/build/firebeetle/firmware.map
-      - name: "bundle: copy-elf"
+      - name: "bundle(firebeetle): copy-elf"
         run: |
           gpg --trust-model always -e -r 99D22D47AA5053FC -o \
             beetle-pio-dist/firebeetle/firmware.elf.pgp \
             .pio/build/firebeetle/firmware.elf
-      - name: "bundle: copy-partitions"
+      - name: "bundle(firebeetle): copy-partitions"
         run: |
           gpg --trust-model always -e -r 99D22D47AA5053FC -o \
             beetle-pio-dist/firebeetle/partitions.bin.pgp \
             .pio/build/firebeetle/partitions.bin
-      - name: "bundle: copy-bootloader"
+      - name: "bundle(firebeetle): copy-bootloader"
         run: |
           gpg --trust-model always -e -r 99D22D47AA5053FC -o \
             beetle-pio-dist/firebeetle/bootloader.bin.pgp \
             $HOME/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin/bootloader_dio_40m.bin
-      - name: "bundle: copy-apploader"
+      - name: "bundle(firebeetle): copy-apploader"
         run: |
           gpg --trust-model always -e -r 99D22D47AA5053FC -o \
             beetle-pio-dist/firebeetle/apploader.bin.pgp \
             $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
 
-      - name: "pio: upgrade"
+      - name: "pio(xiao): upgrade"
         run: pio upgrade
 
-      - name: "pio: pkg update"
+      - name: "pio(xiao): pkg update"
         run: pio pkg update
 
-      - name: "pio: run xiao"
+      - name: "pio(xiao): run xiao"
         run: pio run -e xiao
 
-      - name: "bundle: prepare-dir"
+      - name: "bundle(xiao): prepare-dir"
         run: mkdir -p beetle-pio-dist/xiao
+
+      - name: "bundle(xiao): copy-bin"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            beetle-pio-dist/xiao/firmware.bin.pgp \
+            .pio/build/xiao/firmware.bin
+      - name: "bundle(xiao): copy-map"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            beetle-pio-dist/xiao/firmware.map.pgp \
+            .pio/build/xiao/firmware.map
+      - name: "bundle(xiao): copy-elf"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            beetle-pio-dist/xiao/firmware.elf.pgp \
+            .pio/build/xiao/firmware.elf
+      - name: "bundle(xiao): copy-partitions"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            beetle-pio-dist/xiao/partitions.bin.pgp \
+            .pio/build/xiao/partitions.bin
+      - name: "bundle(xiao): copy-bootloader"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            beetle-pio-dist/xiao/bootloader.bin.pgp \
+            .pio/build/xiao/bootloader.bin
 
       - name: "bundle: create"
         run: tar cvzf beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-pio-dist

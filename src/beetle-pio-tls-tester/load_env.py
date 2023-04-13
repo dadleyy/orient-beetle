@@ -49,6 +49,19 @@ if redis_port is None or redis_host is None:
 if redis_auth is None:
     raise Exception("Unable to find 'REDIS_AUTH' in environment (or .env file)")
 
-print("environment ready - redis %s:%s (auth %s)" % (redis_host, redis_port, redis_auth))
+flag_str = "-DWIFI_PASSWORD='\"{wifi_password}\"' \
+            -DWIFI_SSID='\"{wifi_ssid}\"' \
+            -DREDIS_HOST='\"{redis_host}\"' \
+            -DREDIS_PORT='{redis_port}' \
+            -DREDIS_AUTH='\"{redis_auth}\"'".format(redis_host = redis_host,
+                     redis_port = redis_port,
+                     redis_auth = redis_auth,
+                     wifi_password = wifi_password,
+                     wifi_ssid = wifi_ssid);
 
-env.ProcessFlags("-DREDIS_PORT=%s -DREDIS_HOST=\\\"%s\\\" -DREDIS_AUTH=\\\"%s\\\" -DWIFI_PASSWORD=\\\"%s\\\" -DWIFI_SSID=\\\"%s\\\"" % (redis_port, redis_host, redis_auth, wifi_password, wifi_ssid))
+print("environment ready, adding definitions to build flags")
+
+if 'UNSAFE_LOGGING' in os.environ:
+    print("build flags - %s" % flag_str);
+
+env.ProcessFlags(flag_str)
