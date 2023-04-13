@@ -340,7 +340,7 @@ jobs:
 
       - name: "bundle: populate"
         run: |
-          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-srv-updater
+          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-srv-updater \
                 $DISTRIBUTABLE_DIRECTORY_NAME/bin/
 
       - name: "bundle: create"
