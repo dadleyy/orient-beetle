@@ -152,10 +152,14 @@ jobs:
           ls -lah $HOME/.platformio/packages/framework-arduinoespressif32
           ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools
           ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/xiao/boot_app0.bin.pgp \
+            $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
 
       - name: "bundle: copy instruction"
         run: |
-          cp -v .automation/firmware-instructions/flashing-xiao.txt $DISTRIBUTABLE_DIRECTORY_NAME
+          cp -v $GITHUB_WORKSPACE/.automation/firmware-instructions/flashing-xiao.txt \
+                $DISTRIBUTABLE_DIRECTORY_NAME
 
       - name: "bundle: create"
         run: tar cvzf beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz $DISTRIBUTABLE_DIRECTORY_NAME
