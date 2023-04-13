@@ -146,9 +146,11 @@ jobs:
 
       - name: "bundle(xiao): copy-apploader"
         run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
-            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/apploader.bin.pgp \
-            $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
+          ls -lah $HOME/.platformio
+          ls -lah $HOME/.platformio/packages/
+          ls -lah $HOME/.platformio/packages/framework-arduinoespressif32
+          ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools
+          ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions
 
       - name: "bundle: copy instruction"
         run: |
@@ -179,6 +181,7 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: '16'
+
       - name: "set output: short_sha"
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
@@ -207,10 +210,10 @@ jobs:
       - name: "make: release"
         run: make release
 
-      - name: prepare-bundle
+      - name: "bundle: prepare"
         run: mv target/release beetle-ui-dist
 
-      - name: create-bundle
+      - name: "bundle: create"
         run: tar cvzf beetle-ui-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-ui-dist
 
       - uses: actions/upload-artifact@v3
@@ -260,13 +263,13 @@ jobs:
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
 
-      - name: build
+      - name: "cargo: build"
         run: cargo build --target armv7-unknown-linux-gnueabihf --release
         env:
           OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
           OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
 
-      - name: prepare-bundle
+      - name: "bundle: prepare"
         run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/bin
 
       - name: "populate-bundle: cli"
@@ -284,7 +287,7 @@ jobs:
           cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-registrar \
                 $DISTRIBUTABLE_DIRECTORY_NAME/bin/beetle-registrar
 
-      - name: create-bundle
+      - name: "bundle: create"
         run: |
           tar cvzf beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz \
                    $DISTRIBUTABLE_DIRECTORY_NAME
@@ -305,34 +308,36 @@ jobs:
       DISTRIBUTABLE_DIRECTORY_NAME: "beetle-updater-dist"
     steps:
       - uses: actions/checkout@v2
+
       - name: "set output: short_sha"
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
 
       - name: "clippy: install"
         run: rustup component add clippy
+
       - name: "clippy: run"
         run: cargo clippy
 
-      - name: build
+      - name: "build"
         run: cargo build --target armv7-unknown-linux-gnueabihf --release
         env:
           OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
           OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
           BEETLE_UPDATER_VERSION: ${{ steps.vars.outputs.sha_short }}
 
-      - name: prepare-bundle
-        run: mkdir -p beetle-updater-dist/bin
+      - name: "bundle: prepare"
+        run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/bin
 
-      - name: "populate-bundle"
+      - name: "bundle: populate"
         run: |
           cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-srv-updater
-                beetle-updater-dist/bin/
+                $DISTRIBUTABLE_DIRECTORY_NAME/bin/
 
-      - name: create-bundle
+      - name: "bundle: create"
         run: |
           tar cvzf beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz \
-                   beetle-updater-dist
+                   $DISTRIBUTABLE_DIRECTORY_NAME
 
       - uses: actions/upload-artifact@v3
         with:
