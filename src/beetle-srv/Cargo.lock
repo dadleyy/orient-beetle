@@ -1291,9 +1291,9 @@ dependencies = [
 
 [[package]]
 name = "kramer"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44d829d081d9e2f3669e84eb785a935b9847882aa77459530d85689e47fdd4bd"
+checksum = "3f6fcb8f6ede455469878d797ccbc6651198e63dc0f4ddd276018f8a703f347b"
 dependencies = [
  "async-std",
 ]
@@ -2033,9 +2033,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.95"
+version = "1.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d721eca97ac802aa7777b701877c8004d950fc142651367300d21c1cc0194744"
+checksum = "057d394a50403bcac12672b2b18fb387ab6d289d957dab67dd201875391e52f1"
 dependencies = [
  "indexmap",
  "itoa",

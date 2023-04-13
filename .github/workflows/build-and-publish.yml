@@ -46,14 +46,9 @@ jobs:
 
       - name: "pip: upgrade"
         run: python -m pip install --upgrade pip
+
       - name: "pip: install pio"
         run: pip install --upgrade platformio
-
-      - name: "pio: upgrade"
-        run: pio upgrade
-
-      - name: "pio: pkg update"
-        run: pio pkg update
 
       - name: "env prep: fill redis ca"
         run: echo $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
@@ -63,9 +58,6 @@ jobs:
 
       - name: "pio: run firebeetle"
         run: pio run -e firebeetle
-
-      - name: "pio: run xiao"
-        run: pio run -e xiao
 
       - name: "ls: platformio -> tools"
         run: ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin
@@ -87,6 +79,15 @@ jobs:
         run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/bootloader.bin.pgp $HOME/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin/bootloader_dio_40m.bin
       - name: "bundle: copy-apploader"
         run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/apploader.bin.pgp $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
+
+      - name: "pio: upgrade"
+        run: pio upgrade
+
+      - name: "pio: pkg update"
+        run: pio pkg update
+
+      - name: "pio: run xiao"
+        run: pio run -e xiao
 
       - name: "bundle: create"
         run: tar cvzf beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-pio-dist
