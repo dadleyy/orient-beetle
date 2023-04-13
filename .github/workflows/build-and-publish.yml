@@ -248,6 +248,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BEETLE_VERSION: "${{ github.sha }}"
+      DISTRIBUTABLE_DIRECTORY_NAME: "beetle-server-dist"
     container:
       image: dadleyy/rust-raspberry-pi-openssl:latest
     defaults:
@@ -266,19 +267,27 @@ jobs:
           OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
 
       - name: prepare-bundle
-        run: mkdir -p beetle-server-dist/bin
+        run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/bin
 
       - name: "populate-bundle: cli"
-        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-cli beetle-server-dist/bin/beetle-cli
+        run: |
+          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-cli \
+                $DISTRIBUTABLE_DIRECTORY_NAME/bin/beetle-cli
 
       - name: "populate-bundle: web"
-        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-web beetle-server-dist/bin/beetle-web
+        run: |
+          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-web \
+                $DISTRIBUTABLE_DIRECTORY_NAME/bin/beetle-web
 
       - name: "populate-bundle: registrar"
-        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-registrar beetle-server-dist/bin/beetle-registrar
+        run: |
+          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-registrar \
+                $DISTRIBUTABLE_DIRECTORY_NAME/bin/beetle-registrar
 
       - name: create-bundle
-        run: tar cvzf beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-server-dist
+        run: |
+          tar cvzf beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz \
+                   $DISTRIBUTABLE_DIRECTORY_NAME
 
       - uses: actions/upload-artifact@v3
         with:
@@ -292,6 +301,8 @@ jobs:
     defaults:
       run:
         working-directory: tools/beetle-updater
+    env:
+      DISTRIBUTABLE_DIRECTORY_NAME: "beetle-updater-dist"
     steps:
       - uses: actions/checkout@v2
       - name: "set output: short_sha"
@@ -314,10 +325,14 @@ jobs:
         run: mkdir -p beetle-updater-dist/bin
 
       - name: "populate-bundle"
-        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-srv-updater beetle-updater-dist/bin/
+        run: |
+          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-srv-updater
+                beetle-updater-dist/bin/
 
       - name: create-bundle
-        run: tar cvzf beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-updater-dist
+        run: |
+          tar cvzf beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz \
+                   beetle-updater-dist
 
       - uses: actions/upload-artifact@v3
         with:
