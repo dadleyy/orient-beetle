@@ -40,7 +40,8 @@ jobs:
       - uses: actions/setup-python@v2
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
       - name: "import gpg"
         run: |
@@ -184,7 +185,8 @@ jobs:
 
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
       - name: "install elm: download"
         run: curl -L -o elm.gz https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz
@@ -233,7 +235,8 @@ jobs:
       - uses: actions/checkout@v2
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
       - name: "build"
         run: cargo build --release
       - name: "bundle: prepare"
@@ -261,7 +264,8 @@ jobs:
       - uses: actions/checkout@v2
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
       - name: "cargo: build"
         run: cargo build --target armv7-unknown-linux-gnueabihf --release
@@ -311,7 +315,8 @@ jobs:
 
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
       - name: "clippy: install"
         run: rustup component add clippy
@@ -349,9 +354,11 @@ jobs:
     needs: ["build-srv-armv7", "build-srv-osx", "build-ui", "build-pio", "build-updater"]
     steps:
       - uses: actions/checkout@v2
+
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
       - uses: actions/download-artifact@v3
         with:
