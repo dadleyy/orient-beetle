@@ -38,3 +38,4 @@ surf = { version = "^2.3.0", default-features = false, features = ["curl-client"
 toml = { version = "^0.5", default-features = false }
 bson = { version = "2.0.0", features = ["uuid-0_8"], default-features = false }
 mongodb = { version = "^2.0.0", features = ["async-std-runtime", "bson-uuid-0_8"], default-features = false }
+clap = { version = "^4.0.0", features = ["derive"] }

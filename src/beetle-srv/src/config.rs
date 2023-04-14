@@ -1,20 +1,20 @@
 use serde::Deserialize;
 
 /// The configuration of our redis connection.
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
 pub struct RedisConfiguration {
   /// The host; e.g `redis.upstash.io`
-  pub(crate) host: String,
+  pub host: String,
   /// The port; e.g `1231`
-  pub(crate) port: u16,
+  pub port: u16,
   /// The password to authenticate with. This is typically the `default` acl role.
-  pub(crate) auth: String,
-  /// The minimum amount of ids we should have before re-filling the pool with new ones.
-  pub(crate) registration_pool_minimum: Option<u8>,
+  pub auth: String,
 }
 
 /// Auth0 api client credential + endpoint configuration vauoles.
 #[derive(Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
 pub struct Auth0Configuration {
   /// Auth0 api client credential.
   pub(crate) client_id: String,
@@ -33,6 +33,7 @@ pub struct Auth0Configuration {
 
 /// Collection configuration.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
 pub struct MongoCollectionsConfiguration {
   /// The collection name which holds our list of users (which includes their device access).
   pub users: String,
@@ -43,6 +44,7 @@ pub struct MongoCollectionsConfiguration {
 
 /// The mongodb configuration.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
 pub struct MongoConfiguration {
   /// The url that we will pass on to the `mongodb` crate when creating clients.
   pub(crate) url: String,

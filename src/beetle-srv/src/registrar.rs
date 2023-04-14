@@ -6,13 +6,28 @@ use std::io::{Error, ErrorKind, Result};
 /// store them in the system.
 const DEFAULT_POOL_MINIMUM: u8 = 3;
 
+/// The configuration specific to maintaining a registration of available ids.
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+struct RegistrarConfiguration {
+  // The auth username that will be given on burn-in to devices.
+  //id_consumer_username: Option<String>,
+  // The auth password that will be given on burn-in to devices.
+  // id_consumer_password: Option<String>,
+  /// The minimum amount of ids to maintain. If lower than this, we will refill.
+  registration_pool_minimum: Option<u8>,
+}
+
 /// The publicly deserializable interface for our registrar worker configuration.
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
 pub struct Configuration {
   /// The redis configuration.
   redis: crate::config::RedisConfiguration,
   /// The mongo configuration.
   mongo: crate::config::MongoConfiguration,
+  /// The configuration specific to maintaining a registration of available ids.
+  registrar: RegistrarConfiguration,
 }
 
 impl Configuration {
@@ -26,6 +41,7 @@ impl Configuration {
       .map_err(|error| Error::new(ErrorKind::Other, format!("failed mongodb connection - {error}")))?;
 
     Ok(Worker {
+      config: self.registrar,
       redis: self.redis,
       connection: None,
       mongo: (mongo, self.mongo.clone()),
@@ -41,6 +57,8 @@ pub struct Worker {
   connection: Option<async_tls::client::TlsStream<async_std::net::TcpStream>>,
   /// The mongo client + configuration
   mongo: (mongodb::Client, crate::config::MongoConfiguration),
+  /// Configuration specific to this worker.
+  config: RegistrarConfiguration,
 }
 
 impl Worker {
@@ -59,7 +77,7 @@ impl Worker {
         log::trace!("active redis connection, checking pool");
         let amount = fill_pool(
           &mut inner,
-          self.redis.registration_pool_minimum.unwrap_or(DEFAULT_POOL_MINIMUM),
+          self.config.registration_pool_minimum.unwrap_or(DEFAULT_POOL_MINIMUM),
         )
         .await?;
 
@@ -90,11 +108,11 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
 
   let should_send = match output {
     kramer::Response::Item(kramer::ResponseValue::Integer(amount)) if amount < min as i64 => {
-      log::debug!("not enough ids, populating");
+      log::info!("found {amount} ids available in pool, minimum amount {min}.");
       true
     }
     kramer::Response::Item(kramer::ResponseValue::Integer(amount)) => {
-      log::trace!("nothing to do, plenty of ids ('{amount}')");
+      log::info!("nothing to do, plenty of ids ('{amount}' vs min of '{min}')");
       false
     }
     other => {
@@ -110,7 +128,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
   let ids = (0..min).map(|_| crate::identity::create()).collect::<Vec<String>>();
   let count = ids.len();
 
-  log::info!("creating acl entries for ids");
+  log::info!("creating acl entries for ids {ids:?}");
 
   for id in &ids {
     let setuser = kramer::acl::SetUser {
@@ -119,6 +137,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
       commands: Some(vec!["lpop".to_string(), "blpop".to_string()]),
       keys: Some(crate::redis::device_message_queue_id(id)),
     };
+
     let command = kramer::Command::Acl::<String, &str>(kramer::acl::AclCommand::SetUser(setuser));
 
     if let Err(error) = kramer::execute(&mut stream, &command).await {
@@ -138,7 +157,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
     }
   }
 
-  log::info!("populating ids - {:?}", ids);
+  log::info!("acl entries for new ids {ids:?} ready, pushing into registration queue",);
 
   let insertion = kramer::execute(
     &mut stream,
@@ -200,6 +219,7 @@ where
   .await?;
 
   if let kramer::Response::Item(kramer::ResponseValue::String(id)) = taken {
+    log::debug!("found device push from '{id}' waiting in incoming queue");
     let collection = db
       .database(&dbc.database)
       .collection::<crate::types::DeviceDiagnostic>(&dbc.collections.device_diagnostics);

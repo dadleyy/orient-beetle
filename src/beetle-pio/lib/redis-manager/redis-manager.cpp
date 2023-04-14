@@ -222,12 +222,6 @@ namespace redismanager {
       }
       
       case EAuthorizationStage::FullyAuthorized: {
-        if (_empty_identified_reads > MAX_EMPTY_READ_RESET) {
-          log_e("too many empty reads while in authorized exchange, resetting");
-          reset();
-          return std::nullopt;
-        }
-
         // If nothing was pulled this frame, we either want to increment our count of
         // "hey I was expecting a message", or we want to write a new message.
         if (_cursor == 0) {
@@ -527,7 +521,7 @@ namespace redismanager {
       log_i("writing receiving pop");
       _last_written_pop = true;
       uint8_t keysize = strlen(_device_id) + 3;
-      sprintf(_outbound_buffer, "*2\r\n$5\r\nBLPOP\r\n$%d\r\nob:%s\r\n", keysize, _device_id);
+      sprintf(_outbound_buffer, "*3\r\n$5\r\nBLPOP\r\n$%d\r\nob:%s\r\n$2\r\n60\r\n", keysize, _device_id);
     } else {
       log_i("writing diagnostic push");
       _last_written_pop = false;

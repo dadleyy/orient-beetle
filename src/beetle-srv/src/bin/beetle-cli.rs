@@ -1,38 +1,47 @@
+use clap::Parser;
 use serde::Deserialize;
-use std::io::{Error, ErrorKind, Result};
+use std::io;
 
 const MAX_IDLE_TIME_SECONDS: i64 = 60 * 30;
-const HELP_TEXT: &str = r#"beetle-cli admin interface
 
-usage:
-    beetle-cli help
-    beetle-cli printall               - prints known devices via device diagnostics.
-    beetle-cli write <id> <message>   - sends a message to <id>.
-    beetle-cli cleanup                - removes device acl and diagnostics based on last seen.
-"#;
+#[derive(Parser, Deserialize, PartialEq)]
+struct ProvisionCommand {
+  user: Option<String>,
+  password: Option<String>,
+}
 
-#[derive(PartialEq)]
+#[derive(Parser, Deserialize, PartialEq)]
+struct SendMessageCommand {
+  id: String,
+  message: String,
+}
+
+#[derive(PartialEq, clap::Subcommand, Deserialize, Default)]
 enum CommandLineCommand {
-  Help,
+  #[default]
   PrintConnected,
+
+  /// This command will blow away _all_ current acl entries. At that moment, devices will need to
+  /// re-authenticate from a fresh set of available ids.
+  InvalidateAcls,
+
   CleanDisconnects,
-  Provision(String, String),
-  PushString(String, String),
+
+  Provision(ProvisionCommand),
+
+  PushString(SendMessageCommand),
 }
 
-impl Default for CommandLineCommand {
-  fn default() -> Self {
-    CommandLineCommand::Help
-  }
-}
-
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
 struct RegistrarConfiguration {
   id_consumer_username: Option<String>,
   id_consumer_password: Option<String>,
+  // registration_pool_minimum: Option<u8>,
+  acl_user_allowlist: Option<Vec<String>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct CommandLineConfig {
   redis: beetle::config::RedisConfiguration,
   mongo: beetle::config::MongoConfiguration,
@@ -40,34 +49,110 @@ struct CommandLineConfig {
   registrar: RegistrarConfiguration,
 }
 
-async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<()> {
-  if command == CommandLineCommand::Help {
-    eprintln!("{}", HELP_TEXT);
-    return Ok(());
-  }
+#[derive(Parser)]
+#[command(author, version = option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev"), about, long_about = None)]
+struct CommandLineOptions {
+  #[arg(short = 'c', long)]
+  config: String,
 
+  #[command(subcommand)]
+  command: CommandLineCommand,
+}
+
+fn id_from_acl_entry(entry: &str) -> Option<&str> {
+  entry.split(' ').nth(1)
+}
+
+async fn run(config: CommandLineConfig, command: CommandLineCommand) -> io::Result<()> {
   let mut stream = beetle::redis::connect(&config.redis).await?;
   let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
 
+  let allowed: std::collections::hash_set::HashSet<String> = std::collections::hash_set::HashSet::from_iter(
+    config.registrar.acl_user_allowlist.unwrap_or(vec![]).iter().cloned(),
+  );
+
   match command {
-    CommandLineCommand::Help => unreachable!(),
+    CommandLineCommand::InvalidateAcls => {
+      log::debug!("looking for acl entries to destroy, skipping {allowed:?}");
+      let list = kramer::execute(&mut stream, kramer::Command::Acl::<u8, u8>(kramer::AclCommand::List)).await;
 
-    CommandLineCommand::Provision(user, password) => {
-      log::info!("provisioning redis environment with burn-in auth information");
+      let values = match list {
+        Ok(kramer::Response::Array(inner)) => inner,
+        _ => return Err(io::Error::new(io::ErrorKind::Other, "")),
+      };
 
-      let command = kramer::Command::Acl::<&str, &str>(kramer::acl::AclCommand::SetUser(kramer::acl::SetUser {
-        name: &user,
-        password: Some(&password),
-        keys: Some(beetle::constants::REGISTRAR_AVAILABLE),
-        commands: Some(vec!["lpop", "blpop"]),
-      }));
+      let names = values
+        .into_iter()
+        .filter_map(|entry| match entry {
+          kramer::ResponseValue::String(v) => {
+            let id = id_from_acl_entry(&v)?;
+            log::trace!("found id {id}");
 
-      let result = kramer::execute(&mut stream, &command).await;
-      log::info!("result from {command:?} - {result:?}");
-      println!("ok");
+            if allowed.contains(id) {
+              None
+            } else {
+              Some(id.to_string())
+            }
+          }
+          _ => None,
+        })
+        .collect::<Vec<String>>();
+
+      if names.is_empty() {
+        println!("no matching acl entries to delete");
+        return Ok(());
+      }
+
+      println!("the following acl entries will be deleted. enter 'y' to continue: {names:?}");
+      let mut buffer = String::new();
+      io::stdin().read_line(&mut buffer)?;
+
+      if buffer.as_str().trim_end() != "y" {
+        println!("aborting.");
+        return Ok(());
+      }
+
+      // Delete the ACL entries _before_ the queue. This is important so the registrar worker is
+      // does not refill acl entries that would be immediate destroyed.
+      log::info!("continuing with deletion");
+      let command = kramer::Command::<String, &str>::Acl(kramer::AclCommand::DelUser(kramer::Arity::Many(names)));
+      kramer::execute(&mut stream, &command).await?;
+
+      log::info!("now clearing off our registration queue");
+      let command = kramer::Command::<&str, &str>::Del(kramer::Arity::One(beetle::constants::REGISTRAR_AVAILABLE));
+      kramer::execute(&mut stream, &command).await?;
+      println!("done.");
     }
 
-    CommandLineCommand::PushString(id, message) => {
+    CommandLineCommand::Provision(ProvisionCommand { user, password }) => {
+      log::info!("provisioning redis environment with burn-in auth information");
+
+      let password = password.or(config.registrar.id_consumer_password);
+      let user = user.or(config.registrar.id_consumer_username);
+
+      match (user, password) {
+        (Some(ref user), Some(ref pass)) => {
+          let command = kramer::Command::Acl::<&str, &str>(kramer::acl::AclCommand::SetUser(kramer::acl::SetUser {
+            name: user,
+            password: Some(pass),
+            keys: Some(beetle::constants::REGISTRAR_AVAILABLE),
+            commands: Some(vec!["lpop", "blpop"]),
+          }));
+
+          let result = kramer::execute(&mut stream, &command).await;
+          log::debug!("result from {command:?} - {result:?}");
+          println!("ok");
+        }
+        _ => {
+          return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "username or pasword missing for provisioning",
+          ));
+        }
+      }
+    }
+
+    CommandLineCommand::PushString(SendMessageCommand { id, message }) => {
       log::debug!("writing '{}' to '{}'", message, id);
 
       let result = kramer::execute(
@@ -94,7 +179,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
         .await
         .map_err(|error| {
           log::warn!("failed mongo query - {error}");
-          Error::new(ErrorKind::Other, format!("{error}"))
+          io::Error::new(io::ErrorKind::Other, format!("{error}"))
         })?;
 
       let mut count = 0;
@@ -102,7 +187,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
       #[allow(clippy::blocks_in_if_conditions)]
       while cursor.advance().await.map_err(|error| {
         log::warn!("unable to advance cursor - {error}");
-        Error::new(ErrorKind::Other, format!("{error}"))
+        io::Error::new(io::ErrorKind::Other, format!("{error}"))
       })? {
         count += 1;
         match cursor.deserialize_current() {
@@ -127,7 +212,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
         .checked_sub_signed(chrono::Duration::seconds(MAX_IDLE_TIME_SECONDS))
         .ok_or_else(|| {
           log::warn!("overflow calculation for cutoff");
-          Error::new(ErrorKind::Other, "cutoff time calc overflow")
+          io::Error::new(io::ErrorKind::Other, "cutoff time calc overflow")
         })?;
 
       log::info!("using cutoff value - {cutoff:?} ({})", cutoff.timestamp_millis());
@@ -140,7 +225,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
         .await
         .map_err(|error| {
           log::warn!("failed mongo query - {error}");
-          Error::new(ErrorKind::Other, format!("{error}"))
+          io::Error::new(io::ErrorKind::Other, format!("{error}"))
         })?;
 
       let mut devices = Vec::with_capacity(100);
@@ -148,7 +233,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
       #[allow(clippy::blocks_in_if_conditions)]
       while cursor.advance().await.map_err(|error| {
         log::warn!("unable to advance cursor - {error}");
-        Error::new(ErrorKind::Other, format!("{error}"))
+        io::Error::new(io::ErrorKind::Other, format!("{error}"))
       })? {
         let device = cursor.deserialize_current();
         log::info!("found diagnostic {:?}", device);
@@ -173,7 +258,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
           .await
           .map_err(|error| {
             log::warn!("unable to perform delete_many - {error}");
-            Error::new(ErrorKind::Other, format!("{error}"))
+            io::Error::new(io::ErrorKind::Other, format!("{error}"))
           })?;
 
         log::info!("delete complete - {:?}", result);
@@ -209,56 +294,18 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<(
   Ok(())
 }
 
-fn main() -> Result<()> {
+fn main() -> io::Result<()> {
   dotenv::dotenv().ok();
   env_logger::init();
 
   log::info!("environment + logger ready.");
 
-  let contents = std::fs::read_to_string("env.toml")?;
-
+  let options = CommandLineOptions::parse();
+  let contents = std::fs::read_to_string(&options.config)?;
   let config = toml::from_str::<CommandLineConfig>(&contents).map_err(|error| {
     log::warn!("invalid toml config file - {error}");
-    Error::new(ErrorKind::Other, "bad-config")
+    io::Error::new(io::ErrorKind::Other, "bad-config")
   })?;
 
-  let mut args = std::env::args().skip(1);
-  let cmd = args.next();
-
-  let command = match cmd.as_deref() {
-    Some("provision") => CommandLineCommand::Provision(
-      args
-        .next()
-        .or_else(|| {
-          log::info!("no username provided, falling back to 'env.toml'");
-          config.registrar.id_consumer_username.clone()
-        })
-        .ok_or_else(|| Error::new(ErrorKind::Other, "must provide username to provision command"))?,
-      args
-        .next()
-        .or_else(|| {
-          log::info!("no password provided, falling back to 'env.toml'");
-          config.registrar.id_consumer_password.clone()
-        })
-        .ok_or_else(|| Error::new(ErrorKind::Other, "must provide password to provision command"))?,
-    ),
-    Some("printall") => CommandLineCommand::PrintConnected,
-    Some("cleanup") => CommandLineCommand::CleanDisconnects,
-    Some("write") => {
-      let (id, message) = args
-        .next()
-        .zip(args.next())
-        .ok_or_else(|| Error::new(ErrorKind::Other, "invalid"))?;
-
-      log::info!("write command");
-      CommandLineCommand::PushString(id, message)
-    }
-    None | Some("help") => CommandLineCommand::Help,
-    Some(other) => {
-      eprintln!("unrecognized command '{}'", other);
-      CommandLineCommand::Help
-    }
-  };
-
-  async_std::task::block_on(run(config, command))
+  async_std::task::block_on(run(config, options.command))
 }
