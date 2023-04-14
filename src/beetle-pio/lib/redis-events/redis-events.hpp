@@ -115,7 +115,7 @@ namespace redisevents {
           this->_kind = other._kind;
           this->_total = other._total;
           this->_delim = other._delim;
-          return std::move(*this);
+          return *this;
         };
 
         mutable uint8_t _kind;
@@ -138,7 +138,7 @@ namespace redisevents {
           this->_terminating = other._terminating;
           this->_size = other._size;
           this->_seen = other._seen;
-          return std::move(*this);
+          return *this;
         };
 
         uint8_t _size;
@@ -157,7 +157,7 @@ namespace redisevents {
       };
 
       struct ParserVisitor final {
-        ParserVisitor(char token): _token(token) {}
+        explicit ParserVisitor(char token): _token(token) {}
 
         std::tuple<ParserStates, EResponseParserTransition> operator()(const BulkStringParser&& initial) const;
         std::tuple<ParserStates, EResponseParserTransition> operator()(const InitialParser&& initial) const;
