@@ -56,7 +56,7 @@ State Engine::update(State& current, uint32_t current_time) {
     next.active.emplace<WorkingState>(_redis.id_size());
     WorkingState * w = std::get_if<WorkingState>(&next.active);
     _redis.copy_id(w->id_content, _redis.id_size());
-    log_d("moved into working state with id size '%d' (id: '%s')", _redis.id_size(), w->id_content);
+    log_i("moved into working state with id size '%d' (id: '%s')", _redis.id_size(), w->id_content);
     return next;
   }
 
@@ -74,8 +74,7 @@ State Engine::update(State& current, uint32_t current_time) {
       return next;
     }
 
-    log_d("received message, copying buffer to connected state");
-
+    log_i("received message, copying buffer to connected state");
     Message& next = working_state->next();
     next.content_size = _redis.copy(next.content, 2048);
   }

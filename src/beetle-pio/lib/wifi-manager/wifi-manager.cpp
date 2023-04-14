@@ -102,7 +102,7 @@ namespace wifimanager {
 
         if (_checked_stored_values == false) {
           _checked_stored_values = true;
-          log_d("stored ssid len - %d (password %d)", stored_ssid_len, stored_password_len);
+          log_i("stored ssid len - %d (password %d)", stored_ssid_len, stored_password_len);
         }
 
         // If we have nothing stored, try to read from our http server.
@@ -140,18 +140,18 @@ namespace wifimanager {
         PendingConnection * pending = std::get_if<PendingConnection>(&_mode);
 
         if (pending->_attempts % 3 == 0) {
-          log_d("attempting to connect to wifi [%d]", pending->_attempts);
+          log_i("attempting to connect to wifi [%d]", pending->_attempts);
         }
 
         if (pending->_attempts == 0) {
-          log_d("connecting to wifi");
+          log_i("connecting to wifi");
           WiFi.setHostname("orient-beetle");
           WiFi.begin(pending->_ssid, pending->_password);
         }
 
         // If we have a connection, move out of this mode
         if (WiFi.status() == WL_CONNECTED) {
-          log_d("wifi is connected");
+          log_i("wifi is connected");
           _mode.emplace<ActiveConnection>(0);
 
           size_t stored_ssid_len = _preferences.putString("ssid", pending->_ssid);
@@ -166,7 +166,7 @@ namespace wifimanager {
         // If we have seen too many frames without establishing a connection to the 
         // network provided by the user, move back into the AP/configuration mode.
         if (pending->_attempts > MAX_PENDING_CONNECTION_ATTEMPTS) {
-          log_d("too many connections failed, resetting");
+          log_i("too many connections failed, resetting");
 
           // Clear the stored ssid/password.
           _preferences.remove("ssid");
@@ -186,7 +186,7 @@ namespace wifimanager {
         break;
       }
       default:
-        log_d("unknown state");
+        log_i("unknown state");
         break;
     }
 
@@ -194,14 +194,14 @@ namespace wifimanager {
   }
 
   void Manager::begin(void) {
-    log_d("starting preferences");
+    log_i("starting preferences");
     _preferences.begin("beetle-wifi", false);
 
     if (_mode.index() == 1) {
       WiFi.softAP(std::get<0>(_ap_config), std::get<1>(_ap_config), 7, 0, 1);
       IPAddress address = WiFi.softAPIP();
 
-      log_d("AP IP address: %s", address.toString());
+      log_i("AP IP address: %s", address.toString());
       std::get_if<1>(&_mode)->begin(address);
       return;
     }
@@ -259,7 +259,7 @@ namespace wifimanager {
         }
 
         if (method == ERequestParsingMode::None && strcmp(buffer, CONNECTION_PREFIX) == 0) {
-          log_d("found connection request, preparing for ssid parsing");
+          log_i("found connection request, preparing for ssid parsing");
 
           method = ERequestParsingMode::Network;
           cursor += 1;
@@ -298,7 +298,7 @@ namespace wifimanager {
       }
 
       if (method != ERequestParsingMode::Done) {
-        log_d("non-connect request:\n%s", buffer);
+        log_i("non-connect request:\n%s", buffer);
 
         client.write(index_html, index_end - index_html);
         delay(10);
@@ -306,7 +306,7 @@ namespace wifimanager {
         return false;
       }
 
-      log_d("[wifi_manager] ssid: %s | password %s", ssid, password);
+      log_i("[wifi_manager] ssid: %s | password %s", ssid, password);
 
       client.write(index_html, index_end - index_html);
       delay(10);
@@ -341,7 +341,7 @@ namespace wifimanager {
   }
 
   Manager::PendingConfiguration::~PendingConfiguration() {
-    log_d("wifi_manager::pending_configuration", "exiting pending configuration");
+    log_i("wifi_manager::pending_configuration", "exiting pending configuration");
 
     _server.stop();
     _dns.stop();

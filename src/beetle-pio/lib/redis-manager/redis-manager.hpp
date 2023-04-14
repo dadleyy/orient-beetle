@@ -32,6 +32,7 @@ namespace redismanager {
         ReceivedMessage,
       };
 
+
       // Initialization - prepare our internal state
       void begin(void);
 
@@ -60,7 +61,8 @@ namespace redismanager {
       // The amount of times we reset our connection before we will re-request a new device id.
       constexpr static const uint8_t MAX_RESETS_RECREDENTIALIZE = 5;
 
-      constexpr static const char * EMPTY_RESPONSE = "$-1\r\n";
+      constexpr static const char * EMPTY_STRING_RESPONSE = "$-1\r\n";
+      constexpr static const char * EMPTY_ARRAY_RESPONSE = "*-1\r\n";
       constexpr static const char * OK = "+OK\r\n";
       constexpr static const char * PUSH_OK = ":1\r\n";
       constexpr static const char * WRONG_PASS_ERR = "-WRONGPASS invalid username-password pair or user is disabled\r\n";
@@ -79,6 +81,90 @@ namespace redismanager {
         AuthorizationAttempted,   // <- waiting for response from `AUTH`
         FullyAuthorized,          // <- reads messages
       };
+
+      enum EResponseParserTransition {
+        Noop,
+        Failure,
+        HasArray,
+        Done,
+        StartString,
+        EndString,
+      };
+
+      enum EParseResult {
+        ParsedFailure,
+        ParsedMessage,
+        ParsedOk,
+        ParsedNothing,
+      };
+
+      struct ParserVisitor;
+
+      // Initially, we will _either_ be parsing the length of an array to follow, or the length
+      // of a bulk string.
+      struct InitialParser final {
+        InitialParser(): _kind(0), _total(0), _delim(0) {}
+        ~InitialParser() = default;
+
+        InitialParser(const InitialParser&) = delete;
+        InitialParser& operator=(const InitialParser&) = delete;
+
+        InitialParser(const InitialParser&& other):
+          _kind(other._kind), _total(other._total), _delim(other._delim) {}
+        const InitialParser& operator=(const InitialParser&& other) {
+          this->_kind = other._kind;
+          this->_total = other._total;
+          this->_delim = other._delim;
+          return std::move(*this);
+        };
+
+        mutable uint8_t _kind;
+        mutable uint8_t _total;
+        mutable uint8_t _delim;
+
+        friend class ParserVisitor;
+      };
+
+      struct BulkStringParser final {
+        explicit BulkStringParser(uint8_t size): _size(size), _seen(0), _terminating(false) {}
+        ~BulkStringParser() = default;
+
+        BulkStringParser(const BulkStringParser&) = delete;
+        BulkStringParser& operator=(const BulkStringParser&) = delete;
+
+        BulkStringParser(const BulkStringParser&& other):
+          _size(other._size), _seen(other._seen), _terminating(other._terminating) {}
+        const BulkStringParser& operator=(const BulkStringParser&& other) {
+          this->_terminating = other._terminating;
+          this->_size = other._size;
+          this->_seen = other._seen;
+          return std::move(*this);
+        };
+
+        uint8_t _size;
+        mutable uint8_t _seen;
+        mutable bool _terminating;
+
+        friend class ParserVisitor;
+      };
+
+      using ParserStates = std::variant<InitialParser, BulkStringParser>;
+
+      struct ResponseParser final {
+        ResponseParser(): _state(InitialParser()) {}
+        EResponseParserTransition consume(char);
+        ParserStates _state;
+      };
+
+      struct ParserVisitor final {
+        ParserVisitor(char token): _token(token) {}
+
+        std::tuple<ParserStates, EResponseParserTransition> operator()(const BulkStringParser&& initial) const;
+        std::tuple<ParserStates, EResponseParserTransition> operator()(const InitialParser&& initial) const;
+
+        char _token;
+      };
+
 
       // Internal State Variant: Connected
       //
@@ -111,17 +197,20 @@ namespace redismanager {
             uint32_t
           );
           inline uint16_t write_message(uint32_t);
-          inline uint8_t parse_framebuffer(void);
+          inline EParseResult parse_framebuffer(void);
 
           EAuthorizationStage _authorization_stage;
 
           // The `_cursor` represents the last index of our framebuffer we have pushed into.
+          // It is _also_ truncated down to the value of successfully parsed messages.
           uint16_t _cursor;
+
+          ResponseParser _parser;
 
           // This memory is filled every update with the contents of our tcp connection.
           char * _framebuffer;
           char * _outbound_buffer;
-          char * _parsed_message;
+          char * _parse_buffer;
 
           // Credential storage.
           char * _device_id;
