@@ -26,8 +26,8 @@ static_assert(1=0, "Error! Either xiao OR firebeetle must be selected, not both.
 
 // Internal libraries
 #include "microtim.hpp"
-#include "wifi-manager.hpp"
-#include "redis-manager.hpp"
+#include "wifi-events.hpp"
+#include "redis-events.hpp"
 
 // Configuration files
 #include "board_layout.hpp"

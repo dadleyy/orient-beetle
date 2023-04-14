@@ -91,18 +91,6 @@ jobs:
             $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/partitions.bin.pgp \
             .pio/build/firebeetle/partitions.bin
 
-      - name: "bundle(firebeetle): copy-bootloader"
-        run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
-            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/bootloader.bin.pgp \
-            $HOME/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin/bootloader_dio_40m.bin
-
-      - name: "bundle(firebeetle): copy-apploader"
-        run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
-            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/apploader.bin.pgp \
-            $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
-
       - name: "pio(xiao): upgrade"
         run: pio upgrade
 
@@ -138,12 +126,6 @@ jobs:
           gpg --trust-model always -e -r 99D22D47AA5053FC -o \
             $DISTRIBUTABLE_DIRECTORY_NAME/xiao/partitions.bin.pgp \
             .pio/build/xiao/partitions.bin
-
-      - name: "bundle(xiao): copy-bootloader"
-        run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
-            $DISTRIBUTABLE_DIRECTORY_NAME/xiao/bootloader.bin.pgp \
-            .pio/build/xiao/bootloader.bin
 
       - name: "bundle(xiao): copy-apploader"
         run: |

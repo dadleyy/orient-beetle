@@ -1,8 +1,8 @@
-#include "redis-manager.hpp"
+#include "redis-events.hpp"
 
-namespace redismanager {
+namespace redisevents {
 
-  Manager::Manager(std::tuple<const char *, const uint32_t, std::pair<const char *, const char *>> config):
+  Events::Events(std::tuple<const char *, const uint32_t, std::pair<const char *, const char *>> config):
     _redis_host(std::get<0>(config)),
     _redis_port(std::get<1>(config)),
     _redis_auth(std::get<2>(config)),
@@ -11,12 +11,12 @@ namespace redismanager {
   {
   }
 
-  void Manager::begin(void) {
+  void Events::begin(void) {
     _preferences.begin("beetle-redis", false);
   }
 
   // Given a destination, fill it with the contents of our connected state if available.
-  uint16_t Manager::copy(char * destination, uint16_t max) {
+  uint16_t Events::copy(char * destination, uint16_t max) {
     if (_state.index() != 1) {
       return 0;
     }
@@ -27,8 +27,8 @@ namespace redismanager {
   }
 
   // The main "tick" function of our redis manager.
-  std::optional<Manager::EManagerMessage> Manager::update(
-    std::optional<wifimanager::Manager::EManagerMessage> &message,
+  std::optional<Events::EMessage> Events::update(
+    std::optional<wifievents::Events::EMessage> &message,
     uint32_t current_time
   ) {
     switch (_state.index()) {
@@ -51,19 +51,19 @@ namespace redismanager {
         Connected * connected_state = std::get_if<1>(&_state);
 
         // If we've been completely disconnected, restart.
-        if (message == wifimanager::Manager::EManagerMessage::Disconnected) {
+        if (message == wifievents::Events::EMessage::Disconnected) {
           _state.emplace<Disconnected>();
           _paused = false;
-          return Manager::EManagerMessage::ConnectionLost;
+          return Events::EMessage::ConnectionLost;
         }
 
         // If we're paused and we've got anything but a resume, do nothing.
-        if (_paused && message != wifimanager::Manager::EManagerMessage::ConnectionResumed) {
+        if (_paused && message != wifievents::Events::EMessage::ConnectionResumed) {
           return std::nullopt;
         }
 
         // If we've received an interruption, pause immediately.
-        if (message == wifimanager::Manager::EManagerMessage::ConnectionInterruption) {
+        if (message == wifievents::Events::EMessage::ConnectionInterruption) {
           _paused = true;
           log_i("wifi connection was interrupted, pausing all requests");
 
@@ -72,9 +72,9 @@ namespace redismanager {
 
         // If we're paused and are about to resume, reset us to disconnected. The next frame will
         // bounce us back into connected.
-        if (_paused && message == wifimanager::Manager::ConnectionResumed) {
+        if (_paused && message == wifievents::Events::EMessage::ConnectionResumed) {
           _state.emplace<Disconnected>();
-          return Manager::EManagerMessage::ConnectionLost;
+          return Events::EMessage::ConnectionLost;
         }
 
         // At this point, the message received from the wifi manager is not something we're really
@@ -87,7 +87,7 @@ namespace redismanager {
   }
 
   // Connected state copy - consume the framebuffer into our destination.
-  uint16_t Manager::Connected::copy(char * destination, uint16_t size) {
+  uint16_t Events::Connected::copy(char * destination, uint16_t size) {
     if (_cursor == 0 || _authorization_stage != EAuthorizationStage::FullyAuthorized) {
       log_e("attempted to copy an empty message");
       return 0;
@@ -105,7 +105,7 @@ namespace redismanager {
 
   // The main update method here is responsible for potentially receiving and writing
   // data over tcp to our redis server.
-  std::optional<Manager::EManagerMessage> Manager::Connected::update(
+  std::optional<Events::EMessage> Events::Connected::update(
     const char * _redis_host,
     const std::pair<const char *, const char *> & _redis_auth,
     uint32_t _redis_port,
@@ -211,7 +211,7 @@ namespace redismanager {
           log_i("successfully authorized connection to redis, will attempt to pull id on next update");
           _authorization_stage = EAuthorizationStage::AuthorizationReceived;
           _strange_thing_count = 0;
-          return Manager::EManagerMessage::EstablishedConnection;
+          return Events::EMessage::EstablishedConnection;
         }
 
         if (_cursor > 0) {
@@ -259,7 +259,7 @@ namespace redismanager {
             _empty_identified_reads = 0;
             _pending_response = false;
             write_message(current_time);
-            return EManagerMessage::ReceivedMessage;
+            return EMessage::ReceivedMessage;
           default:
             // Reset our cursor; we don't want it looking like we have a message.
             _cursor = 0;
@@ -309,7 +309,7 @@ namespace redismanager {
             _client.print(_outbound_buffer);
             memset(_outbound_buffer, '\0', OUTBOUND_BUFFER_SIZE);
             _authorization_stage = EAuthorizationStage::AuthorizationAttempted;
-            return Manager::EManagerMessage::IdentificationReceived;
+            return Events::EMessage::IdentificationReceived;
           }
           default: {
             _strange_thing_count = _strange_thing_count + 1;
@@ -324,7 +324,7 @@ namespace redismanager {
   }
 
   // The primary redis response parsing function. Called whenever our current framebuffer is full.
-  inline Manager::EParseResult Manager::Connected::parse_framebuffer(void) {
+  inline Events::EParseResult Events::Connected::parse_framebuffer(void) {
     memset(_parse_buffer, '\0', PARSED_MESSAGE_SIZE);
 
     char * current_token = _framebuffer;
@@ -338,7 +338,7 @@ namespace redismanager {
       tokens_read += 1;
 
       switch (transition) {
-        case Manager::EResponseParserTransition::Noop: {
+        case Events::EResponseParserTransition::Noop: {
           if (capturing) {
             _parse_buffer[current_index] = tok;
             current_index ++;
@@ -346,21 +346,21 @@ namespace redismanager {
           continue;
         }
 
-        case Manager::EResponseParserTransition::Failure: {
+        case Events::EResponseParserTransition::Failure: {
           memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
           log_e("aborting all parsing, failure received");
-          return Manager::EParseResult::ParsedFailure;
+          return Events::EParseResult::ParsedFailure;
         }
 
         // If we can immediately exit parsing because we've received an empty array or bulk string,
         // we can continue sending our next request.
-        case Manager::EResponseParserTransition::Done: {
+        case Events::EResponseParserTransition::Done: {
           log_e("strange framebuffer parsing termination");
           memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
-          return Manager::EParseResult::ParsedOk;
+          return Events::EParseResult::ParsedOk;
         }
 
-        case Manager::EResponseParserTransition::HasArray: {
+        case Events::EResponseParserTransition::HasArray: {
           capturing = false;
           log_i("starting array capture");
           continue;
@@ -368,7 +368,7 @@ namespace redismanager {
 
         // At the start of every bulk string, reset our parsed buffer and flag the start
         // of this capture.
-        case Manager::EResponseParserTransition::StartString: {
+        case Events::EResponseParserTransition::StartString: {
           log_d("starting string capture");
           memset(_parse_buffer, '\0', PARSED_MESSAGE_SIZE);
           capturing = true;
@@ -379,7 +379,7 @@ namespace redismanager {
 
         // When we've reached the end of our string, we're going to fully swap our parsed
         // message contents into the framebuffer.
-        case Manager::EResponseParserTransition::EndString: {
+        case Events::EResponseParserTransition::EndString: {
           // TODO: the way the state transitions work currently we are sending a single '\r'
           // character into the `_parse_buffer`.
           auto terminal_index = current_index - 1;
@@ -417,13 +417,13 @@ namespace redismanager {
     return EParseResult::ParsedNothing;
   }
 
-  Manager::EResponseParserTransition Manager::ResponseParser::consume(char token) {
-    auto [state, transition] = std::visit(Manager::ParserVisitor(token), std::move(_state));
+  Events::EResponseParserTransition Events::ResponseParser::consume(char token) {
+    auto [state, transition] = std::visit(Events::ParserVisitor(token), std::move(_state));
     _state = std::move(state);
     return transition;
   }
 
-  Manager::Connected::Connected(Preferences* _preferences):
+  Events::Connected::Connected(Preferences* _preferences):
     _authorization_stage(EAuthorizationStage::NotRequested),
     _cursor(0),
     _parser(ResponseParser()),
@@ -441,7 +441,7 @@ namespace redismanager {
 
   // Called when we're in a `NotRequested` state, this method is responsible for opening our
   // tcp connection with the correct certificate and issuing our authorization message.
-  std::optional<Manager::EManagerMessage> Manager::Connected::connect(
+  std::optional<Events::EMessage> Events::Connected::connect(
     const char * _redis_host,
     const std::pair<const char *, const char *> & _redis_auth,
     uint32_t _redis_port
@@ -458,7 +458,7 @@ namespace redismanager {
 
     if (result != 1) {
       log_e("unable to establish connection - %d", result);
-      return Manager::EManagerMessage::FailedConnection;
+      return Events::EMessage::FailedConnection;
     }
 
     log_i("redis connection established successfully");
@@ -493,7 +493,7 @@ namespace redismanager {
       // cache and attempted to use it.
       _authorization_stage = EAuthorizationStage::AuthorizationAttempted;
 
-      return Manager::EManagerMessage::IdentificationReceived;
+      return Events::EMessage::IdentificationReceived;
     }
 
     // So we've connected without stored credentials. What we'll do now is attempt to authenticate
@@ -525,7 +525,7 @@ namespace redismanager {
     return std::nullopt;
   }
 
-  void Manager::Connected::reset(void) {
+  void Events::Connected::reset(void) {
     _strange_thing_count = 0;
     _empty_identified_reads = 0;
     _cached_reset_count += 1;
@@ -544,7 +544,7 @@ namespace redismanager {
     memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
   }
 
-  Manager::Connected::~Connected() {
+  Events::Connected::~Connected() {
     log_i("cleaning up redis client connection");
 
     free(_framebuffer);
@@ -555,7 +555,7 @@ namespace redismanager {
     _client.stop();
   }
 
-  inline uint16_t Manager::Connected::write_message(uint32_t current_time) {
+  inline uint16_t Events::Connected::write_message(uint32_t current_time) {
     if (_write_timer.update(current_time) != 1) {
       return 0;
     }
@@ -578,11 +578,11 @@ namespace redismanager {
     return bytes_sent;
   }
 
-  bool Manager::Disconnected::update(std::optional<wifimanager::Manager::EManagerMessage> &message) {
-    return message == wifimanager::Manager::EManagerMessage::Connected;
+  bool Events::Disconnected::update(std::optional<wifievents::Events::EMessage> &message) {
+    return message == wifievents::Events::EMessage::Connected;
   }
 
-  uint8_t Manager::id_size(void) {
+  uint8_t Events::id_size(void) {
     Connected * c = std::get_if<Connected>(&_state);
     if (!c) {
       return 0;
@@ -590,7 +590,7 @@ namespace redismanager {
     return c->_device_id_len;
   }
 
-  uint8_t Manager::copy_id(char * dest, uint8_t max) {
+  uint8_t Events::copy_id(char * dest, uint8_t max) {
     Connected * c = std::get_if<Connected>(&_state);
     if (!c) {
       return 0;
@@ -600,27 +600,27 @@ namespace redismanager {
     return amount;
   }
 
-  std::tuple<Manager::ParserStates, Manager::EResponseParserTransition>
-  Manager::ParserVisitor::operator()(const Manager::InitialParser&& initial) const {
+  std::tuple<Events::ParserStates, Events::EResponseParserTransition>
+  Events::ParserVisitor::operator()(const Events::InitialParser&& initial) const {
     if (initial._kind == 0) {
       switch (_token) {
         case '*':
           initial._kind = 1;
-          return std::make_tuple(std::move(initial), Manager::EResponseParserTransition::Noop);
+          return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Noop);
         case '$':
           initial._kind = 2;
-          return std::make_tuple(std::move(initial), Manager::EResponseParserTransition::Noop);
+          return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Noop);
         case ':':
           initial._kind = 3;
-          return std::make_tuple(std::move(initial), Manager::EResponseParserTransition::Noop);
+          return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Noop);
         default:
-          return std::make_tuple(InitialParser(), Manager::EResponseParserTransition::Failure);
+          return std::make_tuple(InitialParser(), Events::EResponseParserTransition::Failure);
       }
     }
 
     if (initial._kind == 1 && initial._total == 0 && _token == '-') {
       log_i("parsed an empty array message");
-      return std::make_tuple(InitialParser(), Manager::EResponseParserTransition::Done);
+      return std::make_tuple(InitialParser(), Events::EResponseParserTransition::Done);
     }
 
     // If we receive newline, we should check to make sure the last character we've received was
@@ -628,56 +628,56 @@ namespace redismanager {
     if (_token == '\n') {
       // If we are _not_ expecting a newline, this was a poorly formatted request. Bail out.
       if (initial._delim != 1) {
-        return std::make_tuple(InitialParser(), Manager::EResponseParserTransition::Failure);
+        return std::make_tuple(InitialParser(), Events::EResponseParserTransition::Failure);
       }
 
       switch (initial._kind) {
         case 1:
           log_i("finished parsing array message length chunk (found %d)", initial._total);
-          return std::make_tuple(InitialParser(), Manager::EResponseParserTransition::HasArray);
+          return std::make_tuple(InitialParser(), Events::EResponseParserTransition::HasArray);
         case 2:
           log_d("finished parsing bulk string message length chunk (found %d)", initial._total);
           return std::make_tuple(
             BulkStringParser(initial._total),
-            Manager::EResponseParserTransition::StartString
+            Events::EResponseParserTransition::StartString
           );
         case 3:
           log_d("finished parsing int response %d", initial._total);
-          return std::make_tuple(InitialParser(), Manager::EResponseParserTransition::Done);
+          return std::make_tuple(InitialParser(), Events::EResponseParserTransition::Done);
         default:
           log_e("invalid initial size chunk parsing (found %d)", initial._total);
-          return std::make_tuple(InitialParser(), Manager::EResponseParserTransition::Failure);
+          return std::make_tuple(InitialParser(), Events::EResponseParserTransition::Failure);
       }
     }
 
     // If we receive a return, mark ready to receive newline.
     if (_token == '\r') {
       initial._delim = 1;
-      return std::make_tuple(std::move(initial), Manager::EResponseParserTransition::Noop);
+      return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Noop);
     }
 
     // Any other character, make sure we're not looking for a newline, and add the character to
     // our current length.
     initial._delim = 0;
     initial._total = (initial._total * 10) + (_token - '0');
-    return std::make_tuple(std::move(initial), Manager::EResponseParserTransition::Noop);
+    return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Noop);
   }
 
   // When consuming tokens while parsing a bulk string, all we need to do is check for return
   // and newline characters, while making sure that we are under the expected length.
-  std::tuple<Manager::ParserStates, Manager::EResponseParserTransition>
-  Manager::ParserVisitor::operator()(const Manager::BulkStringParser&& initial) const {
+  std::tuple<Events::ParserStates, Events::EResponseParserTransition>
+  Events::ParserVisitor::operator()(const Events::BulkStringParser&& initial) const {
     // If we have a newline and were previously terminating, we should be done. Move back into
     // an initial parser state to perpare for any new length bits.
     if (_token == '\n' && initial._terminating) {
       log_d("bulk string read complete");
-      return std::make_tuple(InitialParser(), Manager::EResponseParserTransition::EndString);
+      return std::make_tuple(InitialParser(), Events::EResponseParserTransition::EndString);
     }
 
     // If we have a return, we should expect to be terminating soon.
     if (_token == '\r') {
       initial._terminating = true;
-      return std::make_tuple(std::move(initial), Manager::EResponseParserTransition::Noop);
+      return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Noop);
     }
 
     // Only increment our count
@@ -685,10 +685,10 @@ namespace redismanager {
 
     if (seen > initial._size) {
       log_e("bulk string parser saw more bytes than expected");
-      return std::make_tuple(std::move(initial), Manager::EResponseParserTransition::Failure);
+      return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Failure);
     }
 
     initial._seen = seen;
-    return std::make_tuple(std::move(initial), Manager::EResponseParserTransition::Noop);
+    return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Noop);
   }
 }

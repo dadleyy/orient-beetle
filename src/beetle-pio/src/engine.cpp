@@ -14,26 +14,26 @@ void Engine::begin(void) {
 State Engine::update(State& current, uint32_t current_time) {
   State next(std::move(current));
 
-  std::optional<wifimanager::Manager::EManagerMessage> wifi_update = _wifi.update(current_time);
-  std::optional<redismanager::Manager::EManagerMessage> redis_update = _redis.update(wifi_update, current_time);
+  std::optional<wifievents::Events::EMessage> wifi_update = _wifi.update(current_time);
+  std::optional<redisevents::Events::EMessage> redis_update = _redis.update(wifi_update, current_time);
 
   if (wifi_update) {
     switch (*wifi_update) {
-      case wifimanager::Manager::EManagerMessage::Connecting:
+      case wifievents::Events::EMessage::Connecting:
         next.active.emplace<ConnectingState>();
         return next;
 
-      case wifimanager::Manager::EManagerMessage::Disconnected:
+      case wifievents::Events::EMessage::Disconnected:
         next.active.emplace<ConfiguringState>();
         return next;
 
-      case wifimanager::Manager::EManagerMessage::ConnectionResumed:
-      case wifimanager::Manager::EManagerMessage::Connected:
+      case wifievents::Events::EMessage::ConnectionResumed:
+      case wifievents::Events::EMessage::Connected:
         next.active.emplace<ConnectedState>();
         return next;
 
-      case wifimanager::Manager::EManagerMessage::ConnectionInterruption:
-      case wifimanager::Manager::EManagerMessage::FailedConnection:
+      case wifievents::Events::EMessage::ConnectionInterruption:
+      case wifievents::Events::EMessage::FailedConnection:
         next.active.emplace<UnknownState>();
         return next;
     }
@@ -49,7 +49,7 @@ State Engine::update(State& current, uint32_t current_time) {
   // If redis has received an id and we had previously moved into a `Connected` state, we
   // should now enter our main, `Working` state that will hold messages.
   bool now_working = redis_update ==
-    redismanager::Manager::EManagerMessage::IdentificationReceived
+    redisevents::Events::EMessage::IdentificationReceived
     && std::get_if<ConnectedState>(&next.active) != nullptr;
 
   if (now_working) {
@@ -61,7 +61,7 @@ State Engine::update(State& current, uint32_t current_time) {
   }
 
   bool has_message =
-    redis_update == redismanager::Manager::EManagerMessage::ReceivedMessage
+    redis_update == redisevents::Events::EMessage::ReceivedMessage
     && std::get_if<WorkingState>(&next.active);
 
   // If we received a redis message update and we're currently "working", attempt to

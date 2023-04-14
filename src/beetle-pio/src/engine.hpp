@@ -2,8 +2,8 @@
 #define _ENGINE_H 1
 
 #include <optional>
-#include "wifi-manager.hpp"
-#include "redis-manager.hpp"
+#include "wifi-events.hpp"
+#include "redis-events.hpp"
 #include "state.hpp"
 
 class Engine final {
@@ -22,8 +22,8 @@ class Engine final {
     State update(State&, uint32_t);
 
   private:
-    wifimanager::Manager _wifi;
-    redismanager::Manager _redis;
+    wifievents::Events _wifi;
+    redisevents::Events _redis;
 };
 
 #endif

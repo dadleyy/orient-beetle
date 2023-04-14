@@ -1,5 +1,5 @@
-#ifndef _WIFI_MANAGER_H
-#define _WIFI_MANAGER_H 1
+#ifndef _WIFI_EVENTS_H
+#define _WIFI_EVENTS_H 1
 
 #include <variant>
 #include <optional>
@@ -14,22 +14,22 @@
 
 #include "microtim.hpp"
 
-namespace wifimanager {
+namespace wifievents {
 
-  class Manager final {
+  class Events final {
     public:
-      explicit Manager(std::tuple<const char *, const char *>);
-      ~Manager() = default;
+      explicit Events(std::tuple<const char *, const char *>);
+      ~Events() = default;
 
       // Disable Copy
-      Manager(const Manager &) = delete;
-      Manager & operator=(const Manager &) = delete;
+      Events(const Events &) = delete;
+      Events & operator=(const Events &) = delete;
 
       // Disable Move
-      Manager(Manager &&) = delete;
-      Manager& operator=(Manager &&) = delete;
+      Events(Events &&) = delete;
+      Events& operator=(Events &&) = delete;
 
-      enum EManagerMessage {
+      enum EMessage {
         Connecting = 0,
         Connected,
         FailedConnection,
@@ -39,7 +39,7 @@ namespace wifimanager {
       };
 
       void begin(void);
-      std::optional<EManagerMessage> update(uint32_t);
+      std::optional<EMessage> update(uint32_t);
       uint8_t attempt(void);
 
     private:

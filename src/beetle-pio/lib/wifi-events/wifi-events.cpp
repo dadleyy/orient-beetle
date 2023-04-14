@@ -1,20 +1,20 @@
-#include "wifi-manager.hpp"
+#include "wifi-events.hpp"
 
-namespace wifimanager {
-  Manager::Manager(std::tuple<const char *, const char *> ap):
+namespace wifievents {
+  Events::Events(std::tuple<const char *, const char *> ap):
     _last_mode(0),
     _ap_config(ap),
     _mode(std::in_place_type_t<PendingConfiguration>()) {
   }
 
-  uint8_t Manager::attempt(void) {
+  uint8_t Events::attempt(void) {
     if (_mode.index() == 2) {
       return std::get_if<PendingConnection>(&_mode)->_attempts;
     }
     return 0;
   }
 
-  std::optional<Manager::EManagerMessage> Manager::update(uint32_t current_time) {
+  std::optional<Events::EMessage> Events::update(uint32_t current_time) {
     auto timer_result = _timer.update(current_time);
 
     if (timer_result != 1) {
@@ -54,7 +54,7 @@ namespace wifimanager {
         if (active->_disconnected == 1) {
           log_e("wifi connection interrupted, attempting to reconnect");
           WiFi.reconnect();
-          return Manager::EManagerMessage::ConnectionInterruption;
+          return Events::EMessage::ConnectionInterruption;
         }
 
         if (active->_disconnected > 1) {
@@ -64,14 +64,14 @@ namespace wifimanager {
 
         // If we're no longer disconnected, but were previously, we've been resumed.
         if (active->_disconnected == 0 && previous != 0) {
-          return Manager::EManagerMessage::ConnectionResumed;
+          return Events::EMessage::ConnectionResumed;
         }
 
         if (active->_disconnected > MAX_CONNECTION_INTERRUPTS) {
           log_e("wifi manager disonncted after %d attempts", active->_disconnected);
 
           _mode.emplace<PendingConfiguration>();
-          return Manager::EManagerMessage::Disconnected;
+          return Events::EMessage::Disconnected;
         }
 
         break;
@@ -127,7 +127,7 @@ namespace wifimanager {
         _mode.emplace<PendingConnection>(ssid, password);
 
         WiFi.mode(WIFI_STA);
-        return Manager::EManagerMessage::Connecting;
+        return Events::EMessage::Connecting;
       }
 
       /**
@@ -158,7 +158,7 @@ namespace wifimanager {
           size_t stored_password_len = _preferences.putString("password", pending->_password);
           log_d("stored ssid len %d, password len %d", stored_ssid_len, stored_password_len);
 
-          return Manager::EManagerMessage::Connected;
+          return Events::EMessage::Connected;
         }
 
         pending->_attempts += 1;
@@ -180,7 +180,7 @@ namespace wifimanager {
 
           // Enter into AP mode and start the server.
           begin();
-          return Manager::EManagerMessage::FailedConnection;
+          return Events::EMessage::FailedConnection;
         }
 
         break;
@@ -193,7 +193,7 @@ namespace wifimanager {
     return std::nullopt;
   }
 
-  void Manager::begin(void) {
+  void Events::begin(void) {
     log_i("starting preferences");
     _preferences.begin("beetle-wifi", false);
 
@@ -209,7 +209,7 @@ namespace wifimanager {
     log_d("soft ap not started");
   }
 
-  bool Manager::PendingConfiguration::update(char * ssid, char * password) {
+  bool Events::PendingConfiguration::update(char * ssid, char * password) {
       WiFiClient client = available();
 
       // If we are running in AP mode and have no http connection to our server, move right along.
@@ -319,7 +319,7 @@ namespace wifimanager {
    * When parsing the statusline of a request, this function will return the character
    * that is expected to terminate a given parsing mode.
    */
-  inline char Manager::PendingConfiguration::termination(ERequestParsingMode mode) {
+  inline char Events::PendingConfiguration::termination(ERequestParsingMode mode) {
     switch (mode) {
       case ERequestParsingMode::Network:
         return '&';
@@ -330,17 +330,17 @@ namespace wifimanager {
     }
   }
 
-  void Manager::PendingConfiguration::begin(IPAddress addr) {
+  void Events::PendingConfiguration::begin(IPAddress addr) {
     _server.begin();
     _dns.start(53, "*", addr);
   }
 
-  WiFiClient Manager::PendingConfiguration::available(void) {
+  WiFiClient Events::PendingConfiguration::available(void) {
     _dns.processNextRequest();
     return _server.available();
   }
 
-  Manager::PendingConfiguration::~PendingConfiguration() {
+  Events::PendingConfiguration::~PendingConfiguration() {
     log_i("wifi_manager::pending_configuration", "exiting pending configuration");
 
     _server.stop();

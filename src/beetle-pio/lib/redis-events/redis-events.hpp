@@ -1,30 +1,30 @@
-#ifndef _REDIS_MANAGER_H
-#define _REDIS_MANAGER_H 1
+#ifndef _REDIS_EVENTS_H
+#define _REDIS_EVENTS_H 1
 
 #include <variant>
 #include <optional>
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
 
-#include "wifi-manager.hpp"
+#include "wifi-events.hpp"
 #include "microtim.hpp"
 
-namespace redismanager {
+namespace redisevents {
   
-  class Manager final {
+  class Events final {
     public:
-      explicit Manager(std::tuple<const char *, const uint32_t, std::pair<const char *, const char *>>);
-      ~Manager() = default;
+      explicit Events(std::tuple<const char *, const uint32_t, std::pair<const char *, const char *>>);
+      ~Events() = default;
 
       // Disable Copy
-      Manager(const Manager &) = delete;
-      Manager & operator=(const Manager &) = delete;
+      Events(const Events &) = delete;
+      Events & operator=(const Events &) = delete;
 
       // Disable Move
-      Manager(Manager &&) = delete;
-      Manager& operator=(Manager &&) = delete;
+      Events(Events &&) = delete;
+      Events& operator=(Events &&) = delete;
 
-      enum EManagerMessage {
+      enum EMessage {
         FailedConnection,
         ConnectionLost,
         EstablishedConnection,
@@ -38,7 +38,7 @@ namespace redismanager {
 
       // Update - given a message from the wifi manager and the current time, perform logic
       // based on our current state.
-      std::optional<EManagerMessage> update(std::optional<wifimanager::Manager::EManagerMessage>&, uint32_t);
+      std::optional<EMessage> update(std::optional<wifievents::Events::EMessage>&, uint32_t);
 
       // Copy the latest message (if any) into the destination.
       uint16_t copy(char *, uint16_t);
@@ -181,7 +181,7 @@ namespace redismanager {
           Connected(Connected &&) = delete;
 
           uint16_t copy(char *, uint16_t);
-          std::optional<EManagerMessage> update(
+          std::optional<EMessage> update(
             const char *,
             const std::pair<const char *, const char *>&,
             uint32_t,
@@ -191,7 +191,7 @@ namespace redismanager {
           void reset(void);
 
         private:
-          std::optional<EManagerMessage> connect(
+          std::optional<EMessage> connect(
             const char *,
             const std::pair<const char *, const char *>&,
             uint32_t
@@ -238,14 +238,14 @@ namespace redismanager {
           bool _pending_response = false;
           bool _last_written_pop = false;
 
-          friend class Manager;
+          friend class Events;
       };
 
       // Internal State Variant: Disconnected
       //
       // Until our wifi manager is connected, this state represents doing nothing.
       struct Disconnected final {
-        bool update(std::optional<wifimanager::Manager::EManagerMessage> &message);
+        bool update(std::optional<wifievents::Events::EMessage> &message);
       };
 
       // Redis configuration values.
