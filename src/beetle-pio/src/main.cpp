@@ -52,7 +52,7 @@ Engine eng(
   std::make_tuple(redis_host, redis_port, std::make_pair(redis_auth_username, redis_auth_password))
 );
 
-State state;
+states::State state;
 
 #ifdef FIREBEETLE
 Adafruit_VCNL4010 vcnl;
@@ -141,8 +141,8 @@ void loop(void) {
   // Apply updates.
   state = eng.update(std::move(state), now);
 
-  if (std::get_if<WorkingState>(&state.active)) {
-    WorkingState * working_state = std::get_if<WorkingState>(&state.active);
+  if (std::get_if<states::Working>(&state.active)) {
+    states::Working * working_state = std::get_if<states::Working>(&state.active);
     display_render_state(working_state, last_frame);
   } else {
     display_render_unknown(last_frame);

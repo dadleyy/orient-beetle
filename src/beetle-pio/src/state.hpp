@@ -1,5 +1,5 @@
 #ifndef _STATE_H
-#define _STATE_H
+#define _STATE_H 1
 
 #include <cstdlib>
 #include <cstring>
@@ -8,54 +8,67 @@
 #include <variant>
 #include "esp32-hal-log.h"
 
+namespace states {
+
 constexpr const uint32_t MAX_MESSAGE_SIZE = 1024;
 
-struct UnknownState final {
-  UnknownState() = default;
-  UnknownState(UnknownState&&) = default;
-  UnknownState& operator=(UnknownState&&) = default;
+struct Unknown;
+struct Configuring;
+struct Connecting;
+struct Connected;
+struct Working;
+using StateT = std::variant<Unknown, Configuring, Connecting, Connected, Working>;
 
-  UnknownState(const UnknownState&) = delete;
-  UnknownState& operator=(const UnknownState&) = delete;
+// Reserve a state to deal with displaying to the user some fatal looking screen.
+struct Unknown final {
+  Unknown() = default;
+  Unknown(Unknown&&) = default;
+  Unknown& operator=(Unknown&&) = default;
+
+  Unknown(const Unknown&) = delete;
+  Unknown& operator=(const Unknown&) = delete;
 };
 
-struct ConfiguringState final {
-  ConfiguringState() = default;
-  ~ConfiguringState() = default;
-  ConfiguringState(ConfiguringState&&) = default;
-  ConfiguringState& operator=(ConfiguringState&&) = default;
+// This state represents where we are while waiting for the user to set of the wifi
+// credentials through the "capture portal".
+struct Configuring final {
+  Configuring() = default;
+  ~Configuring() = default;
+  Configuring(Configuring&&) = default;
+  Configuring& operator=(Configuring&&) = default;
 
-  ConfiguringState(const ConfiguringState&) = delete;
-  ConfiguringState& operator=(const ConfiguringState&) = delete;
+  Configuring(const Configuring&) = delete;
+  Configuring& operator=(const Configuring&) = delete;
 };
 
-struct ConnectingState final {
-  ConnectingState(): attempt(0) {}
-  explicit ConnectingState(uint8_t a): attempt(a) {};
+struct Connecting final {
+  Connecting(): attempt(0) {}
+  explicit Connecting(uint8_t a): attempt(a) {};
 
-  ~ConnectingState() = default;
+  ~Connecting() = default;
 
-  ConnectingState(ConnectingState&& other): attempt(other.attempt) { other.attempt = 0; }
-  ConnectingState& operator=(ConnectingState&& other) {
+  Connecting(Connecting&& other): attempt(other.attempt) { other.attempt = 0; }
+  Connecting& operator=(Connecting&& other) {
     this->attempt = other.attempt;
     other.attempt = 0;
     return *this;
   }
 
-  ConnectingState(const ConnectingState&) = delete;
-  ConnectingState& operator=(const ConnectingState&) = delete;
+  Connecting(const Connecting&) = delete;
+  Connecting& operator=(const Connecting&) = delete;
 
   uint8_t attempt;
 };
 
-struct ConnectedState final {
-  ConnectedState() = default;
-  ~ConnectedState() = default;
-  ConnectedState(ConnectedState&& other) = default;
-  ConnectedState& operator=(ConnectedState&& other) = default;
+// A brief state - represents waiting for redis after connecting to the internet.
+struct Connected final {
+  Connected() = default;
+  ~Connected() = default;
+  Connected(Connected&& other) = default;
+  Connected& operator=(Connected&& other) = default;
 
-  ConnectedState(const ConnectedState&) = delete;
-  ConnectedState& operator=(const ConnectedState&) = delete;
+  Connected(const Connected&) = delete;
+  Connected& operator=(const Connected&) = delete;
 };
 
 struct Message final {
@@ -69,22 +82,22 @@ struct Message final {
   Message& operator=(const Message&) = delete;
 
   char * content;
-  uint32_t content_size;
+  uint32_t size;
 };
 
-struct WorkingState final {
+struct Working final {
   public:
     constexpr static const uint16_t WORKING_BUFFER_SIZE = 10;
     constexpr static const uint16_t MAX_ID_SIZE = 40;
     static constexpr const uint8_t MESSAGE_COUNT = 5;
 
-    explicit WorkingState(uint16_t);
-    ~WorkingState();
-    WorkingState(WorkingState&&);
-    WorkingState& operator=(WorkingState&&);
+    explicit Working(uint16_t);
+    ~Working();
+    Working(Working&&);
+    Working& operator=(Working&&);
 
-    WorkingState(const WorkingState&) = delete;
-    WorkingState& operator=(const WorkingState&) = delete;
+    Working(const Working&) = delete;
+    Working& operator=(const Working&) = delete;
 
     std::array<Message, MESSAGE_COUNT>::const_iterator begin(void) const;
     std::array<Message, MESSAGE_COUNT>::const_iterator end(void) const;
@@ -98,13 +111,6 @@ struct WorkingState final {
     mutable bool _has_new;
 };
 
-using StateT = std::variant<
-  UnknownState,
-  ConfiguringState,
-  ConnectingState,
-  ConnectedState,
-  WorkingState
->;
 
 struct State final {
   State();
@@ -118,5 +124,7 @@ struct State final {
 
   StateT active;
 };
+
+}
 
 #endif

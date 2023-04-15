@@ -16,7 +16,7 @@ GxEPD2_BW<GxEPD2_420, GxEPD2_420::HEIGHT> display = GxEPD2_420(
 
 bool display_init() {
   display.init();
-  display.setRotation(1);
+  display.setRotation(0);
   fonts.begin(display);
 
   uint16_t bg = GxEPD_WHITE;
@@ -45,10 +45,24 @@ bool display_init() {
   return true;
 }
 
-void display_render_state(const WorkingState * working_state, uint32_t t) {
+void display_render_state(const states::Working * working_state, uint32_t t) {
+  bool sent = false;
   for (auto message = working_state->begin(); message != working_state->end(); message++) {
-    if (message->content_size > 0) {
-      log_i("working message: '%s'", message->content);
+    if (message->size > 0 && !sent) {
+      sent = true;
+      int16_t tw = fonts.getUTF8Width(message->content);
+      int16_t ta = fonts.getFontAscent();
+      int16_t td = fonts.getFontDescent();
+      int16_t th = ta - td;
+      uint16_t x = (display.width() - tw) / 2;
+      uint16_t y = (display.height() - th) / 2 + ta;
+
+      display.firstPage();
+      do {
+        display.fillScreen(GxEPD_WHITE);
+        fonts.setCursor(x, y);
+        fonts.print(message->content);
+      } while (display.nextPage());
     }
   }
 }
