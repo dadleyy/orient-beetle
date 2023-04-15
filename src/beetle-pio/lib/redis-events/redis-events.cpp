@@ -21,9 +21,8 @@ namespace redisevents {
       return 0;
     }
 
-    Connected * c = std::get_if<1>(& _state);
-
-    return c->copy(destination, max);
+    Connected * connected_state = std::get_if<1>(& _state);
+    return connected_state->copy(destination, max);
   }
 
   // The main "tick" function of our redis manager.

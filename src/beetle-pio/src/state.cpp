@@ -3,10 +3,8 @@
 State::State(): active(ConfiguringState()) {
 }
 
-State::~State() {
-}
-
-State::State(State&& other): active(std::move(other.active)) {
+State::State(State&& other):
+  active(std::move(other.active)) {
 }
 
 State& State::operator=(State&& other) {
@@ -47,7 +45,8 @@ Message::~Message() {
 WorkingState::WorkingState(uint16_t size):
   id_content((char *) malloc(sizeof(char) * MAX_ID_SIZE)),
   id_size(size),
-  messages({}) {
+  messages({}),
+  _has_new(false) {
   log_d("creating working state");
   memset(id_content, '\0', MAX_ID_SIZE);
 }
@@ -55,7 +54,23 @@ WorkingState::WorkingState(uint16_t size):
 WorkingState::WorkingState(WorkingState&& other): messages(std::move(other.messages)) {
   id_content = other.id_content;
   id_size = other.id_size;
+  _has_new = other._has_new;
+  other.id_size = 0;
   other.id_content = nullptr;
+}
+
+WorkingState& WorkingState::operator=(WorkingState&& other) {
+  this->id_content = other.id_content;
+  this->id_size = other.id_size;
+  this->_has_new = other._has_new;
+
+  this->messages = std::move(other.messages);
+
+  other.id_content = nullptr;
+  other.id_size = 0;
+  other._has_new = false;
+
+  return *this;
 }
 
 std::array<Message, WorkingState::MESSAGE_COUNT>::const_iterator WorkingState::end(void) const {
@@ -63,27 +78,25 @@ std::array<Message, WorkingState::MESSAGE_COUNT>::const_iterator WorkingState::e
 }
 
 std::array<Message, WorkingState::MESSAGE_COUNT>::const_iterator WorkingState::begin(void) const {
-  return messages.cbegin();
+  auto return_start = _has_new;
+  if (_has_new) {
+    _has_new = false;
+  }
+  return return_start ? messages.cbegin() : messages.cend();
 }
 
 Message& WorkingState::next(void) {
   std::swap(messages[0], messages[WorkingState::MESSAGE_COUNT-1]);
+  _has_new = true;
 
   for (uint8_t i = WorkingState::MESSAGE_COUNT - 1; i > 1; i--) {
     std::swap(messages[i], messages[i-1]);
   }
 
+  messages[0].content_size = 0;
+  memset(messages[0].content, '\0', MAX_MESSAGE_SIZE);
+
   return messages[0];
-}
-
-WorkingState& WorkingState::operator=(WorkingState&& other) {
-  this->id_content = other.id_content;
-  this->id_size = other.id_size;
-
-  this->messages = std::move(other.messages);
-
-  other.id_content = nullptr;
-  return *this;
 }
 
 WorkingState::~WorkingState() {

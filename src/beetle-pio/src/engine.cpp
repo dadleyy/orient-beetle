@@ -11,7 +11,9 @@ void Engine::begin(void) {
   _redis.begin();
 }
 
-State Engine::update(State& current, uint32_t current_time) {
+// Given a reference to a state, this method will poll events on both the wifi an redis
+// channels, attempting to update the state.
+State Engine::update(State&& current, uint32_t current_time) {
   State next(std::move(current));
 
   std::optional<wifievents::Events::EMessage> wifi_update = _wifi.update(current_time);
@@ -76,7 +78,7 @@ State Engine::update(State& current, uint32_t current_time) {
 
     log_i("received message, copying buffer to connected state");
     Message& next_message = working_state->next();
-    next_message.content_size = _redis.copy(next_message.content, 2048);
+    next_message.content_size = _redis.copy(next_message.content, MAX_MESSAGE_SIZE);
   }
 
   return next;

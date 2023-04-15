@@ -139,7 +139,7 @@ void loop(void) {
 #endif
 
   // Apply updates.
-  state = eng.update(state, now);
+  state = eng.update(std::move(state), now);
 
   if (std::get_if<WorkingState>(&state.active)) {
     WorkingState * working_state = std::get_if<WorkingState>(&state.active);

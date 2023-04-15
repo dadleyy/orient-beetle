@@ -21,6 +21,7 @@ struct UnknownState final {
 
 struct ConfiguringState final {
   ConfiguringState() = default;
+  ~ConfiguringState() = default;
   ConfiguringState(ConfiguringState&&) = default;
   ConfiguringState& operator=(ConfiguringState&&) = default;
 
@@ -30,10 +31,14 @@ struct ConfiguringState final {
 
 struct ConnectingState final {
   ConnectingState(): attempt(0) {}
-  explicit ConnectingState(uint8_t a): attempt(a) {}
-  ConnectingState(ConnectingState&& other) { attempt = other.attempt; }
+  explicit ConnectingState(uint8_t a): attempt(a) {};
+
+  ~ConnectingState() = default;
+
+  ConnectingState(ConnectingState&& other): attempt(other.attempt) { other.attempt = 0; }
   ConnectingState& operator=(ConnectingState&& other) {
     this->attempt = other.attempt;
+    other.attempt = 0;
     return *this;
   }
 
@@ -90,6 +95,7 @@ struct WorkingState final {
 
   private:
     std::array<Message, MESSAGE_COUNT> messages;
+    mutable bool _has_new;
 };
 
 using StateT = std::variant<
@@ -102,7 +108,7 @@ using StateT = std::variant<
 
 struct State final {
   State();
-  ~State();
+  ~State() = default;
 
   State& operator=(State&&);
   State(State&&);
