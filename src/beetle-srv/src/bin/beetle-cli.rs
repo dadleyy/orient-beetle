@@ -11,7 +11,7 @@ struct ProvisionCommand {
 }
 
 #[derive(Parser, Deserialize, PartialEq, Debug)]
-struct SendImageCommand {
+struct SingleDeviceCommand {
   id: String,
 }
 
@@ -34,7 +34,8 @@ enum CommandLineCommand {
 
   Provision(ProvisionCommand),
 
-  SendImage(SendImageCommand),
+  SendImage(SingleDeviceCommand),
+  PrintItems(SingleDeviceCommand),
 
   PushString(SendMessageCommand),
 }
@@ -210,6 +211,13 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> io::Resu
       }
     }
 
+    CommandLineCommand::PrintItems(image_command) => {
+      let queue_id = beetle::redis::device_message_queue_id(image_command.id);
+      let command = kramer::Command::<&str, &str>::Lists(kramer::ListCommand::Len(queue_id.as_str()));
+      let result = kramer::execute(&mut stream, &command).await;
+      println!("result - {result:?}");
+    }
+
     CommandLineCommand::SendImage(image_command) => {
       let mut image = image::GrayImage::new(400, 300);
       imageproc::drawing::draw_filled_rect_mut(
@@ -238,10 +246,10 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> io::Resu
       let formatted_buffer: Vec<u8> = formatted_buffer.into_inner();
       let queue_id = beetle::redis::device_message_queue_id(image_command.id);
 
-      let mut command = kramer::Command::Strings(kramer::StringCommand::Set(
-        kramer::Arity::One((&queue_id, formatted_buffer.as_slice().iter().enumerate())),
-        None,
-        kramer::Insertion::Always,
+      let mut command = kramer::Command::Lists(kramer::ListCommand::Push(
+        (kramer::Side::Left, kramer::Insertion::Always),
+        queue_id,
+        kramer::Arity::One(formatted_buffer.as_slice().iter().enumerate()),
       ));
 
       println!("buffer size: {}", formatted_buffer.len());

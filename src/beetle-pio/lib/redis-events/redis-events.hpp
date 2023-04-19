@@ -48,8 +48,8 @@ namespace redisevents {
       uint8_t copy_id(char *, uint8_t);
 
     private:
-      constexpr static const uint32_t FRAMEBUFFER_SIZE = 1024;
-      constexpr static const uint32_t PARSED_MESSAGE_SIZE = 1024;
+      constexpr static const uint32_t FRAMEBUFFER_SIZE = 2828 * 3;
+      constexpr static const uint32_t PARSED_MESSAGE_SIZE = 2828 * 3;
       constexpr static const uint32_t MAX_ID_SIZE = 36;
 
       // The amount of attempts to read from our tls connection that return no data
@@ -103,30 +103,30 @@ namespace redisevents {
       // Initially, we will _either_ be parsing the length of an array to follow, or the length
       // of a bulk string.
       struct InitialParser final {
-        InitialParser(): _kind(0), _total(0), _delim(0) {}
+        InitialParser(): _kind(0), _running_total(0), _delim(0) {}
         ~InitialParser() = default;
 
         InitialParser(const InitialParser&) = delete;
         InitialParser& operator=(const InitialParser&) = delete;
 
         InitialParser(const InitialParser&& other):
-          _kind(other._kind), _total(other._total), _delim(other._delim) {}
+          _kind(other._kind), _running_total(other._running_total), _delim(other._delim) {}
         const InitialParser& operator=(const InitialParser&& other) {
           this->_kind = other._kind;
-          this->_total = other._total;
+          this->_running_total = other._running_total;
           this->_delim = other._delim;
           return *this;
         };
 
         mutable uint8_t _kind;
-        mutable uint8_t _total;
-        mutable uint8_t _delim;
+        mutable uint32_t _running_total;
+        mutable uint32_t _delim;
 
         friend class ParserVisitor;
       };
 
       struct BulkStringParser final {
-        explicit BulkStringParser(uint8_t size): _size(size), _seen(0), _terminating(false) {}
+        explicit BulkStringParser(uint32_t size): _size(size), _seen(0), _terminating(false) {}
         ~BulkStringParser() = default;
 
         BulkStringParser(const BulkStringParser&) = delete;
@@ -141,8 +141,8 @@ namespace redisevents {
           return *this;
         };
 
-        uint8_t _size;
-        mutable uint8_t _seen;
+        uint32_t _size;
+        mutable uint32_t _seen;
         mutable bool _terminating;
 
         friend class ParserVisitor;
@@ -234,7 +234,7 @@ namespace redisevents {
           uint8_t _strange_thing_count = 0;
 
           microtim::MicroTimer _timer = microtim::MicroTimer(100);
-          microtim::MicroTimer _write_timer = microtim::MicroTimer(500);
+          microtim::MicroTimer _write_timer = microtim::MicroTimer(2000);
           bool _pending_response = false;
           bool _last_written_pop = false;
 

@@ -37,7 +37,7 @@ jobs:
         working-directory: src/beetle-pio
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v3
       - name: "set output: short_sha"
         id: vars
         run: |
@@ -165,7 +165,7 @@ jobs:
         working-directory: src/beetle-ui
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v2
+      - uses: actions/setup-node@v3
         with:
           node-version: '16'
 

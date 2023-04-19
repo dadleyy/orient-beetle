@@ -327,10 +327,10 @@ namespace redisevents {
     memset(_parse_buffer, '\0', PARSED_MESSAGE_SIZE);
 
     char * current_token = _framebuffer;
-    uint32_t current_index = 0, last_string_start = 0, tokens_read = 0, last_string_end = 0;
-    bool capturing = false, done = false;
+    uint32_t current_index = 0, last_string_start = 0, tokens_read = 0, last_string_end = 0, max_tokens = _cursor;
+    bool capturing = false;
 
-    while (*current_token != '\0' && !done) {
+    while (current_token != nullptr && current_token != NULL && tokens_read < max_tokens) {
       auto tok = *current_token;
       current_token++;
       auto transition = _parser.consume(tok);
@@ -346,8 +346,8 @@ namespace redisevents {
         }
 
         case Events::EResponseParserTransition::Failure: {
+          log_e("aborting all parsing, failure received at token %d (of %d)", tokens_read, max_tokens);
           memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
-          log_e("aborting all parsing, failure received");
           return Events::EParseResult::ParsedFailure;
         }
 
@@ -368,7 +368,7 @@ namespace redisevents {
         // At the start of every bulk string, reset our parsed buffer and flag the start
         // of this capture.
         case Events::EResponseParserTransition::StartString: {
-          log_d("starting string capture");
+          log_i("starting string capture");
           memset(_parse_buffer, '\0', PARSED_MESSAGE_SIZE);
           capturing = true;
           current_index = 0;
@@ -390,12 +390,7 @@ namespace redisevents {
           // That is a pretty gnarly way to go about doing things;
           _cursor = terminal_index;
 
-          log_i(
-            "finishing string capture - '%s' (located @ %d -> %d)",
-            _parse_buffer,
-            last_string_start,
-            last_string_end
-          );
+          log_i("finishing string capture - (located @ %d -> %d)", last_string_start, last_string_end);
           capturing = false;
           continue;
         }
@@ -406,7 +401,7 @@ namespace redisevents {
     if (last_string_end > 0) {
       memset(_parse_buffer, '\0', PARSED_MESSAGE_SIZE);
       memcpy(_parse_buffer, _framebuffer + last_string_start, _cursor);
-      log_i("final message parsed - '%s' (%d chars)", _parse_buffer, _cursor);
+      log_i("final message parsed (%d chars)", _cursor);
       memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
       memcpy(_framebuffer, _parse_buffer, _cursor);
 
@@ -613,11 +608,12 @@ namespace redisevents {
           initial._kind = 3;
           return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Noop);
         default:
+          log_e("invalid token while parsing initial header - (decimal '%d')", (uint8_t) _token);
           return std::make_tuple(InitialParser(), Events::EResponseParserTransition::Failure);
       }
     }
 
-    if (initial._kind == 1 && initial._total == 0 && _token == '-') {
+    if (initial._kind == 1 && initial._running_total == 0 && _token == '-') {
       log_i("parsed an empty array message");
       return std::make_tuple(InitialParser(), Events::EResponseParserTransition::Done);
     }
@@ -627,24 +623,25 @@ namespace redisevents {
     if (_token == '\n') {
       // If we are _not_ expecting a newline, this was a poorly formatted request. Bail out.
       if (initial._delim != 1) {
+        log_e("inappropriate newline found, returning failure");
         return std::make_tuple(InitialParser(), Events::EResponseParserTransition::Failure);
       }
 
       switch (initial._kind) {
         case 1:
-          log_i("finished parsing array message length chunk (found %d)", initial._total);
+          log_i("finished parsing array message length chunk (found %d)", initial._running_total);
           return std::make_tuple(InitialParser(), Events::EResponseParserTransition::HasArray);
         case 2:
-          log_d("finished parsing bulk string message length chunk (found %d)", initial._total);
+          log_i("finished parsing bulk string message length chunk (found %d)", initial._running_total);
           return std::make_tuple(
-            BulkStringParser(initial._total),
+            BulkStringParser(initial._running_total),
             Events::EResponseParserTransition::StartString
           );
         case 3:
-          log_d("finished parsing int response %d", initial._total);
+          log_i("finished parsing int response %d", initial._running_total);
           return std::make_tuple(InitialParser(), Events::EResponseParserTransition::Done);
         default:
-          log_e("invalid initial size chunk parsing (found %d)", initial._total);
+          log_e("invalid initial size chunk parsing (found %d)", initial._running_total);
           return std::make_tuple(InitialParser(), Events::EResponseParserTransition::Failure);
       }
     }
@@ -658,7 +655,7 @@ namespace redisevents {
     // Any other character, make sure we're not looking for a newline, and add the character to
     // our current length.
     initial._delim = 0;
-    initial._total = (initial._total * 10) + (_token - '0');
+    initial._running_total = (initial._running_total * 10) + (_token - '0');
     return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Noop);
   }
 
@@ -669,16 +666,18 @@ namespace redisevents {
     // If we have a newline and were previously terminating, we should be done. Move back into
     // an initial parser state to perpare for any new length bits.
     if (_token == '\n' && initial._terminating) {
-      log_d("bulk string read complete");
+      log_i("bulk string read complete");
       return std::make_tuple(InitialParser(), Events::EResponseParserTransition::EndString);
     }
 
     // If we have a return, we should expect to be terminating soon.
-    if (_token == '\r') {
+    if (_token == '\r' && initial._seen == initial._size) {
+      log_i("carriage return seen during parse @ %d (of %d expected)", initial._seen, initial._size);
       initial._terminating = true;
       return std::make_tuple(std::move(initial), Events::EResponseParserTransition::Noop);
     }
 
+    initial._terminating = false;
     // Only increment our count
     auto seen = initial._seen + 1;
 

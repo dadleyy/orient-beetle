@@ -253,6 +253,10 @@ namespace wifievents {
         // Pull the next character off our client.
         buffer[cursor] = client.read();
 
+        if (method == ERequestParsingMode::Network && buffer[cursor] == '+') {
+          buffer[cursor] = ' ';
+        }
+
         if (cursor < 3 || method == ERequestParsingMode::Done) {
           cursor += 1;
           continue;
@@ -306,7 +310,7 @@ namespace wifievents {
         return false;
       }
 
-      log_i("[wifi_manager] ssid: %s | password %s", ssid, password);
+      log_i("[wifi_manager] ssid(%s) | password(%s)", ssid, password);
 
       client.write(index_html, index_end - index_html);
       delay(10);
