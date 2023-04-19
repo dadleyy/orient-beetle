@@ -94,7 +94,7 @@ namespace redisevents {
 
     uint16_t amount = _cursor < size ? _cursor : size;
 
-    log_i("copying (size %d) message - '%s'", amount, _framebuffer);
+    log_i("copying (size %d) message", amount);
 
     memcpy(destination, _framebuffer, amount);
     _cursor = 0;

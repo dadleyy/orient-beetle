@@ -10,6 +10,11 @@ struct ProvisionCommand {
   password: Option<String>,
 }
 
+#[derive(Parser, Deserialize, PartialEq, Debug)]
+struct SendImageCommand {
+  id: String,
+}
+
 #[derive(Parser, Deserialize, PartialEq)]
 struct SendMessageCommand {
   id: String,
@@ -28,6 +33,8 @@ enum CommandLineCommand {
   CleanDisconnects,
 
   Provision(ProvisionCommand),
+
+  SendImage(SendImageCommand),
 
   PushString(SendMessageCommand),
 }
@@ -157,7 +164,7 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> io::Resu
 
       let result = kramer::execute(
         &mut stream,
-        kramer::Command::List(kramer::ListCommand::Push(
+        kramer::Command::Lists(kramer::ListCommand::Push(
           (kramer::Side::Left, kramer::Insertion::Always),
           beetle::redis::device_message_queue_id(id),
           kramer::Arity::One(message),
@@ -201,6 +208,45 @@ async fn run(config: CommandLineConfig, command: CommandLineCommand) -> io::Resu
       if count == 0 {
         println!("no devices found");
       }
+    }
+
+    CommandLineCommand::SendImage(image_command) => {
+      let mut image = image::GrayImage::new(400, 300);
+      imageproc::drawing::draw_filled_rect_mut(
+        &mut image,
+        imageproc::rect::Rect::at(0, 0).of_size(400, 300),
+        image::Luma([255]),
+      );
+
+      let font = Vec::from(include_bytes!("../../DejaVuSans.ttf") as &[u8]);
+      let font = rusttype::Font::try_from_vec(font).unwrap();
+
+      let height = 28f32;
+      let scale = rusttype::Scale { x: height, y: height };
+
+      let text = "Hello, world!";
+      imageproc::drawing::draw_text_mut(&mut image, image::Luma([10]), 10, 50, scale, &font, text);
+      let (w, h) = imageproc::drawing::text_size(scale, &font, text);
+      println!("Text size: {}x{}", w, h);
+
+      let mut formatted_buffer = std::io::Cursor::new(Vec::with_capacity(400 * 300));
+
+      image
+        .write_to(&mut formatted_buffer, image::ImageOutputFormat::Png)
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("unable to build image: {error}")))?;
+
+      let formatted_buffer: Vec<u8> = formatted_buffer.into_inner();
+      let queue_id = beetle::redis::device_message_queue_id(image_command.id);
+
+      let mut command = kramer::Command::Strings(kramer::StringCommand::Set(
+        kramer::Arity::One((&queue_id, formatted_buffer.as_slice().iter().enumerate())),
+        None,
+        kramer::Insertion::Always,
+      ));
+
+      println!("buffer size: {}", formatted_buffer.len());
+      let result = command.execute(&mut stream).await;
+      println!("result - {result:?}");
     }
 
     CommandLineCommand::CleanDisconnects => {

@@ -102,7 +102,7 @@ impl Worker {
 async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net::TcpStream>, min: u8) -> Result<usize> {
   let output = kramer::execute(
     &mut stream,
-    kramer::Command::List::<&str, bool>(kramer::ListCommand::Len(crate::constants::REGISTRAR_AVAILABLE)),
+    kramer::Command::Lists::<&str, bool>(kramer::ListCommand::Len(crate::constants::REGISTRAR_AVAILABLE)),
   )
   .await?;
 
@@ -161,7 +161,7 @@ async fn fill_pool(mut stream: &mut async_tls::client::TlsStream<async_std::net:
 
   let insertion = kramer::execute(
     &mut stream,
-    kramer::Command::List(kramer::ListCommand::Push(
+    kramer::Command::Lists(kramer::ListCommand::Push(
       (kramer::Side::Left, kramer::Insertion::Always),
       crate::constants::REGISTRAR_AVAILABLE,
       kramer::Arity::Many(ids),
@@ -210,7 +210,7 @@ where
 {
   let taken = kramer::execute(
     &mut stream,
-    kramer::Command::List::<&str, bool>(kramer::ListCommand::Pop(
+    kramer::Command::Lists::<&str, bool>(kramer::ListCommand::Pop(
       kramer::Side::Left,
       crate::constants::REGISTRAR_INCOMING,
       None,

@@ -94,7 +94,7 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
 
   request
     .state()
-    .command(&kramer::Command::List(kramer::ListCommand::Push(
+    .command(&kramer::Command::Lists(kramer::ListCommand::Push(
       (kramer::Side::Left, kramer::Insertion::Always),
       crate::redis::device_message_queue_id(&body.device_id),
       kramer::Arity::One(body.message),
@@ -148,7 +148,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
   now = std::time::Instant::now();
 
   let current_queue_len = match worker
-    .command(&kramer::Command::List::<&String, &String>(kramer::ListCommand::Len(
+    .command(&kramer::Command::Lists::<&String, &String>(kramer::ListCommand::Len(
       &crate::redis::device_message_queue_id(&query.id),
     )))
     .await

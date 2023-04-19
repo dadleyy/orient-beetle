@@ -137,14 +137,14 @@ bool display_init(void) {
   return true;
 }
 
-void display_render_state(const WorkingState * working_state, uint32_t last_frame) {
+void display_render_state(const states::Working * working_state, uint32_t last_frame) {
   auto now = millis();
   lv_label_set_text(status_icon_label, "F");
   lv_label_set_text(status_label, working_state->id_content);
 
   uint8_t i = 0;
   for (auto message = working_state->begin(); message != working_state->end(); message++) {
-    if (message->content_size > 0 && i < label_count) {
+    if (message->size > 0 && i < label_count) {
       lv_label_set_text(message_labels[i], message->content);
       i += 1;
     }

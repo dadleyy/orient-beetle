@@ -28,7 +28,7 @@ uuid = { version = "^1.0", features = ["v4"], default-features = false }
 tide = { version = "^0.16", default-features = false, features = ["h1-server", "cookies"] }
 async-std = { version = "^1.0", features = ["attributes"], default-features = false }
 async-tls = { version = "^0.10", default-features = false, features = ["client"] }
-kramer = { version = "^2.0.0", features = ["kramer-async", "acl"], default-features = false }
+kramer = { version = "^3.0.0", features = ["kramer-async-read", "acl"], default-features = false }
 chrono = { version = "^0.4", features = ["std", "serde"] }
 serde = { version = "^1.0", default-features = false, features = ["derive"] }
 serde_json = { version = "^1.0", default-features = false }
@@ -39,3 +39,9 @@ toml = { version = "^0.5", default-features = false }
 bson = { version = "2.0.0", features = ["uuid-0_8"], default-features = false }
 mongodb = { version = "^2.0.0", features = ["async-std-runtime", "bson-uuid-0_8"], default-features = false }
 clap = { version = "^4.0.0", features = ["derive"] }
+imageproc = { version = "^0.23" }
+image = { version = "^0.24" }
+rusttype = { version = "^0.9" }
+
+[patch.crates-io]
+kramer = { git = "https://github.com/sizethree/kramer.git", branch = "async-read" }
