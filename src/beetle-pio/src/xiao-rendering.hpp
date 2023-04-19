@@ -1,12 +1,14 @@
 #include "state.hpp"
 #include "GxEPD2_BW.h"
 #include "U8g2_for_Adafruit_GFX.h"
+#include "PNGdec.h"
 
 #define DISPLAY_CHIP_SELECT_PIN  A0
 #define DISPLAY_DATA_COMMAND_PIN A1
 #define DISPLAY_RESET_PIN        A2
 #define DISPLAY_BUSY_PIN         A3
 
+PNG png;
 U8G2_FOR_ADAFRUIT_GFX fonts;
 GxEPD2_BW<GxEPD2_420, GxEPD2_420::HEIGHT> display = GxEPD2_420(
     DISPLAY_CHIP_SELECT_PIN,
@@ -45,10 +47,21 @@ bool display_init() {
   return true;
 }
 
+void PNGDraw(PNGDRAW *pDraw) {
+}
+
 void display_render_state(const states::Working * working_state, uint32_t t) {
   bool sent = false;
   for (auto message = working_state->begin(); message != working_state->end(); message++) {
     if (message->size > 0 && !sent) {
+      log_i("parsing %d bytes as if they were png", message->size);
+      auto rc = png.openRAM((uint8_t *) message->content, message->size, PNGDraw);
+      if (rc == PNG_SUCCESS) {
+        log_i("image specs: (%d x %d), %d bpp, pixel type: %d\n", png.getWidth(), png.getHeight(), png.getBpp(), png.getPixelType());
+        png.close();
+      } else {
+        log_e("unable to parse png");
+      }
       sent = true;
     }
   }

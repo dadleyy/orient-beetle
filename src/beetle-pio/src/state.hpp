@@ -10,7 +10,7 @@
 
 namespace states {
 
-constexpr const uint32_t MAX_MESSAGE_SIZE = 1024;
+constexpr const uint32_t MAX_MESSAGE_SIZE = 2828 * 3;
 
 struct Unknown;
 struct Configuring;
