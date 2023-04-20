@@ -24,6 +24,8 @@ bool display_init() {
   uint16_t bg = GxEPD_WHITE;
   uint16_t fg = GxEPD_BLACK;
 
+  log_i("initializing display. white is %d (%d). black is %d (%d)", bg, GxEPD_WHITE, fg, GxEPD_BLACK);
+
   fonts.setFontMode(1);
   fonts.setFontDirection(0);
   fonts.setForegroundColor(fg);
@@ -48,10 +50,12 @@ bool display_init() {
 }
 
 void draw_row(PNGDRAW *draw_context) {
+  uint16_t rgb_565[400];
+  png.getLineAsRGB565(draw_context, rgb_565, PNG_RGB565_BIG_ENDIAN, 0xffffffff);
+
   for (uint16_t i = 0; i < draw_context->iWidth; i++) {
-    auto value = *(draw_context->pPixels + i);
-    auto color = value > 100 ? GxEPD_WHITE : GxEPD_BLACK;
-    display.drawPixel(i, draw_context->y, color);
+    auto corrected = *(rgb_565 + i);
+    display.drawPixel(i, draw_context->y, corrected);
   }
 }
 
