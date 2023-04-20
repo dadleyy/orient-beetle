@@ -89,7 +89,7 @@ struct Working final {
   public:
     constexpr static const uint16_t WORKING_BUFFER_SIZE = 10;
     constexpr static const uint16_t MAX_ID_SIZE = 40;
-    static constexpr const uint8_t MESSAGE_COUNT = 5;
+    static constexpr const uint8_t MESSAGE_COUNT = 2;
 
     explicit Working(uint16_t);
     ~Working();

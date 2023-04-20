@@ -6,6 +6,9 @@
 /// The HTTP/JSON api using `tide`.
 pub mod api;
 
+/// The functionality associated with building images.
+pub mod rendering;
+
 /// The configuration we publically expose from this crate that can be deserialized from various
 /// formats.
 pub mod config;

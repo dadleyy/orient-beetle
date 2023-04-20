@@ -47,7 +47,12 @@ bool display_init() {
   return true;
 }
 
-void PNGDraw(PNGDRAW *pDraw) {
+void draw_row(PNGDRAW *draw_context) {
+  for (uint16_t i = 0; i < draw_context->iWidth; i++) {
+    auto value = *(draw_context->pPixels + i);
+    auto color = value > 100 ? GxEPD_WHITE : GxEPD_BLACK;
+    display.drawPixel(i, draw_context->y, color);
+  }
 }
 
 void display_render_state(const states::Working * working_state, uint32_t t) {
@@ -55,9 +60,14 @@ void display_render_state(const states::Working * working_state, uint32_t t) {
   for (auto message = working_state->begin(); message != working_state->end(); message++) {
     if (message->size > 0 && !sent) {
       log_i("parsing %d bytes as if they were png", message->size);
-      auto rc = png.openRAM((uint8_t *) message->content, message->size, PNGDraw);
+      auto rc = png.openRAM((uint8_t *) message->content, message->size, draw_row);
       if (rc == PNG_SUCCESS) {
-        log_i("image specs: (%d x %d), %d bpp, pixel type: %d\n", png.getWidth(), png.getHeight(), png.getBpp(), png.getPixelType());
+        display.firstPage();
+        auto width = png.getWidth(), height = png.getHeight(), bpp = png.getBpp();
+        log_i("image specs: (%d x %d), %d bpp (start decode)", width, height, bpp);
+        png.decode(NULL, 0);
+        log_i("decode finished");
+        display.nextPage();
         png.close();
       } else {
         log_e("unable to parse png");
