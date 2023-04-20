@@ -144,12 +144,12 @@ jobs:
                 $DISTRIBUTABLE_DIRECTORY_NAME
 
       - name: "bundle: create"
-        run: tar cvzf beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz $DISTRIBUTABLE_DIRECTORY_NAME
+        run: tar cvzf beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz $DISTRIBUTABLE_DIRECTORY_NAME
 
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz"
-          path: "./src/beetle-pio/beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./src/beetle-pio/beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
   build-ui:
     runs-on: ubuntu-latest
@@ -202,12 +202,12 @@ jobs:
         run: mv target/release beetle-ui-dist
 
       - name: "bundle: create"
-        run: tar cvzf beetle-ui-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-ui-dist
+        run: tar cvzf beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz beetle-ui-dist
 
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-ui-${{ steps.vars.outputs.sha_short }}.tar.gz"
-          path: "./src/beetle-ui/beetle-ui-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./src/beetle-ui/beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
   build-srv-osx:
     if: startsWith(github.ref, 'refs/tags/')
@@ -230,11 +230,11 @@ jobs:
       - name: "bundle: cli"
         run: cp target/release/beetle-cli beetle-server-dist/bin/beetle-cli
       - name: "bundle: create"
-        run: tar cvzf beetle-server-osx-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-server-dist
+        run: tar cvzf beetle-server-osx-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz beetle-server-dist
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-server-osx-${{ steps.vars.outputs.sha_short }}.tar.gz"
-          path: "./src/beetle-srv/beetle-server-osx-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-server-osx-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./src/beetle-srv/beetle-server-osx-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
   build-srv-armv7:
     runs-on: ubuntu-latest
@@ -279,13 +279,13 @@ jobs:
 
       - name: "bundle: create"
         run: |
-          tar cvzf beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz \
+          tar cvzf beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
                    $DISTRIBUTABLE_DIRECTORY_NAME
 
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
-          path: "./src/beetle-srv/beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./src/beetle-srv/beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
   build-updater:
     runs-on: ubuntu-latest
@@ -315,7 +315,7 @@ jobs:
         env:
           OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
           OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
-          BEETLE_UPDATER_VERSION: ${{ steps.vars.outputs.sha_short }}
+          BEETLE_UPDATER_VERSION: ${{ steps.vars.outputs.SHORT_SHA }}
 
       - name: "bundle: prepare"
         run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/bin
@@ -327,13 +327,13 @@ jobs:
 
       - name: "bundle: create"
         run: |
-          tar cvzf beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz \
+          tar cvzf beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
                    $DISTRIBUTABLE_DIRECTORY_NAME
 
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
-          path: "./tools/beetle-updater/beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./tools/beetle-updater/beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
   publish:
     runs-on: ubuntu-latest
@@ -348,19 +348,19 @@ jobs:
 
       - uses: actions/download-artifact@v3
         with:
-          name: "beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
       - uses: actions/download-artifact@v3
         with:
-          name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
       - uses: actions/download-artifact@v3
         with:
-          name: "beetle-ui-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
       - uses: actions/download-artifact@v3
         with:
-          name: "beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
       - name: printall
         run: ls -lah
