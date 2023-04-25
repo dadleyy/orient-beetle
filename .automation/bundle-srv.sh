@@ -23,20 +23,24 @@ fi
 mkdir -p $bundle_root/bin
 
 for tool in $tools; do
-  if [ -z "$target"]; then
-    if [ ! -f src/beetle-srv/target/release/$tool ]; then
-      echo "[$0] unable to find '$tool'"
+  if [ -z "$target" ]; then
+    tool_path="src/beetle-srv/target/release/$tool"
+
+    if [ ! -f $tool_path ]; then
+      echo "[$0] unable to find '$tool' at $tool_path"
       continue
     fi
 
-    cp -v src/beetle-srv/target/release/$tool $bundle_root/bin/$tool
+    cp -v $tool_path $bundle_root/bin/$tool
   else
-    if [ ! -f src/beetle-srv/target/$target/release/$tool ]; then
-      echo "[$0] unable to find '$tool'"
+    tool_path="src/beetle-srv/target/$target/release/$tool"
+
+    if [ ! -f $tool_path ]; then
+      echo "[$0] unable to find '$tool' (at $tool_path)"
       continue
     fi
 
-    cp -v src/beetle-srv/target/$target/release/$tool $bundle_root/bin/$tool
+    cp -v $tool_path $bundle_root/bin/$tool
   fi
 done
 
