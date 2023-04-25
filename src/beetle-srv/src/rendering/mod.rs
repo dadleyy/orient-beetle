@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io;
 
 /// Compile-time loading of our `.ttf` data.
@@ -8,9 +8,13 @@ const TEXT_FONT: &[u8] = include_bytes!("../../DejaVuSans.ttf");
 /// it to the queue of things to be rendered and sent to devices.
 pub mod queue;
 
+/// The renderer itself is responsible for periodically popping from the queue and doing the
+/// things.
+pub mod renderer;
+
 /// The render layout represents the various kinds of layouts that can be rendered into a
 /// rasterized image and sent to the embedded devices.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum RenderLayout<S> {
   /// The simplest form of render layout - a single message.
   Message(S),

@@ -1,9 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io;
 
 /// When adding messages that will be popped by our renderer, associate each with some kind of
 /// authority so we can trace back why things appeared.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum QueuedRenderAuthority {
   /// The queued render was sent by the cli.
@@ -15,17 +15,17 @@ pub enum QueuedRenderAuthority {
 
 /// This is the schema of our messages that will be pushed onto a rendering queue that will be
 /// popped by some background worker.
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case")]
 pub struct QueuedRender<S> {
   /// A unique id associated with this attempt.
-  id: String,
+  pub(super) id: String,
   /// The authority.
-  auth: QueuedRenderAuthority,
+  pub(super) auth: QueuedRenderAuthority,
   /// The content.
-  layout: super::RenderLayout<S>,
+  pub(super) layout: super::RenderLayout<S>,
   /// The target.
-  device_id: String,
+  pub(super) device_id: String,
 }
 
 /// A type that wraps a connection and provides everything we need to add messages to our rendering

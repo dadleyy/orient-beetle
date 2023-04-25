@@ -259,28 +259,12 @@ jobs:
           OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
           OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
 
-      - name: "bundle: prepare"
-        run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/bin
-
-      - name: "populate-bundle: cli"
+      - name: "bundle"
         run: |
-          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-cli \
-                $DISTRIBUTABLE_DIRECTORY_NAME/bin/beetle-cli
-
-      - name: "populate-bundle: web"
-        run: |
-          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-web \
-                $DISTRIBUTABLE_DIRECTORY_NAME/bin/beetle-web
-
-      - name: "populate-bundle: registrar"
-        run: |
-          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-registrar \
-                $DISTRIBUTABLE_DIRECTORY_NAME/bin/beetle-registrar
-
-      - name: "bundle: create"
-        run: |
-          tar cvzf beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
-                   $DISTRIBUTABLE_DIRECTORY_NAME
+          .automation/bundle-srv.sh \
+            beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
+            $DISTRIBUTABLE_DIRECTORY_NAME \
+            armv7-unknown-linux-gnueabihf
 
       - uses: actions/upload-artifact@v3
         with:

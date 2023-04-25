@@ -45,7 +45,6 @@ fn main() -> Result<()> {
   }
 
   env_logger::init();
-
   log::info!("environment + logger ready.");
 
   let contents = std::fs::read_to_string("env.toml")?;

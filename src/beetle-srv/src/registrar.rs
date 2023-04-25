@@ -9,7 +9,7 @@ const DEFAULT_POOL_MINIMUM: u8 = 3;
 /// The configuration specific to maintaining a registration of available ids.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
-struct RegistrarConfiguration {
+pub(crate) struct RegistrarConfiguration {
   // TODO: the cli's registar configuration uses these fields, and we may as well.
   // The auth username that will be given on burn-in to devices.
   // id_consumer_username: Option<String>,
@@ -27,11 +27,11 @@ struct RegistrarConfiguration {
 #[serde(rename_all = "snake_case")]
 pub struct Configuration {
   /// The redis configuration.
-  redis: crate::config::RedisConfiguration,
+  pub(crate) redis: crate::config::RedisConfiguration,
   /// The mongo configuration.
-  mongo: crate::config::MongoConfiguration,
+  pub(crate) mongo: crate::config::MongoConfiguration,
   /// The configuration specific to maintaining a registration of available ids.
-  registrar: RegistrarConfiguration,
+  pub(crate) registrar: RegistrarConfiguration,
 }
 
 impl Configuration {
