@@ -42,9 +42,9 @@ where
             "Unable to build valid font context for rasterizing",
           )
         })?;
-        let height = 50f32;
+        let height = 80f32;
         let scale = rusttype::Scale { x: height, y: height };
-        imageproc::drawing::draw_text_mut(&mut image, image::Luma([0]), 0, 0, scale, &font, message.as_ref());
+        imageproc::drawing::draw_text_mut(&mut image, image::Luma([0]), 10, 10, scale, &font, message.as_ref());
 
         image
           .write_to(&mut formatted_buffer, image::ImageOutputFormat::Png)
