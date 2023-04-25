@@ -1,11 +1,16 @@
+use serde::Serialize;
 use std::io;
 
 /// Compile-time loading of our `.ttf` data.
-const TEXT_FONT: &[u8] = include_bytes!("../DejaVuSans.ttf");
+const TEXT_FONT: &[u8] = include_bytes!("../../DejaVuSans.ttf");
+
+/// The rendering queue module contains the central business logic for taking a layout and adding
+/// it to the queue of things to be rendered and sent to devices.
+pub mod queue;
 
 /// The render layout represents the various kinds of layouts that can be rendered into a
 /// rasterized image and sent to the embedded devices.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum RenderLayout<S> {
   /// The simplest form of render layout - a single message.
   Message(S),

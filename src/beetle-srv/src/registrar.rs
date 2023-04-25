@@ -10,12 +10,16 @@ const DEFAULT_POOL_MINIMUM: u8 = 3;
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 struct RegistrarConfiguration {
+  // TODO: the cli's registar configuration uses these fields, and we may as well.
   // The auth username that will be given on burn-in to devices.
-  //id_consumer_username: Option<String>,
+  // id_consumer_username: Option<String>,
   // The auth password that will be given on burn-in to devices.
   // id_consumer_password: Option<String>,
   /// The minimum amount of ids to maintain. If lower than this, we will refill.
   registration_pool_minimum: Option<u8>,
+
+  /// The max amount of devices to update during a iteration of checking device activity.
+  active_device_chunk_size: u8,
 }
 
 /// The publicly deserializable interface for our registrar worker configuration.
@@ -85,8 +89,15 @@ impl Worker {
           log::info!("filled pool with '{}' new ids", amount)
         }
 
-        log::trace!("checking active device queue");
-        mark_active(&mut inner, &mut self.mongo.0, &self.mongo.1).await?;
+        for i in 0..self.config.active_device_chunk_size {
+          log::trace!("checking active device queue");
+          let amount = mark_active(&mut inner, &mut self.mongo.0, &self.mongo.1).await?;
+
+          if amount == 0 {
+            log::info!("no remaining active devices heard from after {i}");
+            break;
+          }
+        }
 
         Some(inner)
       }
@@ -273,6 +284,8 @@ where
     kramer::execute(&mut stream, setter).await?;
 
     log::info!("updated device '{}' diagnostics", device_diagnostic.id);
+
+    return Ok(1usize);
   }
 
   Ok(0usize)

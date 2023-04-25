@@ -6,3 +6,6 @@ pub const REGISTRAR_INCOMING: &str = "ob:i";
 
 /// SET: an index of all active device ids.
 pub const REGISTRAR_INDEX: &str = "ob:s";
+
+/// LIST: rendering queue.
+pub const RENDERING_QUEUE: &str = "ob:rendering";

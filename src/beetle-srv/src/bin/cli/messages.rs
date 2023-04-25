@@ -40,28 +40,21 @@ pub async fn send_image(config: &super::CommandLineConfig, command: SendImageCom
       })?
   }
 
-  let queue_id = beetle::redis::device_message_queue_id(command.id);
+  let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
+  let (request_id, pending) = queue
+    .queue(
+      &command.id,
+      &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
+      beetle::rendering::RenderLayout::Message(&command.message),
+    )
+    .await?;
 
-  let mut command = kramer::Command::Lists(kramer::ListCommand::Push(
-    (kramer::Side::Left, kramer::Insertion::Always),
-    queue_id.as_str(),
-    kramer::Arity::One(formatted_buffer.as_slice().iter().enumerate()),
-  ));
+  println!(
+    "message queued successfully. id '{request_id}' ({}/{} in queue)",
+    pending + 1,
+    pending + 1
+  );
 
-  println!("buffer size: {}", formatted_buffer.len());
-  let result = command.execute(&mut stream).await?;
-
-  match result {
-    kramer::Response::Item(kramer::ResponseValue::Integer(amount)) => {
-      println!("successfully wrote {amount} message(s) to '{queue_id}'")
-    }
-    other => {
-      return Err(io::Error::new(
-        io::ErrorKind::Other,
-        format!("Strange response from device '{queue_id}' queue - {other:?}"),
-      ))
-    }
-  }
   Ok(())
 }
 
