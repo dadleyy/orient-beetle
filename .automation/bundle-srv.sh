@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# This script is simple a convience for the github workflow; it is meant to
+# make the process of defining what artifacts from the cargo build are bundled
+# into the tarball.
+
 tools="beetle-cli beetle-web beetle-registrar beetle-renderer"
 bundle_name=$1
 bundle_root=$2
@@ -24,7 +28,7 @@ mkdir -p $bundle_root/bin
 
 for tool in $tools; do
   if [ -z "$target" ]; then
-    tool_path="src/beetle-srv/target/release/$tool"
+    tool_path="target/release/$tool"
 
     if [ ! -f $tool_path ]; then
       echo "[$0] unable to find '$tool' at $tool_path"
@@ -33,7 +37,7 @@ for tool in $tools; do
 
     cp -v $tool_path $bundle_root/bin/$tool
   else
-    tool_path="src/beetle-srv/target/$target/release/$tool"
+    tool_path="target/$target/release/$tool"
 
     if [ ! -f $tool_path ]; then
       echo "[$0] unable to find '$tool' (at $tool_path)"
