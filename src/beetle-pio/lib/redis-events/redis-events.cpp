@@ -87,17 +87,17 @@ namespace redisevents {
 
   // Connected state copy - consume the framebuffer into our destination.
   uint16_t Events::Connected::copy(char * destination, uint16_t size) {
-    if (_cursor == 0 || _authorization_stage != EAuthorizationStage::FullyAuthorized) {
+    if (_framebuffer_size == 0 || _authorization_stage != EAuthorizationStage::FullyAuthorized) {
       log_e("attempted to copy an empty message");
       return 0;
     }
 
-    uint16_t amount = _cursor < size ? _cursor : size;
+    uint16_t amount = _framebuffer_size < size ? _framebuffer_size : size;
 
     log_i("copying (size %d) message", amount);
 
     memcpy(destination, _framebuffer, amount);
-    _cursor = 0;
+    _framebuffer_size = 0;
     memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
     return amount;
   }
@@ -110,15 +110,18 @@ namespace redisevents {
     uint32_t _redis_port,
     uint32_t current_time
   ) {
-    _cursor = 0;
+    if (_timer.update(current_time) != 1) {
+      return std::nullopt;
+    }
+
+    // Clear out the framebuffer. This assumes that the entire contents of our messages can be
+    // received within a single `update` attempt, which may not be the case.
+    _framebuffer_size = 0;
+    memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
 
     if (_strange_thing_count > 10) {
       log_e("too many strange things have happened. resetting the tcp connection");
       reset();
-      return std::nullopt;
-    }
-
-    if (_timer.update(current_time) != 1) {
       return std::nullopt;
     }
 
@@ -146,14 +149,11 @@ namespace redisevents {
         break;
     }
 
-    // Clear out the framebuffer.
-    memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
-
     // Read everything we can off our client.
-    while (_client.available() && _cursor < FRAMEBUFFER_SIZE - 1) {
+    while (_client.available() && _framebuffer_size < FRAMEBUFFER_SIZE - 1) {
       // TODO: `_client.read((uint8_t *) _framebuffer, FRAMEBUFFER)` might be a better choice here
-      _framebuffer[_cursor] = (char) _client.read();
-      _cursor += 1;
+      _framebuffer[_framebuffer_size] = (char) _client.read();
+      _framebuffer_size += 1;
     }
 
     // Explicitly handle `wrongpass`.
@@ -195,7 +195,7 @@ namespace redisevents {
           return std::nullopt;
         }
 
-        if (_cursor > 0) {
+        if (_framebuffer_size > 0) {
           log_e("received strange response after attempting device-specific acl: '%s'", _framebuffer);
           _strange_thing_count = _strange_thing_count + 1;
         }
@@ -213,7 +213,7 @@ namespace redisevents {
           return Events::EMessage::EstablishedConnection;
         }
 
-        if (_cursor > 0) {
+        if (_framebuffer_size > 0) {
           log_e("received strange response after attempting burn-in acl: '%s'", _framebuffer);
           _strange_thing_count = _strange_thing_count + 1;
         }
@@ -224,7 +224,7 @@ namespace redisevents {
       case EAuthorizationStage::FullyAuthorized: {
         // If nothing was pulled this frame, we either want to increment our count of
         // "hey I was expecting a message", or we want to write a new message.
-        if (_cursor == 0) {
+        if (_framebuffer_size == 0) {
           if (_pending_response) {
             _empty_identified_reads += 1;
           } else {
@@ -259,11 +259,14 @@ namespace redisevents {
             _pending_response = false;
             write_message(current_time);
             return EMessage::ReceivedMessage;
-          default:
+          case EParseResult::ParsedFailure:
             // Reset our cursor; we don't want it looking like we have a message.
-            _cursor = 0;
             _pending_response = false;
             log_e("strange parse result while authorized - '%s'", _framebuffer);
+
+            _framebuffer_size = 0;
+            memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
+
             _strange_thing_count = _strange_thing_count + 1;
             return std::nullopt;
         }
@@ -276,7 +279,7 @@ namespace redisevents {
           return std::nullopt;
         }
 
-        auto parse_result = _cursor > 0 ? parse_framebuffer() : EParseResult::ParsedNothing;
+        auto parse_result = _framebuffer_size > 0 ? parse_framebuffer() : EParseResult::ParsedNothing;
 
         switch (parse_result) {
           case EParseResult::ParsedNothing: {
@@ -287,7 +290,7 @@ namespace redisevents {
           // is now ready with our contents.
           case EParseResult::ParsedMessage: {
             log_i("[id received] assuming '%s' is our identity", _framebuffer);
-            _device_id_len = _cursor;
+            _device_id_len = _framebuffer_size;
             memcpy(_device_id, _framebuffer, _device_id_len);
             size_t stored_id_len = _preferences->putString("device-id", _device_id);
             log_d("stored device id (%d bytes)", stored_id_len);
@@ -327,7 +330,7 @@ namespace redisevents {
     memset(_parse_buffer, '\0', PARSED_MESSAGE_SIZE);
 
     char * current_token = _framebuffer;
-    uint32_t current_index = 0, last_string_start = 0, tokens_read = 0, last_string_end = 0, max_tokens = _cursor;
+    uint32_t current_index = 0, last_string_start = 0, tokens_read = 0, last_string_end = 0, max_tokens = _framebuffer_size;
     bool capturing = false;
 
     while (current_token != nullptr && current_token != NULL && tokens_read < max_tokens) {
@@ -384,11 +387,15 @@ namespace redisevents {
           auto terminal_index = current_index - 1;
           last_string_end = last_string_start + terminal_index;
 
-          assert(terminal_index <= FRAMEBUFFER_SIZE);
+          if (terminal_index > FRAMEBUFFER_SIZE) {
+            log_e("last string terminated with %d characters (%d is the max)", terminal_index, FRAMEBUFFER_SIZE);
+
+            return EParseResult::ParsedFailure;
+          }
 
           // Note: This assignment is used later when copying messages out of the connected state.
           // That is a pretty gnarly way to go about doing things;
-          _cursor = terminal_index;
+          _framebuffer_size = terminal_index;
 
           log_i("finishing string capture - (located @ %d -> %d)", last_string_start, last_string_end);
           capturing = false;
@@ -400,10 +407,10 @@ namespace redisevents {
     // There is definitely a better way to do this...
     if (last_string_end > 0) {
       memset(_parse_buffer, '\0', PARSED_MESSAGE_SIZE);
-      memcpy(_parse_buffer, _framebuffer + last_string_start, _cursor);
-      log_i("final message parsed (%d chars)", _cursor);
+      memcpy(_parse_buffer, _framebuffer + last_string_start, _framebuffer_size);
+      log_i("final message parsed (%d chars)", _framebuffer_size);
       memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
-      memcpy(_framebuffer, _parse_buffer, _cursor);
+      memcpy(_framebuffer, _parse_buffer, _framebuffer_size);
 
       return EParseResult::ParsedMessage;
     }
@@ -419,7 +426,7 @@ namespace redisevents {
 
   Events::Connected::Connected(Preferences* _preferences):
     _authorization_stage(EAuthorizationStage::NotRequested),
-    _cursor(0),
+    _framebuffer_size(0),
     _parser(ResponseParser()),
     _framebuffer((char*) malloc(sizeof(char) * FRAMEBUFFER_SIZE)),
     _outbound_buffer((char*) malloc(sizeof(char) * OUTBOUND_BUFFER_SIZE)),
@@ -534,7 +541,7 @@ namespace redisevents {
       _preferences->remove("device-id");
     }
 
-    _cursor = 0;
+    _framebuffer_size = 0;
     memset(_framebuffer, '\0', FRAMEBUFFER_SIZE);
   }
 

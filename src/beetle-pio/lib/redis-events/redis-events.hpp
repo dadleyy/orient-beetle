@@ -201,9 +201,9 @@ namespace redisevents {
 
           EAuthorizationStage _authorization_stage;
 
-          // The `_cursor` represents the last index of our framebuffer we have pushed into.
+          // The `_framebuffer_size` represents the last index of our framebuffer we have pushed into.
           // It is _also_ truncated down to the value of successfully parsed messages.
-          uint16_t _cursor;
+          uint16_t _framebuffer_size;
 
           ResponseParser _parser;
 
