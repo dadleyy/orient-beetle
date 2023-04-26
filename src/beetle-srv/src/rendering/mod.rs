@@ -14,7 +14,7 @@ pub mod renderer;
 
 /// The render layout represents the various kinds of layouts that can be rendered into a
 /// rasterized image and sent to the embedded devices.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RenderLayout<S> {
   /// The simplest form of render layout - a single message.
   Message(S),

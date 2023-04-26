@@ -60,7 +60,15 @@ async fn parse_message(request: &mut tide::Request<super::worker::Worker>) -> ti
 ///
 /// Sends a message to the device.
 pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
-  let devices = request.state().device_diagnostic_collection()?;
+  let body = parse_message(&mut request).await.map_err(|error| {
+    log::warn!("bad device message payload - {error}");
+    tide::Error::from_str(422, "bad-request")
+  })?;
+
+  let worker = request.state();
+  /*
+  let devices = worker.device_diagnostic_collection()?;
+  */
 
   let user = request
     .state()
@@ -75,11 +83,6 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
       error
     })?;
 
-  let body = parse_message(&mut request).await.map_err(|error| {
-    log::warn!("bad device message payload - {error}");
-    tide::Error::from_str(422, "bad-request")
-  })?;
-
   if !user
     .devices
     .as_ref()
@@ -91,9 +94,19 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
   }
 
   log::debug!("user {:?} creating message for device - {body:?}", user);
+  worker
+    .queue_render(
+      &body.device_id,
+      &user.oid,
+      crate::rendering::RenderLayout::Message(&body.message),
+    )
+    .await
+    .map_err(|error| {
+      log::warn!("unable to queue render for device '{}' -> '{error}'", body.device_id);
+      error
+    })?;
 
-  request
-    .state()
+  /*
     .command(&kramer::Command::Lists(kramer::ListCommand::Push(
       (kramer::Side::Left, kramer::Insertion::Always),
       crate::redis::device_message_queue_id(&body.device_id),
@@ -115,6 +128,7 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
   {
     log::warn!("unable to update device diagnostic total message count - {error}");
   }
+  */
 
   tide::Body::from_json(&RegistrationResponse { id: body.device_id })
     .map(|body| tide::Response::builder(200).body(body).build())

@@ -43,9 +43,37 @@ impl Worker {
     })
   }
 
-  /// Connects to redis. This is only used if we do not already have a connection.
-  async fn redis(&self) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>> {
-    crate::redis::connect(&self.redis_configuration).await
+  /// Will attempt to queue a render request.
+  pub(super) async fn queue_render(
+    &self,
+    device_id: &String,
+    user_id: &String,
+    layout: crate::rendering::RenderLayout<&String>,
+  ) -> Result<String> {
+    let mut retries = 1;
+    let mut id = None;
+
+    while retries > 0 && id.is_none() {
+      log::info!("received request to queue a render for device '{device_id}' from '{user_id}' (attempt {retries})");
+      retries -= 1;
+      let mut redis_connection = self.get_redis_lock().await?;
+
+      if let Some(ref mut connection) = *redis_connection {
+        let mut queue = crate::rendering::queue::Queue::new(connection);
+
+        let result = queue
+          .queue(
+            device_id,
+            &crate::rendering::queue::QueuedRenderAuthority::User(user_id.clone()),
+            layout.clone(),
+          )
+          .await?;
+
+        id = Some(result.0);
+      }
+    }
+
+    id.ok_or_else(|| Error::new(ErrorKind::Other, "unable to queue within reasonable amount of attempts"))
   }
 
   /// Attempts to execute a command against the redis instance.
@@ -74,16 +102,19 @@ impl Worker {
         None => {
           log::warn!("no existing redis connection, establishing now");
 
-          let mut connection = self.redis().await.map_err(|error| {
-            log::warn!("unable to connect to redis from previous disconnect - {error}");
-            error
-          })?;
+          let mut connection = crate::redis::connect(&self.redis_configuration)
+            .await
+            .map_err(|error| {
+              log::warn!("unable to connect to redis from previous disconnect - {error}");
+              error
+            })?;
 
           result = kramer::execute(&mut connection, command).await;
           Some(connection)
         }
       };
 
+      // TODO: add a redis connection retry configuration value that can be used here.
       if retry_count > 0 {
         log::warn!("exceeded redis retry count, breaking with current result");
         break;
@@ -159,5 +190,34 @@ impl Worker {
         .database(&self.mongo.1.database)
         .collection(&self.mongo.1.collections.users),
     )
+  }
+
+  /// Attempts to aquire a lock, filling the contents with either a new connection, or just
+  /// re-using the existing one.
+  async fn get_redis_lock(
+    &self,
+  ) -> Result<async_std::sync::MutexGuard<'_, Option<async_tls::client::TlsStream<async_std::net::TcpStream>>>> {
+    let mut lock_result = self.redis_pool.lock().await;
+
+    match lock_result.take() {
+      Some(connection) => {
+        *lock_result = Some(connection);
+        Ok(lock_result)
+      }
+      None => {
+        log::warn!("no existing redis connection, establishing now");
+
+        let connection = crate::redis::connect(&self.redis_configuration)
+          .await
+          .map_err(|error| {
+            log::warn!("unable to connect to redis from previous disconnect - {error}");
+            error
+          })?;
+
+        *lock_result = Some(connection);
+
+        Ok(lock_result)
+      }
+    }
   }
 }
