@@ -9,17 +9,18 @@ const DEFAULT_POOL_MINIMUM: u8 = 3;
 /// The configuration specific to maintaining a registration of available ids.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
-pub(crate) struct RegistrarConfiguration {
+pub struct RegistrarConfiguration {
   // TODO: the cli's registar configuration uses these fields, and we may as well.
-  // The auth username that will be given on burn-in to devices.
-  // id_consumer_username: Option<String>,
-  // The auth password that will be given on burn-in to devices.
-  // id_consumer_password: Option<String>,
+  /// The auth username that will be given on burn-in to devices.
+  pub id_consumer_username: Option<String>,
+  /// The auth password that will be given on burn-in to devices.
+  pub id_consumer_password: Option<String>,
+
   /// The minimum amount of ids to maintain. If lower than this, we will refill.
-  registration_pool_minimum: Option<u8>,
+  pub registration_pool_minimum: Option<u8>,
 
   /// The max amount of devices to update during a iteration of checking device activity.
-  active_device_chunk_size: u8,
+  pub active_device_chunk_size: u8,
 }
 
 /// The publicly deserializable interface for our registrar worker configuration.
@@ -27,11 +28,11 @@ pub(crate) struct RegistrarConfiguration {
 #[serde(rename_all = "snake_case")]
 pub struct Configuration {
   /// The redis configuration.
-  pub(crate) redis: crate::config::RedisConfiguration,
+  pub redis: crate::config::RedisConfiguration,
   /// The mongo configuration.
-  pub(crate) mongo: crate::config::MongoConfiguration,
+  pub mongo: crate::config::MongoConfiguration,
   /// The configuration specific to maintaining a registration of available ids.
-  pub(crate) registrar: RegistrarConfiguration,
+  pub registrar: RegistrarConfiguration,
 }
 
 impl Configuration {

@@ -1,3 +1,6 @@
+//! These configuration schemas are meant to be _shared_ across the different executables products
+//! by this project. For exectuable specific configuration, search elsewhere.
+
 use serde::Deserialize;
 
 /// The configuration of our redis connection.
