@@ -1,5 +1,13 @@
 use async_std::prelude::*;
+use clap::Parser;
 use std::io::{Error, ErrorKind, Result};
+
+#[derive(Parser)]
+#[command(author, version = option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev"), about, long_about = None)]
+struct CommandLineArguments {
+  #[clap(short, long, default_value = "env.toml")]
+  config: String,
+}
 
 async fn run(config: beetle::registrar::Configuration) -> Result<()> {
   let mut worker = config.worker().await?;
@@ -47,7 +55,8 @@ fn main() -> Result<()> {
   env_logger::init();
   log::info!("environment + logger ready.");
 
-  let contents = std::fs::read_to_string("env.toml")?;
+  let args = CommandLineArguments::parse();
+  let contents = std::fs::read_to_string(args.config)?;
 
   let config = toml::from_str::<beetle::registrar::Configuration>(&contents).map_err(|error| {
     log::warn!("invalid toml config file - {error}");

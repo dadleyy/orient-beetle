@@ -10,11 +10,90 @@ use std::io;
 #[derive(Parser)]
 #[command(author, version = option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev"), about, long_about = None)]
 struct CommandLineArguments {
-  #[clap(short, long)]
+  #[clap(short, long, default_value = "env.toml")]
   config: String,
 
-  #[clap(short, long)]
+  #[clap(short, long, default_value = ".storage")]
   storage: String,
+}
+
+#[derive(Debug, PartialEq)]
+enum BulkStringLocation {
+  Sizing(usize),
+  Reading(usize, String, bool),
+}
+
+#[derive(Debug, Default, PartialEq)]
+enum MessageState {
+  #[default]
+  Initial,
+
+  ArraySize(usize, bool),
+
+  BulkString(BulkStringLocation, Option<(Vec<String>, usize)>),
+
+  Error(String),
+}
+
+impl MessageState {
+  fn take(self, token: char) -> Self {
+    match (self, token) {
+      (Self::Initial, '*') => Self::ArraySize(0, false),
+      (Self::Initial, '$') => Self::BulkString(BulkStringLocation::Sizing(0), None),
+
+      (Self::ArraySize(accumulator, _), '\r') => Self::ArraySize(accumulator, true),
+      (Self::ArraySize(accumulator, _), '\n') => {
+        Self::BulkString(BulkStringLocation::Sizing(0), Some((Vec::new(), accumulator)))
+      }
+
+      (Self::ArraySize(accumulator, false), token) => Self::ArraySize(
+        (accumulator * 10) + token.to_digit(10).unwrap_or_default() as usize,
+        false,
+      ),
+
+      (Self::BulkString(BulkStringLocation::Sizing(_), Some((vec, array_size))), '$') => {
+        Self::BulkString(BulkStringLocation::Sizing(0), Some((vec, array_size)))
+      }
+      (Self::BulkString(BulkStringLocation::Sizing(size), Some((vec, array_size))), '\r') => {
+        Self::BulkString(BulkStringLocation::Sizing(size), Some((vec, array_size)))
+      }
+
+      // Terminate Bulk String Sizing
+      (Self::BulkString(BulkStringLocation::Sizing(size), Some((vec, array_size))), '\n') => Self::BulkString(
+        BulkStringLocation::Reading(size, String::new(), false),
+        Some((vec, array_size)),
+      ),
+
+      (Self::BulkString(BulkStringLocation::Sizing(size), Some((vec, array_size))), token) => {
+        let new_size = (size * 10) + token.to_digit(10).unwrap_or_default() as usize;
+        Self::BulkString(BulkStringLocation::Sizing(new_size), Some((vec, array_size)))
+      }
+
+      // Start Bulk String Terminate
+      (Self::BulkString(BulkStringLocation::Reading(size, mut buffer, false), Some((vec, array_size))), '\r') => {
+        buffer.push(token);
+        Self::BulkString(BulkStringLocation::Reading(size, buffer, true), Some((vec, array_size)))
+      }
+
+      // Start Bulk String Terminate
+      (Self::BulkString(BulkStringLocation::Reading(_, mut buffer, true), Some((mut vec, array_size))), '\n') => {
+        vec.push(buffer.drain(0..buffer.len() - 1).collect());
+        Self::BulkString(BulkStringLocation::Sizing(0), Some((vec, array_size)))
+      }
+
+      (Self::BulkString(BulkStringLocation::Reading(size, mut buffer, _), Some((vec, array_size))), token) => {
+        buffer.push(token);
+        Self::BulkString(
+          BulkStringLocation::Reading(size, buffer, false),
+          Some((vec, array_size)),
+        )
+      }
+
+      (Self::Initial, token) => Self::Error(format!("Invalid starting token '{token}'")),
+      (Self::Error(e), _) => Self::Error(e),
+      (_, token) => Self::Error(format!("Invalid token '{token}'")),
+    }
+  }
 }
 
 async fn run(args: CommandLineArguments) -> io::Result<()> {
@@ -139,6 +218,7 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
 
     let mut frame_size = 0usize;
     let mut image_buffer: Vec<u8> = Vec::with_capacity(1024 * 10);
+    let mut parser = MessageState::default();
 
     log::info!("pop written, waiting for response");
 
@@ -161,8 +241,22 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
           }
 
           if amount > 3 {
-            let first_couple = std::str::from_utf8(&frame_buffer[0..35]);
-            log::info!("first couple - {first_couple:?}");
+            let first_couple = match std::str::from_utf8(&frame_buffer) {
+              Ok(inner) => Ok(inner),
+              Err(error) if error.valid_up_to() > 0 => std::str::from_utf8(&frame_buffer[0..error.valid_up_to()]),
+              Err(other) => {
+                log::warn!("unable to parse anything in frame buffer - {other:?}");
+                Err(other)
+              }
+            };
+
+            if let Ok(header) = first_couple {
+              for letter in header.chars() {
+                parser = parser.take(letter);
+              }
+            }
+
+            log::info!("first couple - {first_couple:?} ({parser:?})");
           }
 
           image_buffer.extend_from_slice(&frame_buffer[0..amount]);
@@ -221,4 +315,42 @@ fn main() -> io::Result<()> {
   env_logger::init();
   let args = CommandLineArguments::parse();
   async_std::task::block_on(run(args))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{BulkStringLocation, MessageState};
+
+  #[test]
+  fn test_array_message_single() {
+    let mut parser = MessageState::default();
+    for token in "*1\r\n$2\r\nhi\r\n".chars() {
+      parser = parser.take(token);
+    }
+    assert_eq!(
+      parser,
+      MessageState::BulkString(BulkStringLocation::Sizing(0), Some((vec!["hi".to_string()], 1)))
+    );
+  }
+
+  #[test]
+  fn test_array_message_many() {
+    let mut parser = MessageState::default();
+    let mut buffer = "*11\r\n".to_string();
+    let mut expected = Vec::new();
+
+    for _ in 0..11 {
+      buffer.push_str("$2\r\nhi\r\n");
+      expected.push("hi".to_string());
+    }
+
+    for token in buffer.chars() {
+      parser = parser.take(token);
+    }
+
+    assert_eq!(
+      parser,
+      MessageState::BulkString(BulkStringLocation::Sizing(0), Some((expected, 11)))
+    );
+  }
 }

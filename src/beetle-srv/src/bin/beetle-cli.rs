@@ -40,7 +40,7 @@ enum CommandLineCommand {
 #[command(author, version = option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev"), about, long_about = None)]
 struct CommandLineOptions {
   /// The path to a local toml file that holds our configuration information.
-  #[arg(short = 'c', long)]
+  #[arg(short = 'c', long, default_value = "env.toml")]
   config: String,
 
   /// The subcommand.

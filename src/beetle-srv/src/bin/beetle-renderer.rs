@@ -4,7 +4,7 @@ use std::io;
 #[derive(Parser)]
 #[command(author, version = option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev"), about, long_about = None)]
 struct CommandLineArguments {
-  #[clap(short, long)]
+  #[clap(short, long, default_value = "env.toml")]
   config: String,
 }
 
