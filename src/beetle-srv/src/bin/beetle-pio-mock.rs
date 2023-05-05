@@ -96,17 +96,44 @@ impl MessageState {
   }
 }
 
-async fn run(args: CommandLineArguments) -> io::Result<()> {
-  let contents = async_std::fs::read_to_string(&args.config).await?;
-  let config = toml::from_str::<beetle::registrar::Configuration>(&contents).map_err(|error| {
-    log::warn!("invalid toml config file - {error}");
-    io::Error::new(io::ErrorKind::Other, "bad-config")
-  })?;
+fn save_image(args: &CommandLineArguments, image_buffer: Vec<u8>) -> io::Result<()> {
+  log::debug!("attempting to save image buffer of {} byte(s)", image_buffer.len());
+
+  let loaded_image = image::guess_format(image_buffer.as_slice())
+    .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("{error}")))?;
+
+  if !matches!(loaded_image, image::ImageFormat::Png) {
+    return Err(io::Error::new(
+      io::ErrorKind::Other,
+      format!("invalid image format - {loaded_image:?}"),
+    ));
+  }
+
+  log::info!("loaded image - {loaded_image:?}");
+
+  let uuid = uuid::Uuid::new_v4().to_string();
+  let mut image_path = std::path::PathBuf::new();
+  image_path.push(&args.storage);
+  image_path.push(format!("{uuid}.png"));
+  let mut file = std::fs::File::create(&image_path)?;
+  log::info!("saving to '{:?}'", image_path);
+  std::io::Write::write_all(&mut file, image_buffer.as_slice())?;
+  Ok(())
+}
+
+async fn get_device_id(
+  args: &CommandLineArguments,
+  config: &beetle::registrar::Configuration,
+  mut connection: &mut async_tls::client::TlsStream<async_std::net::TcpStream>,
+) -> io::Result<String> {
+  let mut id_storage_path = std::path::PathBuf::from(&args.storage);
+  id_storage_path.push(".device_id");
 
   let (id_user, id_password) = config
     .registrar
     .id_consumer_username
-    .zip(config.registrar.id_consumer_password)
+    .as_ref()
+    .zip(config.registrar.id_consumer_password.as_ref())
     .ok_or_else(|| {
       io::Error::new(
         io::ErrorKind::Other,
@@ -114,12 +141,7 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
       )
     })?;
 
-  let mut id_storage_path = std::path::PathBuf::from(&args.storage);
-  id_storage_path.push(".device_id");
-
-  let mut connection = beetle::redis::connect(&config.redis).await?;
-
-  let mock_device_id = match async_std::fs::metadata(&id_storage_path).await {
+  match async_std::fs::metadata(&id_storage_path).await {
     Err(error) if error.kind() == io::ErrorKind::NotFound => {
       let burnin_auth_response = match kramer::execute(
         &mut connection,
@@ -178,7 +200,7 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
       async_std::fs::create_dir_all(&args.storage).await?;
       async_std::fs::write(&id_storage_path, &mock_device_id).await?;
 
-      mock_device_id
+      Ok(mock_device_id)
     }
 
     Ok(meta) if meta.is_file() => {
@@ -186,15 +208,25 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
       let loaded_id = async_std::fs::read_to_string(&id_storage_path).await?;
       log::info!("loaded device id - '{loaded_id}'");
 
-      loaded_id
+      Ok(loaded_id)
     }
-    other @ Ok(_) | other @ Err(_) => {
-      return Err(io::Error::new(
-        io::ErrorKind::Other,
-        format!("unable to handle device id storage lookup - {other:?}"),
-      ))
-    }
-  };
+    other @ Ok(_) | other @ Err(_) => Err(io::Error::new(
+      io::ErrorKind::Other,
+      format!("unable to handle device id storage lookup - {other:?}"),
+    )),
+  }
+}
+
+async fn run(args: CommandLineArguments) -> io::Result<()> {
+  let contents = async_std::fs::read_to_string(&args.config).await?;
+  let config = toml::from_str::<beetle::registrar::Configuration>(&contents).map_err(|error| {
+    log::warn!("invalid toml config file - {error}");
+    io::Error::new(io::ErrorKind::Other, "bad-config")
+  })?;
+
+  let mut connection = beetle::redis::connect(&config.redis).await?;
+
+  let mock_device_id = get_device_id(&args, &config, &mut connection).await?;
 
   let mut interval = async_std::stream::interval(std::time::Duration::from_millis(500));
 
@@ -216,12 +248,13 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
     )
     .await?;
 
-    let mut frame_size = 0usize;
     let mut image_buffer: Vec<u8> = Vec::with_capacity(1024 * 10);
     let mut parser = MessageState::default();
 
     log::info!("pop written, waiting for response");
 
+    // TODO: this does not seem very structurally sound; the goal is to read from the redis
+    // connection, attempting to parse our pop messages as a payload of image data.
     'response_read: loop {
       let mut frame_buffer = [0u8; 1024 * 8];
 
@@ -232,40 +265,47 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
       .await
       {
         Ok(amount) => {
-          frame_size += amount;
-
           if amount == 5 && matches!(std::str::from_utf8(&frame_buffer[0..amount]), Ok("*-1\r\n")) {
             log::info!("empty read from redis, moving on immediately");
-            frame_size = 0;
             break 'response_read;
           }
 
-          if amount > 3 {
-            let first_couple = match std::str::from_utf8(&frame_buffer) {
-              Ok(inner) => Ok(inner),
-              Err(error) if error.valid_up_to() > 0 => std::str::from_utf8(&frame_buffer[0..error.valid_up_to()]),
-              Err(other) => {
-                log::warn!("unable to parse anything in frame buffer - {other:?}");
-                Err(other)
-              }
-            };
-
-            if let Ok(header) = first_couple {
-              for letter in header.chars() {
-                parser = parser.take(letter);
-              }
+          // Try to parse _something_ - this will normally be the `*2\r\n...` bit that contains our
+          // array size followed by two entries for the key + actual image data.
+          let (message_header, header_size) = match std::str::from_utf8(&frame_buffer) {
+            Ok(inner) => (Ok(inner), amount),
+            Err(error) if error.valid_up_to() > 0 => {
+              let header_size = error.valid_up_to();
+              (std::str::from_utf8(&frame_buffer[0..header_size]), header_size)
             }
+            Err(other) => {
+              log::warn!("unable to parse anything in frame buffer - {other:?}");
+              (Err(other), 0)
+            }
+          };
 
-            log::info!("first couple - {first_couple:?} ({parser:?})");
+          if let Ok(header) = message_header {
+            parser = header.chars().fold(parser, |p, c| p.take(c));
           }
 
-          image_buffer.extend_from_slice(&frame_buffer[0..amount]);
-          log::info!("read {amount} byte(s)");
+          // If we finished parsing the `message_header` as a bulk string that is yet to be read,
+          // attempt to push into our actual image buffer that range of the slice starting from
+          // where the header ended, to where the image is expected to end.
+          if let MessageState::BulkString(BulkStringLocation::Reading(remainder, _, _), _) = parser {
+            if header_size > 0 {
+              let terminal = header_size + remainder;
+              log::info!("image located @ {header_size} -> {terminal}");
+              image_buffer.extend_from_slice(&frame_buffer[header_size..terminal]);
+              break 'response_read;
+            }
+          }
         }
+
         Err(error) if error.kind() == io::ErrorKind::TimedOut => {
-          log::warn!("timeout while reading image pop - {error} (after {frame_size} byte(s))");
+          log::warn!("timeout while reading image pop - {error}");
           break 'response_read;
         }
+
         Err(error) => {
           log::warn!("unknown error while reading - {error}");
           return Err(error);
@@ -273,16 +313,9 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
       }
     }
 
-    if frame_size > 0 {
-      log::info!("had some data in our frame, attempting to parse as png");
-      match image::codecs::png::PngDecoder::new(std::io::Cursor::new(image_buffer)) {
-        Ok(decoder) => {
-          let dims = image::ImageDecoder::dimensions(&decoder);
-          log::info!("found image - {:?}", dims);
-        }
-        Err(error) => {
-          log::warn!("unable to decode as image - {error}");
-        }
+    if !image_buffer.is_empty() {
+      if let Err(error) = save_image(&args, image_buffer) {
+        log::warn!("unable to save image - {error}");
       }
     }
 
