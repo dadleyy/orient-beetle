@@ -1,3 +1,8 @@
+#pragma once
+
+// TODO: Implement a better strategy for sharing the "rendering api" between the firebeetle and
+//       seeduino xiao esp32c3 implementations of this project.
+
 #include "state.hpp"
 #include "GxEPD2_BW.h"
 #include "U8g2_for_Adafruit_GFX.h"

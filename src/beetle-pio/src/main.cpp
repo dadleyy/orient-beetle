@@ -30,7 +30,6 @@ static_assert(1=0, "Error! Either xiao OR firebeetle must be selected, not both.
 #include "redis-events.hpp"
 
 // Configuration files
-#include "board_layout.hpp"
 #include "wifi_config.hpp"
 #include "redis_config.hpp"
 

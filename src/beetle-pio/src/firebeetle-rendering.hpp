@@ -1,12 +1,16 @@
 #pragma once
 
+// TODO: Implement a better strategy for sharing the "rendering api" between the firebeetle and
+//       seeduino xiao esp32c3 implementations of this project.
+
 #include "TFT_eSPI.h"
 #include "lvgl.h"
 #include "font/lv_font.h"
 #include "jelle_font.h"
 #include "icon_font.h"
-#include "board_layout.hpp"
 #include "state.hpp"
+
+#define LCD_PIN_NUM_BCKL 13
 
 void display_view_debug(const char * view_log) {
   log_d("lvgl: %s", view_log);
@@ -142,6 +146,9 @@ void display_render_state(const states::Working * working_state, uint32_t last_f
   lv_label_set_text(status_icon_label, "F");
   lv_label_set_text(status_label, working_state->id_content);
 
+  /**
+   * TODO: This rendering method is based on the previous hardware iteration of this project. Messages
+   * pulled to the device are now entire PNG images, not plain-text messages.
   uint8_t i = 0;
   for (auto message = working_state->begin(); message != working_state->end(); message++) {
     if (message->size > 0 && i < label_count) {
@@ -149,6 +156,7 @@ void display_render_state(const states::Working * working_state, uint32_t last_f
       i += 1;
     }
   }
+  */
 
   lv_scr_load(screen);
   // Update the lvgl internal timer
