@@ -10,6 +10,9 @@ pub struct User {
   /// The oauth ID of this user.
   pub oid: String,
 
+  /// An avatar for this user to render.
+  pub picture: String,
+
   /// A list of device ids this user has access to.
   pub devices: Option<std::collections::HashMap<String, u8>>,
 }

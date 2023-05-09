@@ -165,8 +165,8 @@ impl Worker {
     let query = bson::doc! { "oid": oid.clone() };
 
     users.find_one(query, None).await.map_err(|error| {
-      log::warn!("unable to create new player - {:?}", error);
-      Error::new(ErrorKind::Other, format!("bad-query - {error}"))
+      log::warn!("unable to find - user matching '{oid}' - {error}");
+      Error::new(ErrorKind::Other, "missing-user")
     })
   }
 

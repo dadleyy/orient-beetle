@@ -24,7 +24,7 @@ input,
 button {
   @apply border-solid border border-neutral-900;
   @apply bg-neutral-800;
-  @apply px-3 py-2 rounded-sm;
+  @apply px-3 py-2 rounded;
 }
 
 input:disabled,
@@ -48,6 +48,11 @@ h3 {
 button:not(:disabled) {
   @apply bg-sky-500;
   @apply text-white;
+}
+
+.profile-picture {
+  @apply block overflow-hidden;
+  @apply w-10 h-10 rounded-full;
 }
 
 .pill {

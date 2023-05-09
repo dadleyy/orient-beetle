@@ -141,6 +141,7 @@ pub async fn complete(request: tide::Request<super::worker::Worker>) -> tide::Re
 
   let state = crate::types::User {
     oid: info.sub.clone(),
+    picture: info.picture.clone(),
     ..Default::default()
   };
   let user = users

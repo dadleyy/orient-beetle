@@ -2,7 +2,7 @@ module Route.Device exposing (Message(..), Model, default, subscriptions, update
 
 import Environment
 import Html
-import Html.Attributes
+import Html.Attributes as ATT
 import Html.Events
 import Http
 import Json.Decode
@@ -129,24 +129,24 @@ formatDeviceTime time =
 
 view : Model -> Environment.Environment -> Html.Html Message
 view model env =
-    Html.div [ Html.Attributes.class "px-4 py-3" ]
-        [ Html.div [ Html.Attributes.class "pb-1 mb-1" ]
+    Html.div [ ATT.class "px-4 py-3" ]
+        [ Html.div [ ATT.class "pb-1 mb-1" ]
             [ Html.h2 []
                 [ Html.text model.id ]
             ]
-        , Html.div [ Html.Attributes.class "flex items-center" ]
+        , Html.div [ ATT.class "flex items-center" ]
             [ Html.input
                 [ Html.Events.onInput SetMessage
-                , Html.Attributes.value (getMessage model)
-                , Html.Attributes.disabled (isBusy model)
+                , ATT.value (getMessage model)
+                , ATT.disabled (isBusy model)
                 ]
                 []
-            , Html.button [ Html.Events.onClick AttemptMessage, Html.Attributes.disabled (isBusy model) ]
+            , Html.button [ Html.Events.onClick AttemptMessage, ATT.disabled (isBusy model) ]
                 [ Html.text "send" ]
             ]
         , case model.loadedDevice of
             Nothing ->
-                Html.div [ Html.Attributes.class "mt-2 pt-2" ] [ Html.text "Loading ..." ]
+                Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text "Loading ..." ]
 
             Just (Err error) ->
                 let
@@ -158,19 +158,41 @@ view model env =
                             _ ->
                                 "Failed"
                 in
-                Html.div [ Html.Attributes.class "mt-2 pt-2" ] [ Html.text failureString ]
+                Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text failureString ]
 
             Just (Ok info) ->
                 let
-                    sent_message_count =
+                    sentMessageCount =
                         Maybe.withDefault 0 info.sent_message_count |> String.fromInt
                 in
-                Html.div [ Html.Attributes.class "mt-2 pt-2" ]
-                    [ Html.div [] [ Html.code [] [ Html.text ("total messages sent: " ++ sent_message_count) ] ]
-                    , Html.div [] [ Html.code [] [ Html.text ("current messages queued: " ++ String.fromInt info.current_queue_count) ] ]
-                    , Html.div [] [ Html.code [] [ Html.text ("last seen: " ++ formatDeviceTime info.last_seen ++ "UTC") ] ]
-                    , Html.div [] [ Html.code [] [ Html.text ("first seen: " ++ formatDeviceTime info.first_seen ++ "UTC") ] ]
+                Html.table [ ATT.class "w-full mt-2" ]
+                    [ Html.thead [] []
+                    , Html.tbody []
+                        [ Html.tr []
+                            [ Html.td [] [ Html.text "Total Messages Sent" ]
+                            , Html.td [] [ Html.text sentMessageCount ]
+                            ]
+                        , Html.tr []
+                            [ Html.td [] [ Html.text "Current Queue" ]
+                            , Html.td [] [ Html.text (String.fromInt info.current_queue_count) ]
+                            ]
+                        , Html.tr []
+                            [ Html.td [] [ Html.text "Last Seen" ]
+                            , Html.td [] [ Html.text (formatDeviceTime info.last_seen ++ "UTC") ]
+                            ]
+                        , Html.tr []
+                            [ Html.td [] [ Html.text "First Seen" ]
+                            , Html.td [] [ Html.text (formatDeviceTime info.first_seen ++ "UTC") ]
+                            ]
+                        ]
                     ]
+
+        -- Html.div [ ATT.class "mt-2 pt-2" ]
+        --     [ Html.div [] [ Html.code [] [ Html.text ("total messages sent: " ++ sentMessageCount) ] ]
+        --     , Html.div [] [ Html.code [] [ Html.text ("current messages queued: " ++ String.fromInt info.current_queue_count) ] ]
+        --     , Html.div [] [ Html.code [] [ Html.text ("last seen: " ++ formatDeviceTime info.last_seen ++ "UTC") ] ]
+        --     , Html.div [] [ Html.code [] [ Html.text ("first seen: " ++ formatDeviceTime info.first_seen ++ "UTC") ] ]
+        --     ]
         ]
 
 
