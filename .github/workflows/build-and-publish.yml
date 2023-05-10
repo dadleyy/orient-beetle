@@ -6,7 +6,7 @@ on:
     tags:
       - "v*"
 jobs:
-  test:
+  srv-test:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -23,7 +23,7 @@ jobs:
       - name: "test"
         run: cargo test
 
-  build-pio:
+  pio-build:
     runs-on: ubuntu-latest
     env:
       BEETLE_GPG_KEY: "${{ secrets.BEETLE_CI_GPG }}"
@@ -151,7 +151,7 @@ jobs:
           name: "beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
           path: "./src/beetle-pio/beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
-  build-ui:
+  ui-build:
     runs-on: ubuntu-latest
     env:
       BEETLE_VERSION: "${{ github.sha }}"
@@ -209,7 +209,7 @@ jobs:
           name: "beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
           path: "./src/beetle-ui/beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
-  build-srv-osx:
+  srv-osx-build:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: macos-12
     env:
@@ -236,7 +236,7 @@ jobs:
           name: "beetle-server-osx-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
           path: "./src/beetle-srv/beetle-server-osx-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
-  build-srv-armv7:
+  srv-armv7-build:
     runs-on: ubuntu-latest
     env:
       BEETLE_VERSION: "${{ github.sha }}"
@@ -271,7 +271,23 @@ jobs:
           name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
           path: "./src/beetle-srv/beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
-  build-updater:
+  srv-x86-build:
+    runs-on: ubuntu-latest
+    container:
+      image: rust:1-bullseye
+    defaults:
+      run:
+        working-directory: src/beetle-srv
+    steps:
+      - uses: actions/checkout@v3
+      - name: "set output: short_sha"
+        id: vars
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
+      - name: "build"
+        run: cargo build --target x86_64-unknown-linux-gnu --release
+
+  updater-armv7-build:
     runs-on: ubuntu-latest
     container:
       image: dadleyy/rust-raspberry-pi-openssl:latest
