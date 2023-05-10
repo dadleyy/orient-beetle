@@ -373,7 +373,7 @@ jobs:
 
       - uses: actions/download-artifact@v3
         with:
-          name: "beetle-updater-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          name: "beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
       - uses: actions/download-artifact@v3
         with:
