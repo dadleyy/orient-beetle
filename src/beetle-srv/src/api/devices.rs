@@ -66,9 +66,6 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
   })?;
 
   let worker = request.state();
-  /*
-  let devices = worker.device_diagnostic_collection()?;
-  */
 
   let user = request
     .state()
@@ -76,7 +73,7 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
     .await?
     .ok_or_else(|| {
       log::warn!("no user found");
-      tide::Error::from_str(404, "missing-player")
+      tide::Error::from_str(404, "missing-user")
     })
     .map_err(|error| {
       log::warn!("unable to determine request authority - {error}");
@@ -106,30 +103,6 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
       error
     })?;
 
-  /*
-    .command(&kramer::Command::Lists(kramer::ListCommand::Push(
-      (kramer::Side::Left, kramer::Insertion::Always),
-      crate::redis::device_message_queue_id(&body.device_id),
-      kramer::Arity::One(body.message),
-    )))
-    .await
-    .map_err(|error| {
-      log::warn!("unable to queue message - {error}");
-      error
-    })?;
-
-  if let Err(error) = devices
-    .update_one(
-      bson::doc! { "id": &body.device_id },
-      bson::doc! { "$inc": { "sent_message_count": 1 } },
-      None,
-    )
-    .await
-  {
-    log::warn!("unable to update device diagnostic total message count - {error}");
-  }
-  */
-
   tide::Body::from_json(&RegistrationResponse { id: body.device_id })
     .map(|body| tide::Response::builder(200).body(body).build())
 }
@@ -143,7 +116,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
 
   let user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("no user found");
-    tide::Error::from_str(404, "missing-player")
+    tide::Error::from_str(404, "missing-user")
   })?;
 
   let query = request.query::<LookupQuery>()?;
@@ -217,7 +190,7 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
 
   let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("device unregister -> no user found");
-    tide::Error::from_str(404, "missing-player")
+    tide::Error::from_str(404, "missing-user")
   })?;
 
   let payload = request.body_json::<RegistrationPayload>().await.map_err(|error| {
@@ -251,14 +224,14 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
           query,
           bson::doc! { "$set": bson::to_bson(&updated).map_err(|error| {
             log::warn!("unable to serialize user update - {error}");
-            tide::Error::from_str(500, "player-failure")
+            tide::Error::from_str(500, "user-failure")
           })? },
           options,
         )
         .await
         .map_err(|error| {
-          log::warn!("unable to create new player - {:?}", error);
-          tide::Error::from_str(500, "player-failure")
+          log::warn!("unable to create new user - {:?}", error);
+          tide::Error::from_str(500, "user-failure")
         })?;
 
       log::info!("user '{}' unregistered device '{}'", oid, payload.device_id);
@@ -282,7 +255,7 @@ pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide
 
   let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("device-register -> no user found");
-    tide::Error::from_str(404, "missing-player")
+    tide::Error::from_str(404, "missing-user")
   })?;
 
   let payload = request.body_json::<RegistrationPayload>().await.map_err(|error| {
@@ -334,14 +307,14 @@ pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide
       query,
       bson::doc! { "$set": bson::to_bson(&updated).map_err(|error| {
         log::warn!("unable to serialize user update - {error}");
-        tide::Error::from_str(500, "player-failure")
+        tide::Error::from_str(500, "user-failure")
       })? },
       options,
     )
     .await
     .map_err(|error| {
-      log::warn!("unable to create new player - {:?}", error);
-      tide::Error::from_str(500, "player-failure")
+      log::warn!("unable to create new user - {:?}", error);
+      tide::Error::from_str(500, "user-failure")
     })?;
 
   log::info!(

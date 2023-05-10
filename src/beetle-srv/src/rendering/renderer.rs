@@ -15,11 +15,15 @@ struct Worker {
 impl Worker {
   /// Constructs the worker, with some validation on the configuration.
   async fn new(config: crate::registrar::Configuration) -> io::Result<Self> {
-    let connections = (None, None);
+    let mut connections = (None, None);
 
     let mongo_options = mongodb::options::ClientOptions::parse(&config.mongo.url)
       .await
       .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("failed mongodb connection - {error}")))?;
+
+    connections.0 = mongodb::Client::with_options(mongo_options.clone())
+      .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("failed mongodb connection - {error}")))
+      .ok();
 
     Ok(Self {
       config: (config, mongo_options),
@@ -29,6 +33,12 @@ impl Worker {
 
   /// Each "working" cycle of our renderer.
   async fn tick(&mut self) -> io::Result<()> {
+    let mongo = self
+      .connections
+      .0
+      .as_mut()
+      .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no mongo connection".to_string()))?;
+
     // Start with an attempt to re-connect to redis.
     self.connections.1 = match self.connections.1.take() {
       None => {
@@ -93,6 +103,23 @@ impl Worker {
           ));
 
           command.execute(&mut c).await?;
+
+          let devices = mongo
+            .database(&self.config.0.mongo.database)
+            .collection::<crate::types::DeviceDiagnostic>(&self.config.0.mongo.collections.device_diagnostics);
+
+          if let Err(error) = devices
+            .update_one(
+              bson::doc! { "id": &queued_render.device_id },
+              bson::doc! { "$inc": { "sent_message_count": 1 } },
+              None,
+            )
+            .await
+          {
+            log::warn!("unable to update device diagnostic total message count - {error}");
+          }
+
+          log::debug!("mongo diagnostics updated for '{}'", queued_render.device_id);
         }
       }
 
