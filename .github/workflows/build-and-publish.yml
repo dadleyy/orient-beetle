@@ -276,6 +276,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: rust:1-bullseye
+    env:
+      BEETLE_VERSION: "${{ github.sha }}"
+      DISTRIBUTABLE_DIRECTORY_NAME: "beetle-server-dist"
     defaults:
       run:
         working-directory: src/beetle-srv
@@ -288,6 +291,18 @@ jobs:
           echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
       - name: "build"
         run: cargo build --target x86_64-unknown-linux-gnu --release
+
+      - name: "bundle"
+        run: |
+          $GITHUB_WORKSPACE/.automation/bundle-srv.sh \
+            beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
+            $DISTRIBUTABLE_DIRECTORY_NAME \
+            x86_64-unknown-linux-gnu
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: "beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./src/beetle-srv/beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
   updater-armv7-build:
     runs-on: ubuntu-latest
@@ -358,6 +373,10 @@ jobs:
 
       - uses: actions/download-artifact@v3
         with:
+          name: "beetle-updater-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+
+      - uses: actions/download-artifact@v3
+        with:
           name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
       - uses: actions/download-artifact@v3
@@ -382,9 +401,15 @@ jobs:
           unzip -q awscliv2.zip
           ./aws/dist/aws --version
           ./aws/dist/aws s3 ls s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle || echo "empty"
+
           ./aws/dist/aws s3 cp \
-            ./*.tar.gz \
-            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/
+            beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
+            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz
+
+          ./aws/dist/aws s3 cp \
+            beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
+            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz
+
           popd
 
       - name: printall
