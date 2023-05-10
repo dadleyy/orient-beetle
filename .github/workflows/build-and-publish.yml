@@ -402,13 +402,16 @@ jobs:
           ./aws/dist/aws --version
           ./aws/dist/aws s3 ls s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle || echo "empty"
 
-          ./aws/dist/aws s3 cp \
-            beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
-            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz
+          arm_artifact="beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          x86_artifact="beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
           ./aws/dist/aws s3 cp \
-            beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
-            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz
+            ../$arm_artifact \
+            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/$arm_artifact
+
+          ./aws/dist/aws s3 cp \
+            ../$x86_artifact \
+            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/$x86_artifact
 
           popd
 
