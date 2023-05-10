@@ -381,7 +381,7 @@ jobs:
 
           unzip -q awscliv2.zip
           ./aws/dist/aws --version
-          ./aws/dist/aws s3 ls s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle
+          ./aws/dist/aws s3 ls s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle || echo "empty"
           ./aws/dist/aws s3 cp \
             ./*.tar.gz \
             s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/
