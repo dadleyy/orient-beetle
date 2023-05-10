@@ -1,27 +1,35 @@
-use std::io::{Error, ErrorKind, Result};
+use clap::Parser;
+use std::io;
 
-async fn run(addr: String) -> Result<()> {
-  let contents = std::fs::read_to_string("env.toml")?;
+/// The command line options themselves.
+#[derive(Parser)]
+#[command(author, version = option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev"), about, long_about = None)]
+struct CommandLineOptions {
+  /// The path to a local toml file that holds our configuration information.
+  #[arg(short = 'c', long, default_value = "env.toml")]
+  config: String,
 
-  let config = toml::from_str::<beetle::api::Configuration>(&contents).map_err(|error| {
-    log::warn!("invalid toml config file - {error}");
-    Error::new(ErrorKind::Other, "bad-config")
-  })?;
+  #[arg(short = 'a', long, default_value = "0.0.0.0:8337")]
+  addr: String,
+}
 
+async fn run(addr: String, config: beetle::api::Configuration) -> io::Result<()> {
   let worker = beetle::api::Worker::from_config(config).await?;
 
   log::info!("starting worker @ {addr}");
   beetle::api::new(worker).listen(&addr).await
 }
 
-fn main() -> Result<()> {
-  dotenv::dotenv().map_err(|error| Error::new(ErrorKind::Other, error))?;
+fn main() -> io::Result<()> {
+  dotenv::dotenv().map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
   env_logger::init();
 
-  let addr = std::env::var("BEETLE_WEB_ADDR")
-    .ok()
-    .or_else(|| std::env::args().nth(1))
-    .unwrap_or_else(|| "0.0.0.0:8337".into());
+  let options = CommandLineOptions::parse();
+  let contents = std::fs::read_to_string(&options.config)?;
+  let config = toml::from_str::<beetle::api::Configuration>(&contents).map_err(|error| {
+    log::warn!("invalid toml config file - {error}");
+    io::Error::new(io::ErrorKind::Other, "bad-config")
+  })?;
 
-  async_std::task::block_on(run(addr))
+  async_std::task::block_on(run(options.addr, config))
 }
