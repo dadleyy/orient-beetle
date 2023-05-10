@@ -248,6 +248,7 @@ jobs:
         working-directory: src/beetle-srv
     steps:
       - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
       - name: "set output: short_sha"
         id: vars
         run: |
@@ -380,7 +381,10 @@ jobs:
 
           unzip -q awscliv2.zip
           ./aws/dist/aws --version
-          ./aws/dist/aws s3 ls s3://$AWS_BUCKET_NAME/
+          ./aws/dist/aws s3 ls s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle
+          ./aws/dist/aws s3 cp \
+            ./*.tar.gz \
+            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/
           popd
 
       - name: printall
