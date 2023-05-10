@@ -280,6 +280,7 @@ jobs:
         working-directory: src/beetle-srv
     steps:
       - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
       - name: "set output: short_sha"
         id: vars
         run: |
