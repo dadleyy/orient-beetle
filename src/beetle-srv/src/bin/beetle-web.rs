@@ -21,7 +21,9 @@ async fn run(addr: String, config: beetle::api::Configuration) -> io::Result<()>
 }
 
 fn main() -> io::Result<()> {
-  dotenv::dotenv().map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
+  if let Err(error) = dotenv::dotenv() {
+    eprintln!("[beetle-web warning] - unable to find '.env' - {error}");
+  }
   env_logger::init();
 
   let options = CommandLineOptions::parse();
