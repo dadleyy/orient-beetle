@@ -10,6 +10,11 @@ struct CommandLineArguments {
 }
 
 async fn run(config: beetle::registrar::Configuration) -> Result<()> {
+  log::info!(
+    "starting registrar from (version {})",
+    option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev")
+  );
+
   let mut worker = config.worker().await?;
   let mut failures = Vec::with_capacity(3);
   let mut interval = async_std::stream::interval(std::time::Duration::from_millis(1000));

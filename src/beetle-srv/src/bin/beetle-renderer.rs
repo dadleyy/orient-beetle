@@ -9,14 +9,17 @@ struct CommandLineArguments {
 }
 
 async fn run(args: CommandLineArguments) -> io::Result<()> {
-  log::info!("attempting to load '{}'", args.config);
-
   let contents = async_std::fs::read_to_string(&args.config).await?;
   let config = toml::from_str::<beetle::registrar::Configuration>(&contents).map_err(|error| {
     log::warn!("invalid toml config file - {error}");
     io::Error::new(io::ErrorKind::Other, "bad-config")
   })?;
 
+  log::info!(
+    "starting renderer from '{}' (version {})",
+    args.config,
+    option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev")
+  );
   beetle::rendering::renderer::run(config).await
 }
 

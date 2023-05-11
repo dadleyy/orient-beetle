@@ -16,7 +16,10 @@ struct CommandLineOptions {
 async fn run(addr: String, config: beetle::api::Configuration) -> io::Result<()> {
   let worker = beetle::api::Worker::from_config(config).await?;
 
-  log::info!("starting worker @ {addr}");
+  log::info!(
+    "starting worker @ {addr} (version {})",
+    option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev")
+  );
   beetle::api::new(worker).listen(&addr).await
 }
 
