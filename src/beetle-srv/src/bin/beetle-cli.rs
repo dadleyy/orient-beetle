@@ -1,253 +1,78 @@
+#![warn(clippy::missing_docs_in_private_items)]
+
+//! This command line tool is meant to be a quick-and-dirty quality of life improvement over
+//! working through the webserver + ui.
+
+use clap::Parser;
 use serde::Deserialize;
-use std::io::{Error, ErrorKind, Result};
+use std::io;
 
-const MAX_IDLE_TIME_SECONDS: i64 = 60 * 30;
-const HELP_TEXT: &str = r#"beetle-cli admin interface
+/// Code organization; this submodule breaks out commands.
+mod cli;
 
-usage:
-    beetle-cli help
-    beetle-cli printall               - prints known devices via device diagnostics.
-    beetle-cli write <id> <message>   - sends a message to <id>.
-    beetle-cli cleanup                - removes device acl and diagnostics based on last seen.
-"#;
-
-#[derive(PartialEq)]
+/// The various sub-commands of our cli.
+#[derive(PartialEq, clap::Subcommand, Deserialize, Default)]
 enum CommandLineCommand {
-  Help,
+  /// Prints connected devices.
+  #[default]
   PrintConnected,
+
+  /// This command will blow away _all_ current acl entries. At that moment, devices will need to
+  /// re-authenticate from a fresh set of available ids.
+  InvalidateAcls,
+
+  /// Removes devices that have not been heard from within the amount of time that we consider
+  /// active.
   CleanDisconnects,
-  Provision(String, String),
-  PushString(String, String),
+
+  /// Creates the ACL entries that will be used by devices for requesting their unique identifiers.
+  Provision(cli::ProvisionCommand),
+
+  /// Creates an image and sends it along to the device.
+  SendImage(cli::SendImageCommand),
+
+  /// Prints the length of a device message queue.
+  PrintItems(cli::SingleDeviceCommand),
 }
 
-impl Default for CommandLineCommand {
-  fn default() -> Self {
-    CommandLineCommand::Help
-  }
+/// The command line options themselves.
+#[derive(Parser)]
+#[command(author, version = option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev"), about, long_about = None)]
+struct CommandLineOptions {
+  /// The path to a local toml file that holds our configuration information.
+  #[arg(short = 'c', long, default_value = "env.toml")]
+  config: String,
+
+  /// The subcommand.
+  #[command(subcommand)]
+  command: CommandLineCommand,
 }
 
-#[derive(Deserialize)]
-struct RegistrarConfiguration {
-  id_consumer_username: Option<String>,
-  id_consumer_password: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct CommandLineConfig {
-  redis: beetle::config::RedisConfiguration,
-  mongo: beetle::config::MongoConfiguration,
-
-  registrar: RegistrarConfiguration,
-}
-
-async fn run(config: CommandLineConfig, command: CommandLineCommand) -> Result<()> {
-  if command == CommandLineCommand::Help {
-    eprintln!("{}", HELP_TEXT);
-    return Ok(());
-  }
-
-  let mut stream = beetle::redis::connect(&config.redis).await?;
-  let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
-
+/// The main async cli runtime.
+async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io::Result<()> {
   match command {
-    CommandLineCommand::Help => unreachable!(),
-
-    CommandLineCommand::Provision(user, password) => {
-      log::info!("provisioning redis environment with device auth information");
-      let command = kramer::Command::Acl::<&str, &str>(kramer::acl::AclCommand::SetUser(kramer::acl::SetUser {
-        name: &user,
-        password: Some(&password),
-        keys: Some(beetle::constants::REGISTRAR_AVAILABLE),
-        commands: Some("LPOP"),
-      }));
-      let result = kramer::execute(&mut stream, &command).await;
-      log::info!("result - {result:?}");
-    }
-
-    CommandLineCommand::PushString(id, message) => {
-      log::debug!("writing '{}' to '{}'", message, id);
-
-      let result = kramer::execute(
-        &mut stream,
-        kramer::Command::List(kramer::ListCommand::Push(
-          (kramer::Side::Left, kramer::Insertion::Always),
-          beetle::redis::device_message_queue_id(id),
-          kramer::Arity::One(message),
-        )),
-      )
-      .await?;
-
-      log::info!("message result - {result:?}");
-    }
-
-    CommandLineCommand::PrintConnected => {
-      let collection = mongo
-        .database(&config.mongo.database)
-        .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
-
-      let mut cursor = collection
-        .find(None, Some(mongodb::options::FindOptions::builder().limit(50).build()))
-        .await
-        .map_err(|error| {
-          log::warn!("failed mongo query - {error}");
-          Error::new(ErrorKind::Other, format!("{error}"))
-        })?;
-
-      #[allow(clippy::blocks_in_if_conditions)]
-      while cursor.advance().await.map_err(|error| {
-        log::warn!("unable to advance cursor - {error}");
-        Error::new(ErrorKind::Other, format!("{error}"))
-      })? {
-        match cursor.deserialize_current() {
-          Ok(device) => {
-            println!("- {device}")
-          }
-          Err(error) => log::warn!("unable to deserialize diagnostic - {error}"),
-        }
-      }
-    }
-
-    CommandLineCommand::CleanDisconnects => {
-      let collection = mongo
-        .database(&config.mongo.database)
-        .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
-
-      let cutoff = chrono::Utc::now()
-        .checked_sub_signed(chrono::Duration::seconds(MAX_IDLE_TIME_SECONDS))
-        .ok_or_else(|| {
-          log::warn!("overflow calculation for cutoff");
-          Error::new(ErrorKind::Other, "cutoff time calc overflow")
-        })?;
-
-      log::info!("using cutoff value - {cutoff:?} ({})", cutoff.timestamp_millis());
-      let cutoff_query = bson::doc! { "last_seen": { "$lt": cutoff.timestamp_millis() } };
-      let mut cursor = collection
-        .find(
-          cutoff_query.clone(),
-          Some(mongodb::options::FindOptions::builder().limit(50).build()),
-        )
-        .await
-        .map_err(|error| {
-          log::warn!("failed mongo query - {error}");
-          Error::new(ErrorKind::Other, format!("{error}"))
-        })?;
-
-      let mut devices = Vec::with_capacity(100);
-
-      #[allow(clippy::blocks_in_if_conditions)]
-      while cursor.advance().await.map_err(|error| {
-        log::warn!("unable to advance cursor - {error}");
-        Error::new(ErrorKind::Other, format!("{error}"))
-      })? {
-        let device = cursor.deserialize_current();
-        log::info!("found diagnostic {:?}", device);
-
-        if let Ok(d) = device {
-          devices.push(d);
-        }
-      }
-
-      let count = devices.len();
-
-      if count == 0 {
-        println!("all devices active within cuttof time!");
-        return Ok(());
-      }
-
-      println!("- found {count} diagnostics with expired cutoffs, deleting diagnostics");
-
-      if count > 0 {
-        let result = collection
-          .delete_many(cutoff_query.clone(), None)
-          .await
-          .map_err(|error| {
-            log::warn!("unable to perform delete_many - {error}");
-            Error::new(ErrorKind::Other, format!("{error}"))
-          })?;
-
-        log::info!("delete complete - {:?}", result);
-
-        // Cleanup the acl entries of these dead devices.
-        kramer::execute(
-          &mut stream,
-          kramer::Command::Acl::<String, &str>(kramer::acl::AclCommand::DelUser(kramer::Arity::Many(
-            devices.iter().map(|device| device.id.clone()).collect(),
-          ))),
-        )
-        .await?;
-      }
-
-      // Cleanup our redis hash and set.
-      for dev in devices {
-        println!("  - cleaning up redis resources for device {}", dev.id);
-
-        kramer::execute(
-          &mut stream,
-          kramer::Command::Sets::<&str, &str>(kramer::SetCommand::Rem(
-            beetle::constants::REGISTRAR_INDEX,
-            kramer::Arity::One(&dev.id),
-          )),
-        )
-        .await?;
-
-        log::info!("cleaned up up {:?}", dev);
-      }
-    }
+    CommandLineCommand::InvalidateAcls => cli::invalidate_acls(&config).await,
+    CommandLineCommand::CleanDisconnects => cli::clean_disconnects(&config).await,
+    CommandLineCommand::Provision(command) => cli::provision(&config, command).await,
+    CommandLineCommand::PrintConnected => cli::print_connected(&config).await,
+    CommandLineCommand::PrintItems(cmd) => cli::print_queue_size(&config, cmd).await,
+    CommandLineCommand::SendImage(cmd) => cli::send_image(&config, cmd).await,
   }
-
-  Ok(())
 }
 
-fn main() -> Result<()> {
+/// The entrypoint.
+fn main() -> io::Result<()> {
   dotenv::dotenv().ok();
   env_logger::init();
 
   log::info!("environment + logger ready.");
 
-  let contents = std::fs::read_to_string("env.toml")?;
-
-  let config = toml::from_str::<CommandLineConfig>(&contents).map_err(|error| {
+  let options = CommandLineOptions::parse();
+  let contents = std::fs::read_to_string(&options.config)?;
+  let config = toml::from_str::<cli::CommandLineConfig>(&contents).map_err(|error| {
     log::warn!("invalid toml config file - {error}");
-    Error::new(ErrorKind::Other, "bad-config")
+    io::Error::new(io::ErrorKind::Other, "bad-config")
   })?;
 
-  let mut args = std::env::args().skip(1);
-  let cmd = args.next();
-
-  let command = match cmd.as_deref() {
-    Some("provision") => CommandLineCommand::Provision(
-      args
-        .next()
-        .or_else(|| {
-          log::info!("no username provided, falling back to 'env.toml'");
-          config.registrar.id_consumer_username.clone()
-        })
-        .ok_or_else(|| Error::new(ErrorKind::Other, "must provide username to provision command"))?,
-      args
-        .next()
-        .or_else(|| {
-          log::info!("no password provided, falling back to 'env.toml'");
-          config.registrar.id_consumer_password.clone()
-        })
-        .ok_or_else(|| Error::new(ErrorKind::Other, "must provide password to provision command"))?,
-    ),
-    Some("printall") => CommandLineCommand::PrintConnected,
-    Some("cleanup") => CommandLineCommand::CleanDisconnects,
-    Some("write") => {
-      let (id, message) = args
-        .next()
-        .zip(args.next())
-        .ok_or_else(|| Error::new(ErrorKind::Other, "invalid"))?;
-
-      log::info!("write command");
-      CommandLineCommand::PushString(id, message)
-    }
-    None | Some("help") => CommandLineCommand::Help,
-    Some(other) => {
-      eprintln!("unrecognized command '{}'", other);
-      CommandLineCommand::Help
-    }
-  };
-
-  async_std::task::block_on(run(config, command))
+  async_std::task::block_on(run(config, options.command))
 }

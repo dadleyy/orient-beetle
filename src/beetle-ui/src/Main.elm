@@ -4,7 +4,7 @@ import Browser
 import Browser.Navigation as Nav
 import Environment
 import Html
-import Html.Attributes
+import Html.Attributes as ATT
 import Http
 import Json.Decode
 import Route
@@ -139,25 +139,37 @@ subscriptions model =
 
 header : Model -> Html.Html Msg
 header model =
-    case Environment.getId model.env of
+    case Environment.getSession model.env of
         Nothing ->
-            Html.div [ Html.Attributes.class "cont-dark px-4 py-3" ]
+            Html.div [ ATT.class "cont-dark px-4 py-3" ]
                 [ Html.text "Orient Beetle."
                 ]
 
-        Just id ->
-            Html.div [ Html.Attributes.class "cont-dark px-4 py-3 flex items-center" ]
-                [ Html.div [ Html.Attributes.class "truncate" ] [ Html.text (String.concat [ "oid: ", id ]) ]
-                , Html.div [ Html.Attributes.class "ml-auto flex items-center" ]
+        Just loadedSession ->
+            Html.div [ ATT.class "cont-dark px-4 py-3 flex items-center" ]
+                [ Html.div [ ATT.class "flex items-center" ]
                     [ Html.div []
                         [ Html.a
-                            [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ]
+                            [ ATT.href (Environment.buildRoutePath model.env "home") ]
                             [ Html.text "home" ]
                         ]
-                    , Html.div [ Html.Attributes.class "ml-2" ]
+                    ]
+                , Html.div [ ATT.class "ml-auto flex items-center" ]
+                    [ Html.div [ ATT.class "mr-2" ]
                         [ Html.a
-                            [ Html.Attributes.href model.env.configuration.logoutUrl ]
+                            [ ATT.href model.env.configuration.logoutUrl ]
                             [ Html.text "logout" ]
+                        ]
+                    , Html.div [ ATT.class "truncate ml-auto" ]
+                        [ Html.div []
+                            [ if String.isEmpty loadedSession.picture then
+                                Html.div [] [ Html.text loadedSession.oid ]
+
+                              else
+                                Html.div [ ATT.class "profile-picture" ]
+                                    [ Html.img [ ATT.src loadedSession.picture ] []
+                                    ]
+                            ]
                         ]
                     ]
                 ]
@@ -168,40 +180,40 @@ body model =
     case ( Environment.getId model.env, model.route ) of
         ( Nothing, Just Route.Login ) ->
             Html.div
-                [ Html.Attributes.class "flex-1 main" ]
+                [ ATT.class "flex-1 main" ]
                 [ Route.view model.env Route.Login |> Html.map RouteMessage ]
 
         ( Just _, Just route ) ->
             Html.div
-                [ Html.Attributes.class "flex-1 main" ]
+                [ ATT.class "flex-1 main" ]
                 [ Route.view model.env route |> Html.map RouteMessage ]
 
         -- If we have a session but not a route, link back to home.
         ( Just _, Nothing ) ->
             Html.div
-                [ Html.Attributes.class "flex-1 px-4 py-3 main" ]
+                [ ATT.class "flex-1 px-4 py-3 main" ]
                 [ Html.a
-                    [ Html.Attributes.href (Environment.buildRoutePath model.env "home") ]
+                    [ ATT.href (Environment.buildRoutePath model.env "home") ]
                     [ Html.text "home" ]
                 ]
 
         -- Only our login route should ever be dealing with non-loaded sessions
         ( Nothing, _ ) ->
-            Html.div [ Html.Attributes.class "flex-1 px-4 py-3 main" ] [ Html.text "loading..." ]
+            Html.div [ ATT.class "flex-1 px-4 py-3 main" ] [ Html.text "loading..." ]
 
 
 externalLink : String -> String -> Html.Html Msg
 externalLink addr text =
     Html.a
-        [ Html.Attributes.href addr, Html.Attributes.rel "noopener", Html.Attributes.target "_blank" ]
+        [ ATT.href addr, ATT.rel "noopener", ATT.target "_blank" ]
         [ Html.text text ]
 
 
 footer : Model -> Html.Html Msg
 footer model =
-    Html.div [ Html.Attributes.class "cont-dark px-4 py-2 flex" ]
+    Html.div [ ATT.class "cont-dark px-4 py-2 flex" ]
         [ Html.div [] [ externalLink "https://github.com/dadleyy/orient-beetle" "github" ]
-        , Html.div [ Html.Attributes.class "ml-auto truncate" ]
+        , Html.div [ ATT.class "ml-auto truncate" ]
             [ Environment.statusFooter model.env |> Html.map EnvironmentMessage ]
         ]
 
@@ -210,7 +222,7 @@ view : Model -> Browser.Document Msg
 view model =
     { title = "beetle-ui"
     , body =
-        [ Html.div [ Html.Attributes.class "flex flex-col relative h-full w-full" ]
+        [ Html.div [ ATT.class "flex flex-col relative h-full w-full" ]
             [ header model
             , body model
             , footer model
@@ -221,4 +233,4 @@ view model =
 
 viewLink : String -> Html.Html msg
 viewLink path =
-    Html.li [] [ Html.a [ Html.Attributes.href path ] [ Html.text path ] ]
+    Html.li [] [ Html.a [ ATT.href path ] [ Html.text path ] ]

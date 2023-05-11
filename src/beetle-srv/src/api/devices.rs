@@ -1,37 +1,57 @@
 use serde::{Deserialize, Serialize};
 
+/// The payload for looking up a device by id.
 #[derive(Debug, Deserialize)]
 struct LookupQuery {
+  /// The id of a device in question.
   id: String,
 }
 
+/// The api used to send messages to a device.
 #[derive(Debug, Deserialize)]
 struct MessagePayload {
+  /// The id of the device.
   device_id: String,
+  /// The contents of the message.
   message: String,
 }
 
+/// The schema of our api to registration of a device.
 #[derive(Debug, Deserialize)]
 struct RegistrationPayload {
+  /// The id of the device.
   device_id: String,
 }
 
+/// The schema of responses sent from the registration api.
 #[derive(Debug, Serialize)]
 struct RegistrationResponse {
+  /// The id of the device registered.
   id: String,
 }
 
+/// The schema of responses sent from the device api.
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct DeviceInfoPayload {
+  /// The device id.
   id: String,
+
+  /// The timestamp of the first occurance of a pop from our device.
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   first_seen: Option<chrono::DateTime<chrono::Utc>>,
+
+  /// The timestamp of the last occurance of a pop from our device.
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   last_seen: Option<chrono::DateTime<chrono::Utc>>,
+
+  /// The amount of messages sent to this device. A `None` represents some unknown state.
   sent_message_count: Option<u32>,
+
+  /// How man messages are currently pending.
   current_queue_count: i64,
 }
 
+/// Parses the payload from our message api. This should live in the request handler.
 async fn parse_message(request: &mut tide::Request<super::worker::Worker>) -> tide::Result<MessagePayload> {
   request.body_json::<MessagePayload>().await
 }
@@ -40,7 +60,12 @@ async fn parse_message(request: &mut tide::Request<super::worker::Worker>) -> ti
 ///
 /// Sends a message to the device.
 pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
-  let devices = request.state().device_diagnostic_collection()?;
+  let body = parse_message(&mut request).await.map_err(|error| {
+    log::warn!("bad device message payload - {error}");
+    tide::Error::from_str(422, "bad-request")
+  })?;
+
+  let worker = request.state();
 
   let user = request
     .state()
@@ -48,17 +73,12 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
     .await?
     .ok_or_else(|| {
       log::warn!("no user found");
-      tide::Error::from_str(404, "missing-player")
+      tide::Error::from_str(404, "missing-user")
     })
     .map_err(|error| {
       log::warn!("unable to determine request authority - {error}");
       error
     })?;
-
-  let body = parse_message(&mut request).await.map_err(|error| {
-    log::warn!("bad device message payload - {error}");
-    tide::Error::from_str(422, "bad-request")
-  })?;
 
   if !user
     .devices
@@ -71,30 +91,17 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
   }
 
   log::debug!("user {:?} creating message for device - {body:?}", user);
-
-  request
-    .state()
-    .command(&kramer::Command::List(kramer::ListCommand::Push(
-      (kramer::Side::Left, kramer::Insertion::Always),
-      crate::redis::device_message_queue_id(&body.device_id),
-      kramer::Arity::One(body.message),
-    )))
-    .await
-    .map_err(|error| {
-      log::warn!("unable to queue message - {error}");
-      error
-    })?;
-
-  if let Err(error) = devices
-    .update_one(
-      bson::doc! { "id": &body.device_id },
-      bson::doc! { "$inc": { "sent_message_count": 1 } },
-      None,
+  worker
+    .queue_render(
+      &body.device_id,
+      &user.oid,
+      crate::rendering::RenderLayout::Message(&body.message),
     )
     .await
-  {
-    log::warn!("unable to update device diagnostic total message count - {error}");
-  }
+    .map_err(|error| {
+      log::warn!("unable to queue render for device '{}' -> '{error}'", body.device_id);
+      error
+    })?;
 
   tide::Body::from_json(&RegistrationResponse { id: body.device_id })
     .map(|body| tide::Response::builder(200).body(body).build())
@@ -109,7 +116,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
 
   let user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("no user found");
-    tide::Error::from_str(404, "missing-player")
+    tide::Error::from_str(404, "missing-user")
   })?;
 
   let query = request.query::<LookupQuery>()?;
@@ -128,7 +135,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
   now = std::time::Instant::now();
 
   let current_queue_len = match worker
-    .command(&kramer::Command::List::<&String, &String>(kramer::ListCommand::Len(
+    .command(&kramer::Command::Lists::<&String, &String>(kramer::ListCommand::Len(
       &crate::redis::device_message_queue_id(&query.id),
     )))
     .await
@@ -183,7 +190,7 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
 
   let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("device unregister -> no user found");
-    tide::Error::from_str(404, "missing-player")
+    tide::Error::from_str(404, "missing-user")
   })?;
 
   let payload = request.body_json::<RegistrationPayload>().await.map_err(|error| {
@@ -217,14 +224,14 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
           query,
           bson::doc! { "$set": bson::to_bson(&updated).map_err(|error| {
             log::warn!("unable to serialize user update - {error}");
-            tide::Error::from_str(500, "player-failure")
+            tide::Error::from_str(500, "user-failure")
           })? },
           options,
         )
         .await
         .map_err(|error| {
-          log::warn!("unable to create new player - {:?}", error);
-          tide::Error::from_str(500, "player-failure")
+          log::warn!("unable to create new user - {:?}", error);
+          tide::Error::from_str(500, "user-failure")
         })?;
 
       log::info!("user '{}' unregistered device '{}'", oid, payload.device_id);
@@ -248,7 +255,7 @@ pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide
 
   let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("device-register -> no user found");
-    tide::Error::from_str(404, "missing-player")
+    tide::Error::from_str(404, "missing-user")
   })?;
 
   let payload = request.body_json::<RegistrationPayload>().await.map_err(|error| {
@@ -300,14 +307,14 @@ pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide
       query,
       bson::doc! { "$set": bson::to_bson(&updated).map_err(|error| {
         log::warn!("unable to serialize user update - {error}");
-        tide::Error::from_str(500, "player-failure")
+        tide::Error::from_str(500, "user-failure")
       })? },
       options,
     )
     .await
     .map_err(|error| {
-      log::warn!("unable to create new player - {:?}", error);
-      tide::Error::from_str(500, "player-failure")
+      log::warn!("unable to create new user - {:?}", error);
+      tide::Error::from_str(500, "user-failure")
     })?;
 
   log::info!(

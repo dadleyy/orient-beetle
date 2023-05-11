@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 
-// Helper function to create the key that will be popped from on the device to receive the next
-// message it should display.
+/// Helper function to create the key that will be popped from on the device to receive the next
+/// message it should display.
 pub fn device_message_queue_id<S>(input: S) -> String
 where
   S: std::fmt::Display,
@@ -9,6 +9,8 @@ where
   format!("ob:{input}")
 }
 
+/// Wraps the configuration we have; the only functionality beyond opening the tcp stream here is
+/// an initial request to the redis instance to authenticate.
 pub async fn connect(
   config: &crate::config::RedisConfiguration,
 ) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>> {

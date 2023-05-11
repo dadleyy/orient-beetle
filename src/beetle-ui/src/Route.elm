@@ -43,7 +43,7 @@ view : Environment.Environment -> Route -> Html.Html Message
 view env route =
     case route of
         Login ->
-            Html.div [ Html.Attributes.class "px-4 py-3" ]
+            Html.div [ Html.Attributes.class "px-4 py-3 h-full w-full relative" ]
                 [ renderLogin env ]
 
         Home inner ->
@@ -168,7 +168,7 @@ renderLogin env =
         loginContentDom =
             Result.withDefault [] (Result.map HTP.toVirtualDom (Html.Parser.run loginContentText))
     in
-    Html.div [ Html.Attributes.class "lg:flex items-start" ]
+    Html.div [ Html.Attributes.class "lg:flex items-start h-full w-full relative" ]
         [ Html.div [ Html.Attributes.class "lg:flex-1 lg:pl-3" ]
             [ Html.div []
                 [ Html.a
@@ -179,5 +179,6 @@ renderLogin env =
                     [ Html.text "Login" ]
                 ]
             ]
-        , Html.div [ Html.Attributes.class "lg:flex-1 lg:pr-3" ] loginContentDom
+        , Html.div [ Html.Attributes.class "lg:flex-1 lg:pr-3 flex-1 flex flex-col h-full relative" ]
+            loginContentDom
         ]

@@ -11,6 +11,7 @@ module Environment exposing
     , getId
     , getLoadedId
     , getLocalizedContent
+    , getSession
     , isLoaded
     , normalizeUrlPath
     , statusFooter
@@ -33,6 +34,7 @@ type alias StatusResponse =
 
 type alias Session =
     { oid : String
+    , picture : String
     }
 
 
@@ -123,9 +125,14 @@ getSessionId session =
     session.oid
 
 
+getSession : Environment -> Maybe Session
+getSession env =
+    Maybe.andThen Result.toMaybe env.session
+
+
 getId : Environment -> Maybe String
 getId env =
-    Maybe.map getSessionId (Maybe.andThen Result.toMaybe env.session)
+    getSession env |> Maybe.map getSessionId
 
 
 getLoadedId : Environment -> Maybe (Maybe String)
@@ -143,8 +150,9 @@ getLoadedId env =
 
 sessionDecoder : Json.Decode.Decoder Session
 sessionDecoder =
-    Json.Decode.map Session
+    Json.Decode.map2 Session
         (Json.Decode.field "oid" Json.Decode.string)
+        (Json.Decode.field "picture" Json.Decode.string)
 
 
 statusDecoder : Json.Decode.Decoder StatusResponse

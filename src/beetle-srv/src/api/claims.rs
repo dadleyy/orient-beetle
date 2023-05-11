@@ -1,13 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind, Result};
 
+/// The JSON structure of our session tokens.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
+  /// The time this token expires.
   pub exp: usize,
+  /// The oauth user id.
   pub oid: String,
 }
 
 impl Claims {
+  /// Attempts to decode the contents of the cookie into a claim/token.
   pub fn decode<T>(target: &T, secret: &str) -> Result<Self>
   where
     T: std::fmt::Display + ?Sized,
@@ -23,6 +27,7 @@ impl Claims {
       .map(|data| data.claims)
   }
 
+  /// Builds a token payload for a given user id.
   pub fn for_user<T>(oid: T) -> Self
   where
     T: std::fmt::Display,
@@ -40,6 +45,7 @@ impl Claims {
     }
   }
 
+  /// Encodes the claims as a string (serialized jwt).
   pub fn encode(&self, secret: &str) -> Result<String> {
     let header = &jsonwebtoken::Header::default();
     let secret = jsonwebtoken::EncodingKey::from_secret(secret.as_bytes());

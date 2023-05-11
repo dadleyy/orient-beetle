@@ -1,20 +1,20 @@
-#include "wifi-manager.hpp"
+#include "wifi-events.hpp"
 
-namespace wifimanager {
-  Manager::Manager(std::tuple<const char *, const char *> ap):
+namespace wifievents {
+  Events::Events(std::tuple<const char *, const char *> ap):
     _last_mode(0),
     _ap_config(ap),
     _mode(std::in_place_type_t<PendingConfiguration>()) {
   }
 
-  uint8_t Manager::attempt(void) {
+  uint8_t Events::attempt(void) {
     if (_mode.index() == 2) {
       return std::get_if<PendingConnection>(&_mode)->_attempts;
     }
     return 0;
   }
 
-  std::optional<Manager::EManagerMessage> Manager::update(uint32_t current_time) {
+  std::optional<Events::EMessage> Events::update(uint32_t current_time) {
     auto timer_result = _timer.update(current_time);
 
     if (timer_result != 1) {
@@ -54,7 +54,7 @@ namespace wifimanager {
         if (active->_disconnected == 1) {
           log_e("wifi connection interrupted, attempting to reconnect");
           WiFi.reconnect();
-          return Manager::EManagerMessage::ConnectionInterruption;
+          return Events::EMessage::ConnectionInterruption;
         }
 
         if (active->_disconnected > 1) {
@@ -64,14 +64,14 @@ namespace wifimanager {
 
         // If we're no longer disconnected, but were previously, we've been resumed.
         if (active->_disconnected == 0 && previous != 0) {
-          return Manager::EManagerMessage::ConnectionResumed;
+          return Events::EMessage::ConnectionResumed;
         }
 
         if (active->_disconnected > MAX_CONNECTION_INTERRUPTS) {
           log_e("wifi manager disonncted after %d attempts", active->_disconnected);
 
           _mode.emplace<PendingConfiguration>();
-          return Manager::EManagerMessage::Disconnected;
+          return Events::EMessage::Disconnected;
         }
 
         break;
@@ -102,7 +102,7 @@ namespace wifimanager {
 
         if (_checked_stored_values == false) {
           _checked_stored_values = true;
-          log_d("stored ssid len - %d (password %d)", stored_ssid_len, stored_password_len);
+          log_i("stored ssid len - %d (password %d)", stored_ssid_len, stored_password_len);
         }
 
         // If we have nothing stored, try to read from our http server.
@@ -127,7 +127,7 @@ namespace wifimanager {
         _mode.emplace<PendingConnection>(ssid, password);
 
         WiFi.mode(WIFI_STA);
-        return Manager::EManagerMessage::Connecting;
+        return Events::EMessage::Connecting;
       }
 
       /**
@@ -140,25 +140,25 @@ namespace wifimanager {
         PendingConnection * pending = std::get_if<PendingConnection>(&_mode);
 
         if (pending->_attempts % 3 == 0) {
-          log_d("attempting to connect to wifi [%d]", pending->_attempts);
+          log_i("attempting to connect to wifi [%d]", pending->_attempts);
         }
 
         if (pending->_attempts == 0) {
-          log_d("connecting to wifi");
+          log_i("connecting to wifi");
           WiFi.setHostname("orient-beetle");
           WiFi.begin(pending->_ssid, pending->_password);
         }
 
         // If we have a connection, move out of this mode
         if (WiFi.status() == WL_CONNECTED) {
-          log_d("wifi is connected");
+          log_i("wifi is connected");
           _mode.emplace<ActiveConnection>(0);
 
           size_t stored_ssid_len = _preferences.putString("ssid", pending->_ssid);
           size_t stored_password_len = _preferences.putString("password", pending->_password);
           log_d("stored ssid len %d, password len %d", stored_ssid_len, stored_password_len);
 
-          return Manager::EManagerMessage::Connected;
+          return Events::EMessage::Connected;
         }
 
         pending->_attempts += 1;
@@ -166,7 +166,7 @@ namespace wifimanager {
         // If we have seen too many frames without establishing a connection to the 
         // network provided by the user, move back into the AP/configuration mode.
         if (pending->_attempts > MAX_PENDING_CONNECTION_ATTEMPTS) {
-          log_d("too many connections failed, resetting");
+          log_i("too many connections failed, resetting");
 
           // Clear the stored ssid/password.
           _preferences.remove("ssid");
@@ -180,28 +180,28 @@ namespace wifimanager {
 
           // Enter into AP mode and start the server.
           begin();
-          return Manager::EManagerMessage::FailedConnection;
+          return Events::EMessage::FailedConnection;
         }
 
         break;
       }
       default:
-        log_d("unknown state");
+        log_i("unknown state");
         break;
     }
 
     return std::nullopt;
   }
 
-  void Manager::begin(void) {
-    log_d("starting preferences");
+  void Events::begin(void) {
+    log_i("starting preferences");
     _preferences.begin("beetle-wifi", false);
 
     if (_mode.index() == 1) {
       WiFi.softAP(std::get<0>(_ap_config), std::get<1>(_ap_config), 7, 0, 1);
       IPAddress address = WiFi.softAPIP();
 
-      log_d("AP IP address: %s", address.toString());
+      log_i("AP IP address: %s", address.toString());
       std::get_if<1>(&_mode)->begin(address);
       return;
     }
@@ -209,7 +209,7 @@ namespace wifimanager {
     log_d("soft ap not started");
   }
 
-  bool Manager::PendingConfiguration::update(char * ssid, char * password) {
+  bool Events::PendingConfiguration::update(char * ssid, char * password) {
       WiFiClient client = available();
 
       // If we are running in AP mode and have no http connection to our server, move right along.
@@ -253,13 +253,17 @@ namespace wifimanager {
         // Pull the next character off our client.
         buffer[cursor] = client.read();
 
+        if (method == ERequestParsingMode::Network && buffer[cursor] == '+') {
+          buffer[cursor] = ' ';
+        }
+
         if (cursor < 3 || method == ERequestParsingMode::Done) {
           cursor += 1;
           continue;
         }
 
         if (method == ERequestParsingMode::None && strcmp(buffer, CONNECTION_PREFIX) == 0) {
-          log_d("found connection request, preparing for ssid parsing");
+          log_i("found connection request, preparing for ssid parsing");
 
           method = ERequestParsingMode::Network;
           cursor += 1;
@@ -298,7 +302,7 @@ namespace wifimanager {
       }
 
       if (method != ERequestParsingMode::Done) {
-        log_d("non-connect request:\n%s", buffer);
+        log_i("non-connect request:\n%s", buffer);
 
         client.write(index_html, index_end - index_html);
         delay(10);
@@ -306,7 +310,7 @@ namespace wifimanager {
         return false;
       }
 
-      log_d("[wifi_manager] ssid: %s | password %s", ssid, password);
+      log_i("[wifi_manager] ssid(%s) | password(%s)", ssid, password);
 
       client.write(index_html, index_end - index_html);
       delay(10);
@@ -319,7 +323,7 @@ namespace wifimanager {
    * When parsing the statusline of a request, this function will return the character
    * that is expected to terminate a given parsing mode.
    */
-  inline char Manager::PendingConfiguration::termination(ERequestParsingMode mode) {
+  inline char Events::PendingConfiguration::termination(ERequestParsingMode mode) {
     switch (mode) {
       case ERequestParsingMode::Network:
         return '&';
@@ -330,18 +334,18 @@ namespace wifimanager {
     }
   }
 
-  void Manager::PendingConfiguration::begin(IPAddress addr) {
+  void Events::PendingConfiguration::begin(IPAddress addr) {
     _server.begin();
     _dns.start(53, "*", addr);
   }
 
-  WiFiClient Manager::PendingConfiguration::available(void) {
+  WiFiClient Events::PendingConfiguration::available(void) {
     _dns.processNextRequest();
     return _server.available();
   }
 
-  Manager::PendingConfiguration::~PendingConfiguration() {
-    log_d("wifi_manager::pending_configuration", "exiting pending configuration");
+  Events::PendingConfiguration::~PendingConfiguration() {
+    log_i("wifi_manager::pending_configuration", "exiting pending configuration");
 
     _server.stop();
     _dns.stop();

@@ -6,13 +6,13 @@ on:
     tags:
       - "v*"
 jobs:
-  test:
+  srv-test:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: src/beetle-srv
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: "install clippy"
         run: rustup component add clippy
@@ -23,7 +23,7 @@ jobs:
       - name: "test"
         run: cargo test
 
-  build-pio:
+  pio-build:
     runs-on: ubuntu-latest
     env:
       BEETLE_GPG_KEY: "${{ secrets.BEETLE_CI_GPG }}"
@@ -31,60 +31,127 @@ jobs:
       REDIS_PORT: "${{ secrets.PIO_REDIS_PORT }}"
       REDIS_AUTH_USERNAME: "${{ secrets.PIO_REDIS_AUTH_USERNAME }}"
       REDIS_AUTH_PASSWORD: "${{ secrets.PIO_REDIS_AUTH_PASSWORD }}"
+      DISTRIBUTABLE_DIRECTORY_NAME: "beetle-pio-dist"
     defaults:
       run:
         working-directory: src/beetle-pio
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v3
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
       - name: "import gpg"
-        run: "echo \"${{ secrets.BEETLE_CI_GPG }}\" > orient-beetle-ci.key && gpg --import orient-beetle-ci.key && rm orient-beetle-ci.key"
+        run: |
+          echo "${{ secrets.BEETLE_CI_GPG }}" > orient-beetle-ci.key
+          gpg --import orient-beetle-ci.key
+          rm orient-beetle-ci.key
 
       - name: "pip: upgrade"
         run: python -m pip install --upgrade pip
+
       - name: "pip: install pio"
         run: pip install --upgrade platformio
+
       - name: "env prep: fill redis ca"
         run: echo $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
+
       - name: "pio: check"
         run: pio check
-      - name: "pio: run"
-        run: pio run -e release
 
-      - name: "ls: platformio -> tools"
-        run: ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin
-      - name: "ls: platformio -> partitions"
-        run: ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions
+      - name: "pio(firebeetle): run firebeetle"
+        run: pio run -e firebeetle
 
-      - name: "bundle: prepare-dir"
-        run: mkdir -p beetle-pio-dist
+      - name: "bundle(firebeetle): prepare-dir"
+        run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle
 
-      - name: "bundle: copy-bin"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.bin.pgp .pio/build/release/firmware.bin
-      - name: "bundle: copy-map"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.map.pgp .pio/build/release/firmware.map
-      - name: "bundle: copy-elf"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/firmware.elf.pgp .pio/build/release/firmware.elf
-      - name: "bundle: copy-partitions"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/partitions.bin.pgp .pio/build/release/partitions.bin
-      - name: "bundle: copy-bootloader"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/bootloader.bin.pgp $HOME/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin/bootloader_dio_40m.bin
-      - name: "bundle: copy-apploader"
-        run: gpg --trust-model always -e -r 99D22D47AA5053FC -o beetle-pio-dist/apploader.bin.pgp $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
+      - name: "bundle(firebeetle): copy-bin"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/firmware.bin.pgp \
+            .pio/build/firebeetle/firmware.bin
+
+      - name: "bundle(firebeetle): copy-map"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/firmware.map.pgp \
+            .pio/build/firebeetle/firmware.map
+
+      - name: "bundle(firebeetle): copy-elf"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/firmware.elf.pgp \
+            .pio/build/firebeetle/firmware.elf
+
+      - name: "bundle(firebeetle): copy-partitions"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/partitions.bin.pgp \
+            .pio/build/firebeetle/partitions.bin
+
+      - name: "pio(xiao): upgrade"
+        run: pio upgrade
+
+      - name: "pio(xiao): pkg update"
+        run: pio pkg update
+
+      - name: "pio(xiao): run xiao"
+        run: pio run -e xiao
+
+      - name: "bundle(xiao): prepare-dir"
+        run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/xiao
+
+      - name: "bundle(xiao): copy-bin"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/xiao/firmware.bin.pgp \
+            .pio/build/xiao/firmware.bin
+
+      - name: "bundle(xiao): copy-map"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/xiao/firmware.map.pgp \
+            .pio/build/xiao/firmware.map
+
+      - name: "bundle(xiao): copy-elf"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/xiao/firmware.elf.pgp \
+            .pio/build/xiao/firmware.elf
+
+      - name: "bundle(xiao): copy-partitions"
+        run: |
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/xiao/partitions.bin.pgp \
+            .pio/build/xiao/partitions.bin
+
+      - name: "bundle(xiao): copy-apploader"
+        run: |
+          ls -lah $HOME/.platformio
+          ls -lah $HOME/.platformio/packages/
+          ls -lah $HOME/.platformio/packages/framework-arduinoespressif32
+          ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools
+          ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions
+          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/xiao/boot_app0.bin.pgp \
+            $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
+
+      - name: "bundle: copy instruction"
+        run: |
+          cp -v $GITHUB_WORKSPACE/.automation/firmware-instructions/flashing-xiao.txt \
+                $DISTRIBUTABLE_DIRECTORY_NAME
 
       - name: "bundle: create"
-        run: tar cvzf beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-pio-dist
+        run: tar cvzf beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz $DISTRIBUTABLE_DIRECTORY_NAME
 
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz"
-          path: "./src/beetle-pio/beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./src/beetle-pio/beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
-  build-ui:
+  ui-build:
     runs-on: ubuntu-latest
     env:
       BEETLE_VERSION: "${{ github.sha }}"
@@ -97,13 +164,15 @@ jobs:
       run:
         working-directory: src/beetle-ui
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: '16'
+
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
       - name: "install elm: download"
         run: curl -L -o elm.gz https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz
@@ -129,18 +198,18 @@ jobs:
       - name: "make: release"
         run: make release
 
-      - name: prepare-bundle
+      - name: "bundle: prepare"
         run: mv target/release beetle-ui-dist
 
-      - name: create-bundle
-        run: tar cvzf beetle-ui-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-ui-dist
+      - name: "bundle: create"
+        run: tar cvzf beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz beetle-ui-dist
 
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-ui-${{ steps.vars.outputs.sha_short }}.tar.gz"
-          path: "./src/beetle-ui/beetle-ui-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./src/beetle-ui/beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
-  build-srv-osx:
+  srv-osx-build:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: macos-12
     env:
@@ -149,10 +218,11 @@ jobs:
       run:
         working-directory: src/beetle-srv
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
       - name: "build"
         run: cargo build --release
       - name: "bundle: prepare"
@@ -160,116 +230,195 @@ jobs:
       - name: "bundle: cli"
         run: cp target/release/beetle-cli beetle-server-dist/bin/beetle-cli
       - name: "bundle: create"
-        run: tar cvzf beetle-server-osx-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-server-dist
+        run: tar cvzf beetle-server-osx-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz beetle-server-dist
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-server-osx-${{ steps.vars.outputs.sha_short }}.tar.gz"
-          path: "./src/beetle-srv/beetle-server-osx-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-server-osx-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./src/beetle-srv/beetle-server-osx-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
-  build-srv-armv7:
+  srv-armv7-build:
     runs-on: ubuntu-latest
     env:
       BEETLE_VERSION: "${{ github.sha }}"
+      DISTRIBUTABLE_DIRECTORY_NAME: "beetle-server-dist"
     container:
       image: dadleyy/rust-raspberry-pi-openssl:latest
     defaults:
       run:
         working-directory: src/beetle-srv
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
-      - name: build
+      - name: "cargo: build"
         run: cargo build --target armv7-unknown-linux-gnueabihf --release
         env:
           OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
           OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
 
-      - name: prepare-bundle
-        run: mkdir -p beetle-server-dist/bin
-
-      - name: "populate-bundle: cli"
-        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-cli beetle-server-dist/bin/beetle-cli
-
-      - name: "populate-bundle: web"
-        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-web beetle-server-dist/bin/beetle-web
-
-      - name: "populate-bundle: registrar"
-        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-registrar beetle-server-dist/bin/beetle-registrar
-
-      - name: create-bundle
-        run: tar cvzf beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-server-dist
+      - name: "bundle"
+        run: |
+          $GITHUB_WORKSPACE/.automation/bundle-srv.sh \
+            beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
+            $DISTRIBUTABLE_DIRECTORY_NAME \
+            armv7-unknown-linux-gnueabihf
 
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
-          path: "./src/beetle-srv/beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./src/beetle-srv/beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
-  build-updater:
+  srv-x86-build:
+    runs-on: ubuntu-latest
+    container:
+      image: rust:1-bullseye
+    env:
+      BEETLE_VERSION: "${{ github.sha }}"
+      DISTRIBUTABLE_DIRECTORY_NAME: "beetle-server-dist"
+    defaults:
+      run:
+        working-directory: src/beetle-srv
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+      - name: "set output: short_sha"
+        id: vars
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
+      - name: "build"
+        run: cargo build --target x86_64-unknown-linux-gnu --release
+
+      - name: "bundle"
+        run: |
+          $GITHUB_WORKSPACE/.automation/bundle-srv.sh \
+            beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
+            $DISTRIBUTABLE_DIRECTORY_NAME \
+            x86_64-unknown-linux-gnu
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: "beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./src/beetle-srv/beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+
+  updater-armv7-build:
     runs-on: ubuntu-latest
     container:
       image: dadleyy/rust-raspberry-pi-openssl:latest
     defaults:
       run:
         working-directory: tools/beetle-updater
+    env:
+      DISTRIBUTABLE_DIRECTORY_NAME: "beetle-updater-dist"
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
       - name: "clippy: install"
         run: rustup component add clippy
+
       - name: "clippy: run"
         run: cargo clippy
 
-      - name: build
+      - name: "build"
         run: cargo build --target armv7-unknown-linux-gnueabihf --release
         env:
           OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
           OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
-          BEETLE_UPDATER_VERSION: ${{ steps.vars.outputs.sha_short }}
+          BEETLE_UPDATER_VERSION: ${{ steps.vars.outputs.SHORT_SHA }}
 
-      - name: prepare-bundle
-        run: mkdir -p beetle-updater-dist/bin
+      - name: "bundle: prepare"
+        run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/bin
 
-      - name: "populate-bundle"
-        run: cp target/armv7-unknown-linux-gnueabihf/release/beetle-srv-updater beetle-updater-dist/bin/
+      - name: "bundle: populate"
+        run: |
+          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-srv-updater \
+                $DISTRIBUTABLE_DIRECTORY_NAME/bin/
 
-      - name: create-bundle
-        run: tar cvzf beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz beetle-updater-dist
+      - name: "bundle: create"
+        run: |
+          tar cvzf beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz \
+                   $DISTRIBUTABLE_DIRECTORY_NAME
 
       - uses: actions/upload-artifact@v3
         with:
-          name: "beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
-          path: "./tools/beetle-updater/beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          path: "./tools/beetle-updater/beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
   publish:
     runs-on: ubuntu-latest
-    needs: ["build-srv-armv7", "build-srv-osx", "build-ui", "build-pio", "build-updater"]
+    needs: ["srv-armv7-build", "srv-x86-build", "ui-build", "pio-build", "updater-armv7-build"]
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_SECRET }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+
       - name: "set output: short_sha"
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: |
+          echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
       - uses: actions/download-artifact@v3
         with:
-          name: "beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-updater-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
       - uses: actions/download-artifact@v3
         with:
-          name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
       - uses: actions/download-artifact@v3
         with:
-          name: "beetle-ui-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
       - uses: actions/download-artifact@v3
         with:
-          name: "beetle-pio-${{ steps.vars.outputs.sha_short }}.tar.gz"
+          name: "beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: "beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+
+      - name: "awscli: prepare"
+        run: |
+          mkdir -p _awscli-download
+          pushd _awscli-download
+
+          cp -v _awscli-cache/awscliv2.zip awscliv2.zip || \
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+
+          mkdir -p _awscli-cache
+          cp awscliv2.zip _awscli-cache/awscliv2.zip
+
+          unzip -q awscliv2.zip
+          ./aws/dist/aws --version
+          ./aws/dist/aws s3 ls s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle || echo "empty"
+
+          arm_artifact="beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          x86_artifact="beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          ui_artifact="beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+
+          ./aws/dist/aws s3 cp \
+            ../$arm_artifact \
+            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/$arm_artifact
+
+          ./aws/dist/aws s3 cp \
+            ../$x86_artifact \
+            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/$x86_artifact
+
+          ./aws/dist/aws s3 cp \
+            ../$ui_artifact \
+            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/$ui_artifact
+
+          popd
 
       - name: printall
         run: ls -lah

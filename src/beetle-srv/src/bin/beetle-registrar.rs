@@ -1,14 +1,38 @@
 use async_std::prelude::*;
+use clap::Parser;
 use std::io::{Error, ErrorKind, Result};
 
+#[derive(Parser)]
+#[command(author, version = option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev"), about, long_about = None)]
+struct CommandLineArguments {
+  #[clap(short, long, default_value = "env.toml")]
+  config: String,
+}
+
 async fn run(config: beetle::registrar::Configuration) -> Result<()> {
+  log::info!(
+    "starting registrar from (version {})",
+    option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev")
+  );
+
   let mut worker = config.worker().await?;
   let mut failures = Vec::with_capacity(3);
   let mut interval = async_std::stream::interval(std::time::Duration::from_millis(1000));
+  let mut last_debug = std::time::Instant::now();
+  let mut frames = 0u8;
 
   while failures.len() < 10 {
     interval.next().await;
     log::trace!("attempting worker frame");
+
+    let now = std::time::Instant::now();
+    if now.duration_since(last_debug).as_secs() > 4 || frames == 255 {
+      last_debug = now;
+      log::info!("registar still working ({frames} frames since last interval)...");
+      frames = 0;
+    }
+
+    frames += 1;
 
     match worker.work().await {
       Err(error) => failures.push(format!("{error}")),
@@ -34,10 +58,10 @@ fn main() -> Result<()> {
   }
 
   env_logger::init();
-
   log::info!("environment + logger ready.");
 
-  let contents = std::fs::read_to_string("env.toml")?;
+  let args = CommandLineArguments::parse();
+  let contents = std::fs::read_to_string(args.config)?;
 
   let config = toml::from_str::<beetle::registrar::Configuration>(&contents).map_err(|error| {
     log::warn!("invalid toml config file - {error}");

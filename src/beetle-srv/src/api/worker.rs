@@ -1,17 +1,26 @@
 use async_std::sync::{Arc, Mutex};
 use std::io::{Error, ErrorKind, Result};
 
+/// The type shared by all web worker requests.
 #[derive(Clone)]
 pub struct Worker {
+  /// The original web configuration.
   pub(super) web_configuration: super::WebConfiguration,
+  /// The original redis configuration.
   pub(super) redis_configuration: crate::config::RedisConfiguration,
+  /// The original auth0 configuration.
   pub(super) auth0_configuration: crate::config::Auth0Configuration,
+
+  /// Our shared mongo client + configuration.
   mongo: (mongodb::Client, crate::config::MongoConfiguration),
 
+  /// The redis TCP connection. This is not a "pool" just yet; we're currently only using a single
+  /// tcp connection across all connections.
   redis_pool: Arc<Mutex<Option<async_tls::client::TlsStream<async_std::net::TcpStream>>>>,
 }
 
 impl Worker {
+  /// Builds a worker from the configuration provided by our crate.
   pub async fn from_config(config: super::Configuration) -> Result<Self> {
     // Attempt to connect to mongo early.
     let mongo_options = mongodb::options::ClientOptions::parse(&config.mongo.url)
@@ -34,10 +43,40 @@ impl Worker {
     })
   }
 
-  async fn redis(&self) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>> {
-    crate::redis::connect(&self.redis_configuration).await
+  /// Will attempt to queue a render request.
+  pub(super) async fn queue_render(
+    &self,
+    device_id: &String,
+    user_id: &String,
+    layout: crate::rendering::RenderLayout<&String>,
+  ) -> Result<String> {
+    let mut retries = 1;
+    let mut id = None;
+
+    while retries > 0 && id.is_none() {
+      log::info!("received request to queue a render for device '{device_id}' from '{user_id}' (attempt {retries})");
+      retries -= 1;
+      let mut redis_connection = self.get_redis_lock().await?;
+
+      if let Some(ref mut connection) = *redis_connection {
+        let mut queue = crate::rendering::queue::Queue::new(connection);
+
+        let result = queue
+          .queue(
+            device_id,
+            &crate::rendering::queue::QueuedRenderAuthority::User(user_id.clone()),
+            layout.clone(),
+          )
+          .await?;
+
+        id = Some(result.0);
+      }
+    }
+
+    id.ok_or_else(|| Error::new(ErrorKind::Other, "unable to queue within reasonable amount of attempts"))
   }
 
+  /// Attempts to execute a command against the redis instance.
   pub(super) async fn command<S, V>(&self, command: &kramer::Command<S, V>) -> Result<kramer::Response>
   where
     S: std::fmt::Display,
@@ -63,16 +102,19 @@ impl Worker {
         None => {
           log::warn!("no existing redis connection, establishing now");
 
-          let mut connection = self.redis().await.map_err(|error| {
-            log::warn!("unable to connect to redis from previous disconnect - {error}");
-            error
-          })?;
+          let mut connection = crate::redis::connect(&self.redis_configuration)
+            .await
+            .map_err(|error| {
+              log::warn!("unable to connect to redis from previous disconnect - {error}");
+              error
+            })?;
 
           result = kramer::execute(&mut connection, command).await;
           Some(connection)
         }
       };
 
+      // TODO: add a redis connection retry configuration value that can be used here.
       if retry_count > 0 {
         log::warn!("exceeded redis retry count, breaking with current result");
         break;
@@ -123,11 +165,12 @@ impl Worker {
     let query = bson::doc! { "oid": oid.clone() };
 
     users.find_one(query, None).await.map_err(|error| {
-      log::warn!("unable to create new player - {:?}", error);
-      Error::new(ErrorKind::Other, format!("bad-query - {error}"))
+      log::warn!("unable to find - user matching '{oid}' - {error}");
+      Error::new(ErrorKind::Other, "missing-user")
     })
   }
 
+  /// Wraps the mongodb client and returns our collection.
   pub(super) fn device_diagnostic_collection(&self) -> Result<mongodb::Collection<crate::types::DeviceDiagnostic>> {
     Ok(
       self
@@ -138,6 +181,7 @@ impl Worker {
     )
   }
 
+  /// Wraps the mongodb client and returns our collection.
   pub(super) fn users_collection(&self) -> Result<mongodb::Collection<crate::types::User>> {
     Ok(
       self
@@ -146,5 +190,34 @@ impl Worker {
         .database(&self.mongo.1.database)
         .collection(&self.mongo.1.collections.users),
     )
+  }
+
+  /// Attempts to aquire a lock, filling the contents with either a new connection, or just
+  /// re-using the existing one.
+  async fn get_redis_lock(
+    &self,
+  ) -> Result<async_std::sync::MutexGuard<'_, Option<async_tls::client::TlsStream<async_std::net::TcpStream>>>> {
+    let mut lock_result = self.redis_pool.lock().await;
+
+    match lock_result.take() {
+      Some(connection) => {
+        *lock_result = Some(connection);
+        Ok(lock_result)
+      }
+      None => {
+        log::warn!("no existing redis connection, establishing now");
+
+        let connection = crate::redis::connect(&self.redis_configuration)
+          .await
+          .map_err(|error| {
+            log::warn!("unable to connect to redis from previous disconnect - {error}");
+            error
+          })?;
+
+        *lock_result = Some(connection);
+
+        Ok(lock_result)
+      }
+    }
   }
 }

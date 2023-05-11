@@ -12,7 +12,7 @@ def get_value(line):
     return line.split("=")[1].lstrip('"').rstrip().rstrip('"')
 
 if os.path.isfile("./embeds/redis_host_root_ca.pem") != True:
-    raise Exception("Missing 'redis_host_root_ca.pem' file, please see README.md")
+    raise Exception("Missing './embeds/redis_host_root_ca.pem' file, please see README.md")
 
 if os.path.exists(".env") and os.path.isfile(".env"):
     print("loading dotenv file")
@@ -54,9 +54,15 @@ if redis_auth_username is None:
 if redis_auth_password is None:
     raise Exception("Unable to find 'REDIS_AUTH_PASSWORD' in environment (or .env file)")
 
-print("environment ready - redis %s:%s" % (redis_host, redis_port))
+flag_str = "-DREDIS_HOST='\"{redis_host}\"' \
+            -DREDIS_PORT='{redis_port}' \
+            -DREDIS_AUTH_PASSWORD='\"{redis_auth_password}\"' \
+            -DREDIS_AUTH_USERNAME='\"{redis_auth_username}\"'".format(redis_host = redis_host,
+                     redis_port = redis_port,
+                     redis_auth_username = redis_auth_username,
+                     redis_auth_password = redis_auth_password);
 
-env.ProcessFlags(
-    "-DREDIS_PORT=%s -DREDIS_HOST=\\\"%s\\\" -DREDIS_AUTH_USERNAME=\\\"%s\\\" -DREDIS_AUTH_PASSWORD=\\\"%s\\\""
-    % (redis_port, redis_host, redis_auth_username, redis_auth_password)
-)
+if 'UNSAFE_LOGGING' in os.environ:
+    print("environment loaded, added to build flags %s" % flag_str);
+
+env.ProcessFlags(flag_str)

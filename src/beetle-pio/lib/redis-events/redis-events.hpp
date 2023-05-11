@@ -1,30 +1,30 @@
-#ifndef _REDIS_MANAGER_H
-#define _REDIS_MANAGER_H 1
+#ifndef _REDIS_EVENTS_H
+#define _REDIS_EVENTS_H 1
 
 #include <variant>
 #include <optional>
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
 
-#include "wifi-manager.hpp"
+#include "wifi-events.hpp"
 #include "microtim.hpp"
 
-namespace redismanager {
+namespace redisevents {
   
-  class Manager final {
+  class Events final {
     public:
-      explicit Manager(std::tuple<const char *, const uint32_t, std::pair<const char *, const char *>>);
-      ~Manager() = default;
+      explicit Events(std::tuple<const char *, const uint32_t, std::pair<const char *, const char *>>);
+      ~Events() = default;
 
       // Disable Copy
-      Manager(const Manager &) = delete;
-      Manager & operator=(const Manager &) = delete;
+      Events(const Events &) = delete;
+      Events & operator=(const Events &) = delete;
 
       // Disable Move
-      Manager(Manager &&) = delete;
-      Manager& operator=(Manager &&) = delete;
+      Events(Events &&) = delete;
+      Events& operator=(Events &&) = delete;
 
-      enum EManagerMessage {
+      enum EMessage {
         FailedConnection,
         ConnectionLost,
         EstablishedConnection,
@@ -32,12 +32,13 @@ namespace redismanager {
         ReceivedMessage,
       };
 
+
       // Initialization - prepare our internal state
       void begin(void);
 
       // Update - given a message from the wifi manager and the current time, perform logic
       // based on our current state.
-      std::optional<EManagerMessage> update(std::optional<wifimanager::Manager::EManagerMessage>&, uint32_t);
+      std::optional<EMessage> update(std::optional<wifievents::Events::EMessage>&, uint32_t);
 
       // Copy the latest message (if any) into the destination.
       uint16_t copy(char *, uint16_t);
@@ -47,8 +48,8 @@ namespace redismanager {
       uint8_t copy_id(char *, uint8_t);
 
     private:
-      constexpr static const uint32_t FRAMEBUFFER_SIZE = 1024;
-      constexpr static const uint32_t PARSED_MESSAGE_SIZE = 1024;
+      constexpr static const uint32_t FRAMEBUFFER_SIZE = 2828 * 3;
+      constexpr static const uint32_t PARSED_MESSAGE_SIZE = 2828 * 3;
       constexpr static const uint32_t MAX_ID_SIZE = 36;
 
       // The amount of attempts to read from our tls connection that return no data
@@ -60,7 +61,8 @@ namespace redismanager {
       // The amount of times we reset our connection before we will re-request a new device id.
       constexpr static const uint8_t MAX_RESETS_RECREDENTIALIZE = 5;
 
-      constexpr static const char * EMPTY_RESPONSE = "$-1\r\n";
+      constexpr static const char * EMPTY_STRING_RESPONSE = "$-1\r\n";
+      constexpr static const char * EMPTY_ARRAY_RESPONSE = "*-1\r\n";
       constexpr static const char * OK = "+OK\r\n";
       constexpr static const char * PUSH_OK = ":1\r\n";
       constexpr static const char * WRONG_PASS_ERR = "-WRONGPASS invalid username-password pair or user is disabled\r\n";
@@ -80,6 +82,90 @@ namespace redismanager {
         FullyAuthorized,          // <- reads messages
       };
 
+      enum EResponseParserTransition {
+        Noop,
+        Failure,
+        HasArray,
+        Done,
+        StartString,
+        EndString,
+      };
+
+      enum EParseResult {
+        ParsedFailure,
+        ParsedMessage,
+        ParsedOk,
+        ParsedNothing,
+      };
+
+      struct ParserVisitor;
+
+      // Initially, we will _either_ be parsing the length of an array to follow, or the length
+      // of a bulk string.
+      struct InitialParser final {
+        InitialParser(): _kind(0), _running_total(0), _delim(0) {}
+        ~InitialParser() = default;
+
+        InitialParser(const InitialParser&) = delete;
+        InitialParser& operator=(const InitialParser&) = delete;
+
+        InitialParser(const InitialParser&& other):
+          _kind(other._kind), _running_total(other._running_total), _delim(other._delim) {}
+        const InitialParser& operator=(const InitialParser&& other) {
+          this->_kind = other._kind;
+          this->_running_total = other._running_total;
+          this->_delim = other._delim;
+          return *this;
+        };
+
+        mutable uint8_t _kind;
+        mutable uint32_t _running_total;
+        mutable uint32_t _delim;
+
+        friend class ParserVisitor;
+      };
+
+      struct BulkStringParser final {
+        explicit BulkStringParser(uint32_t size): _size(size), _seen(0), _terminating(false) {}
+        ~BulkStringParser() = default;
+
+        BulkStringParser(const BulkStringParser&) = delete;
+        BulkStringParser& operator=(const BulkStringParser&) = delete;
+
+        BulkStringParser(const BulkStringParser&& other):
+          _size(other._size), _seen(other._seen), _terminating(other._terminating) {}
+        const BulkStringParser& operator=(const BulkStringParser&& other) {
+          this->_terminating = other._terminating;
+          this->_size = other._size;
+          this->_seen = other._seen;
+          return *this;
+        };
+
+        uint32_t _size;
+        mutable uint32_t _seen;
+        mutable bool _terminating;
+
+        friend class ParserVisitor;
+      };
+
+      using ParserStates = std::variant<InitialParser, BulkStringParser>;
+
+      struct ResponseParser final {
+        ResponseParser(): _state(InitialParser()) {}
+        EResponseParserTransition consume(char);
+        ParserStates _state;
+      };
+
+      struct ParserVisitor final {
+        explicit ParserVisitor(char token): _token(token) {}
+
+        std::tuple<ParserStates, EResponseParserTransition> operator()(const BulkStringParser&& initial) const;
+        std::tuple<ParserStates, EResponseParserTransition> operator()(const InitialParser&& initial) const;
+
+        char _token;
+      };
+
+
       // Internal State Variant: Connected
       //
       // Once our wifi manager has established connection, we will open up a tls-backed tcp
@@ -95,7 +181,7 @@ namespace redismanager {
           Connected(Connected &&) = delete;
 
           uint16_t copy(char *, uint16_t);
-          std::optional<EManagerMessage> update(
+          std::optional<EMessage> update(
             const char *,
             const std::pair<const char *, const char *>&,
             uint32_t,
@@ -105,23 +191,26 @@ namespace redismanager {
           void reset(void);
 
         private:
-          std::optional<EManagerMessage> connect(
+          std::optional<EMessage> connect(
             const char *,
             const std::pair<const char *, const char *>&,
             uint32_t
           );
           inline uint16_t write_message(uint32_t);
-          inline uint8_t parse_framebuffer(void);
+          inline EParseResult parse_framebuffer(void);
 
           EAuthorizationStage _authorization_stage;
 
-          // The `_cursor` represents the last index of our framebuffer we have pushed into.
-          uint16_t _cursor;
+          // The `_framebuffer_size` represents the last index of our framebuffer we have pushed into.
+          // It is _also_ truncated down to the value of successfully parsed messages.
+          uint16_t _framebuffer_size;
+
+          ResponseParser _parser;
 
           // This memory is filled every update with the contents of our tcp connection.
           char * _framebuffer;
           char * _outbound_buffer;
-          char * _parsed_message;
+          char * _parse_buffer;
 
           // Credential storage.
           char * _device_id;
@@ -145,18 +234,18 @@ namespace redismanager {
           uint8_t _strange_thing_count = 0;
 
           microtim::MicroTimer _timer = microtim::MicroTimer(100);
-          microtim::MicroTimer _write_timer = microtim::MicroTimer(500);
+          microtim::MicroTimer _write_timer = microtim::MicroTimer(2000);
           bool _pending_response = false;
           bool _last_written_pop = false;
 
-          friend class Manager;
+          friend class Events;
       };
 
       // Internal State Variant: Disconnected
       //
       // Until our wifi manager is connected, this state represents doing nothing.
       struct Disconnected final {
-        bool update(std::optional<wifimanager::Manager::EManagerMessage> &message);
+        bool update(std::optional<wifievents::Events::EMessage> &message);
       };
 
       // Redis configuration values.

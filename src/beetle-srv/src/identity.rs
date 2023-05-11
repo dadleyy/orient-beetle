@@ -12,6 +12,7 @@ fn shorten(input: String) -> String {
   format!("{}-{}", f, b)
 }
 
+/// A helper to generate a random, unique id.
 pub fn create() -> String {
   shorten(uuid::Uuid::new_v4().to_string())
 }

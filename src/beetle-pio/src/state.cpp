@@ -1,12 +1,11 @@
 #include "state.hpp"
 
-State::State(): active(ConfiguringState()) {
-}
+namespace states {
 
-State::~State() {
-}
+State::State(): active(Configuring()) {}
 
-State::State(State&& other): active(std::move(other.active)) {
+State::State(State&& other):
+  active(std::move(other.active)) {
 }
 
 State& State::operator=(State&& other) {
@@ -15,24 +14,24 @@ State& State::operator=(State&& other) {
 }
 
 Message::Message():
-  content((char *) malloc(sizeof(char) * MAX_MESSAGE_SIZE)),
-  content_size(0) {
+  content((char *) malloc(sizeof(char) * states::MAX_MESSAGE_SIZE)),
+  size(0) {
   log_d("allocating message");
 }
 
 Message::Message(Message&& other):
   content(other.content),
-  content_size(other.content_size) {
-    other.content_size = 0;
+  size(other.size) {
+    other.size = 0;
     other.content = nullptr;
 }
 
 Message& Message::operator=(Message&& other) {
   this->content = other.content;
-  this->content_size = other.content_size;
+  this->size = other.size;
 
   other.content = nullptr;
-  other.content_size = 0;
+  other.size = 0;
 
   return *this;
 }
@@ -44,50 +43,69 @@ Message::~Message() {
   }
 }
 
-WorkingState::WorkingState(uint16_t size):
+Working::Working(uint16_t size):
   id_content((char *) malloc(sizeof(char) * MAX_ID_SIZE)),
   id_size(size),
-  messages({}) {
+  messages({}),
+  _has_new(false) {
   log_d("creating working state");
   memset(id_content, '\0', MAX_ID_SIZE);
 }
 
-WorkingState::WorkingState(WorkingState&& other): messages(std::move(other.messages)) {
+Working::Working(Working&& other): messages(std::move(other.messages)) {
   id_content = other.id_content;
   id_size = other.id_size;
+  _has_new = other._has_new;
+  other.id_size = 0;
   other.id_content = nullptr;
 }
 
-std::array<Message, WorkingState::MESSAGE_COUNT>::const_iterator WorkingState::end(void) const {
+Working& Working::operator=(Working&& other) {
+  this->id_content = other.id_content;
+  this->id_size = other.id_size;
+  this->_has_new = other._has_new;
+  this->messages = std::move(other.messages);
+
+  other.id_content = nullptr;
+  other.id_size = 0;
+  other._has_new = false;
+
+  return *this;
+}
+
+std::array<Message, Working::MESSAGE_COUNT>::const_iterator Working::end(void) const {
   return messages.cend();
 }
 
-std::array<Message, WorkingState::MESSAGE_COUNT>::const_iterator WorkingState::begin(void) const {
-  return messages.cbegin();
+// When requesting an iterator to our messages while in the `Working`, we will assume that subsequent
+// requests are no interested in anything they have read since the last iterator was requested.
+std::array<Message, Working::MESSAGE_COUNT>::const_iterator Working::begin(void) const {
+  auto return_start = _has_new;
+  if (_has_new) {
+    _has_new = false;
+  }
+  return return_start ? messages.cbegin() : messages.cend();
 }
 
-Message& WorkingState::next(void) {
-  std::swap(messages[0], messages[WorkingState::MESSAGE_COUNT-1]);
+// Get a reference to the next available message.
+Message& Working::next(void) {
+  std::swap(messages[0], messages[Working::MESSAGE_COUNT-1]);
+  _has_new = true;
 
-  for (uint8_t i = WorkingState::MESSAGE_COUNT - 1; i > 1; i--) {
+  for (uint8_t i = Working::MESSAGE_COUNT - 1; i > 1; i--) {
     std::swap(messages[i], messages[i-1]);
   }
+
+  messages[0].size = 0;
+  memset(messages[0].content, '\0', MAX_MESSAGE_SIZE);
 
   return messages[0];
 }
 
-WorkingState& WorkingState::operator=(WorkingState&& other) {
-  this->id_content = other.id_content;
-  this->id_size = other.id_size;
-
-  this->messages = std::move(other.messages);
-
-  other.id_content = nullptr;
-  return *this;
-}
-
-WorkingState::~WorkingState() {
+Working::~Working() {
   if (id_content != nullptr) {
     free(id_content);
   }
+}
+
 }
