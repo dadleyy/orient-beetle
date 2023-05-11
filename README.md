@@ -5,6 +5,8 @@ a proximity sensor.
 
 For general platform architecture documentation, see [`.docs/architecture.md`][arch].
 
+For the hardware bill of materials, see [`.docs/hardware.md`][bom]
+
 ## Beetle PIO (Firmware)
 
 The firmware for the application lives in [`src/beetle-pio`][fm-rd] and can be compiled
@@ -151,3 +153,4 @@ the manufacturer of the display being used (_orient_ displays).
 [lenv]: ./src/beetle-pio/load_env.py
 [fm-rd]: ./src/beetle-pio/README.md
 [arch]: ./.docs/architecture.md
+[bom]: ./.docs/hardware.md
