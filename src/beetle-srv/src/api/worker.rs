@@ -48,7 +48,7 @@ impl Worker {
     &self,
     device_id: &String,
     user_id: &String,
-    layout: crate::rendering::RenderLayout<&String>,
+    layout: crate::rendering::RenderVariant<&String>,
   ) -> Result<String> {
     let mut retries = 1;
     let mut id = None;

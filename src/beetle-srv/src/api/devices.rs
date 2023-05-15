@@ -95,7 +95,7 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
     .queue_render(
       &body.device_id,
       &user.oid,
-      crate::rendering::RenderLayout::Message(&body.message),
+      crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayout::Message(&body.message)),
     )
     .await
     .map_err(|error| {

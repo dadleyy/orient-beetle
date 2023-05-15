@@ -80,11 +80,7 @@ std::array<Message, Working::MESSAGE_COUNT>::const_iterator Working::end(void) c
 // When requesting an iterator to our messages while in the `Working`, we will assume that subsequent
 // requests are no interested in anything they have read since the last iterator was requested.
 std::array<Message, Working::MESSAGE_COUNT>::const_iterator Working::begin(void) const {
-  auto return_start = _has_new;
-  if (_has_new) {
-    _has_new = false;
-  }
-  return return_start ? messages.cbegin() : messages.cend();
+  return _has_new ? messages.cbegin() : messages.cend();
 }
 
 // Get a reference to the next available message.
@@ -105,6 +101,13 @@ Message& Working::next(void) {
 Working::~Working() {
   if (id_content != nullptr) {
     free(id_content);
+  }
+}
+
+void State::freeze(void) {
+  if (std::holds_alternative<Working>(this->active)) {
+    Working * working_state = std::get_if<Working>(&this->active);
+    working_state->_has_new = false;
   }
 }
 

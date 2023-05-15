@@ -45,7 +45,7 @@ pub async fn send_image(config: &super::CommandLineConfig, command: SendImageCom
     .queue(
       &command.id,
       &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
-      beetle::rendering::RenderLayout::Message(&command.message),
+      beetle::rendering::RenderVariant::Layout(beetle::rendering::RenderLayout::Message(&command.message)),
     )
     .await?;
 

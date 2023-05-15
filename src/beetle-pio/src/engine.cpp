@@ -84,6 +84,7 @@ states::State Engine::update(states::State&& current, uint32_t current_time) {
     log_i("received message, copying buffer to connected state");
     states::Message& next_message = working_state->next();
     next_message.size = _redis.copy(next_message.content, states::MAX_MESSAGE_SIZE);
+    log_i("updated message size: '%d'", next_message.size);
   }
 
   return next;

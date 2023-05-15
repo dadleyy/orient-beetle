@@ -23,7 +23,7 @@ pub struct QueuedRender<S> {
   /// The authority.
   pub(super) auth: QueuedRenderAuthority,
   /// The content.
-  pub(super) layout: super::RenderLayout<S>,
+  pub(super) layout: super::RenderVariant<S>,
   /// The target.
   pub(super) device_id: String,
 }
@@ -49,7 +49,7 @@ where
     &mut self,
     device_id: S,
     auth: &QueuedRenderAuthority,
-    layout: super::RenderLayout<S>,
+    layout: super::RenderVariant<S>,
   ) -> io::Result<(String, i64)>
   where
     S: AsRef<str> + Serialize,

@@ -9,3 +9,6 @@ pub const REGISTRAR_INDEX: &str = "ob:s";
 
 /// LIST: rendering queue.
 pub const RENDERING_QUEUE: &str = "ob:rendering";
+
+/// The prefix used for lighting command messages.
+pub const LIGHTING_PREFIX: &str = "lighting";

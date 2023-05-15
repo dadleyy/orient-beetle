@@ -94,33 +94,55 @@ impl Worker {
         log::info!("found render, rasterizing + publish to '{}'", queued_render.device_id);
 
         let queue_id = crate::redis::device_message_queue_id(&queued_render.device_id);
+        let serialized = serde_json::to_string(&queued_render)?;
 
-        if let Ok(formatted_buffer) = queued_render.layout.rasterize((400, 300)) {
-          let mut command = kramer::Command::Lists(kramer::ListCommand::Push(
-            (kramer::Side::Left, kramer::Insertion::Always),
-            queue_id.as_str(),
-            kramer::Arity::One(formatted_buffer.as_slice().iter().enumerate()),
-          ));
-
-          command.execute(&mut c).await?;
-
-          let devices = mongo
-            .database(&self.config.0.mongo.database)
-            .collection::<crate::types::DeviceDiagnostic>(&self.config.0.mongo.collections.device_diagnostics);
-
-          if let Err(error) = devices
-            .update_one(
-              bson::doc! { "id": &queued_render.device_id },
-              bson::doc! { "$inc": { "sent_message_count": 1 } },
-              None,
-            )
-            .await
-          {
-            log::warn!("unable to update device diagnostic total message count - {error}");
+        match queued_render.layout {
+          super::RenderVariant::Lighting(layout) => {
+            let inner = match &layout {
+              super::LightingLayout::On => "on",
+              super::LightingLayout::Off => "off",
+            };
+            let command = kramer::Command::Lists(kramer::ListCommand::Push(
+              (kramer::Side::Left, kramer::Insertion::Always),
+              queue_id.as_str(),
+              kramer::Arity::One(format!("{}:{inner}", crate::constants::LIGHTING_PREFIX)),
+            ));
+            let res = kramer::execute(&mut c, &command).await?;
+            log::info!("pushed lighting command onto queue - '{res:?}'");
           }
+          super::RenderVariant::Layout(layout) => {
+            let formatted_buffer = layout.rasterize((400, 300))?;
 
-          log::debug!("mongo diagnostics updated for '{}'", queued_render.device_id);
+            let mut command = kramer::Command::Lists(kramer::ListCommand::Push(
+              (kramer::Side::Left, kramer::Insertion::Always),
+              queue_id.as_str(),
+              kramer::Arity::One(formatted_buffer.as_slice().iter().enumerate()),
+            ));
+
+            let res = command.execute(&mut c).await?;
+            log::info!("pushed layout command onto queue - '{res:?}'");
+          }
         }
+
+        let devices = mongo
+          .database(&self.config.0.mongo.database)
+          .collection::<crate::types::DeviceDiagnostic>(&self.config.0.mongo.collections.device_diagnostics);
+
+        if let Err(error) = devices
+          .update_one(
+            bson::doc! { "id": &queued_render.device_id },
+            bson::doc! {
+                "$inc": { "sent_message_count": 1 },
+                "$push": { "sent_messages": serialized },
+            },
+            None,
+          )
+          .await
+        {
+          log::warn!("unable to update device diagnostic total message count - {error}");
+        }
+
+        log::debug!("mongo diagnostics updated for '{}'", queued_render.device_id);
       }
 
       self.connections.1 = Some(c);

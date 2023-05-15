@@ -15,6 +15,7 @@ pub mod renderer;
 /// The render layout represents the various kinds of layouts that can be rendered into a
 /// rasterized image and sent to the embedded devices.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RenderLayout<S> {
   /// The simplest form of render layout - a single message.
   Message(S),
@@ -54,4 +55,24 @@ where
       }
     }
   }
+}
+
+/// "Rendering" commands associated with the rgb lights on a device.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LightingLayout {
+  /// Requests the device to turn the lights off.
+  Off,
+  /// Requests the device to turn the lights on.
+  On,
+}
+
+/// Wraps the lighting and display of the device.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum RenderVariant<S> {
+  /// Requests a layout be rendered to the screen.
+  Layout(RenderLayout<S>),
+  /// Requests some change in the lighting.
+  Lighting(LightingLayout),
 }

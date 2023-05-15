@@ -10,6 +10,7 @@ static_assert(1=0, "Error! Either xiao OR firebeetle must be selected, not both.
 #endif
 
 #include <Arduino.h>
+#include "esp32-hal-log.h"
 
 #ifdef XIAO
 #include <Wire.h>
@@ -154,6 +155,8 @@ void loop(void) {
   } else {
     display_render_unknown(last_frame);
   }
+
+  state.freeze();
 
   last_frame = now;
 #ifndef RELEASE

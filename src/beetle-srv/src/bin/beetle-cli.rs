@@ -31,6 +31,12 @@ enum CommandLineCommand {
   /// Creates an image and sends it along to the device.
   SendImage(cli::SendImageCommand),
 
+  /// Turns the lights on.
+  Darken(cli::SingleDeviceCommand),
+
+  /// Turns the lights off.
+  Lighten(cli::SingleDeviceCommand),
+
   /// Prints the length of a device message queue.
   PrintItems(cli::SingleDeviceCommand),
 }
@@ -55,6 +61,26 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
     CommandLineCommand::CleanDisconnects => cli::clean_disconnects(&config).await,
     CommandLineCommand::Provision(command) => cli::provision(&config, command).await,
     CommandLineCommand::PrintConnected => cli::print_connected(&config).await,
+    inner @ CommandLineCommand::Darken(_) | inner @ CommandLineCommand::Lighten(_) => {
+      log::info!("toggling light state");
+      let mut stream = beetle::redis::connect(&config.redis).await?;
+      let (id, inner) = match &inner {
+        CommandLineCommand::Darken(inner) => (&inner.id, beetle::rendering::LightingLayout::Off),
+        CommandLineCommand::Lighten(inner) => (&inner.id, beetle::rendering::LightingLayout::On),
+        _ => unreachable!(),
+      };
+      let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
+      let (request_id, pending) = queue
+        .queue(
+          &id,
+          &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
+          beetle::rendering::RenderVariant::Lighting(inner),
+        )
+        .await?;
+      log::info!("id '{request_id}' | pending {pending}");
+
+      Ok(())
+    }
     CommandLineCommand::PrintItems(cmd) => cli::print_queue_size(&config, cmd).await,
     CommandLineCommand::SendImage(cmd) => cli::send_image(&config, cmd).await,
   }

@@ -12,6 +12,7 @@ namespace states {
 
 constexpr const uint32_t MAX_MESSAGE_SIZE = 2828 * 3;
 
+struct State;
 struct Unknown;
 struct Configuring;
 struct Connecting;
@@ -109,6 +110,8 @@ struct Working final {
   private:
     std::array<Message, MESSAGE_COUNT> messages;
     mutable bool _has_new;
+
+    friend State;
 };
 
 
@@ -122,8 +125,12 @@ struct State final {
   State(const State&) = delete;
   State& operator=(const State&) = delete;
 
+  void freeze(void);
+
   StateT active;
 };
+
+State clear_render(State &&old_state);
 
 }
 
