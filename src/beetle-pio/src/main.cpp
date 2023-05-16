@@ -24,6 +24,7 @@ static_assert(1=0, "Error! Either xiao OR firebeetle must be selected, not both.
 #ifdef XIAO
 #include "xiao-rendering.hpp"
 #include "xiao-lighting.hpp"
+lighting::Lighting lights;
 #endif
 
 // Internal libraries
@@ -79,7 +80,7 @@ void setup(void) {
 
   while (i < 12) {
 #ifdef XIAO
-    lighting::boot(i);
+    lights.boot(i);
 #endif
     delay(500);
     i += 1;
@@ -146,7 +147,7 @@ void loop(void) {
   state = eng.update(std::move(state), now);
 
 #ifdef XIAO
-  lighting::update(state);
+  lights = std::move(std::move(lights).update(state));
 #endif
 
   if (std::get_if<states::Working>(&state.active)) {
