@@ -1,4 +1,5 @@
 use async_std::sync::{Arc, Mutex};
+use serde::Serialize;
 use std::io::{Error, ErrorKind, Result};
 
 /// The type shared by all web worker requests.
@@ -44,12 +45,15 @@ impl Worker {
   }
 
   /// Will attempt to queue a render request.
-  pub(super) async fn queue_render(
+  pub(super) async fn queue_render<S>(
     &self,
     device_id: &String,
     user_id: &String,
-    layout: crate::rendering::RenderVariant<&String>,
-  ) -> Result<String> {
+    layout: crate::rendering::RenderVariant<S>,
+  ) -> Result<String>
+  where
+    S: AsRef<str> + Serialize,
+  {
     let mut retries = 1;
     let mut id = None;
 
@@ -65,11 +69,12 @@ impl Worker {
           .queue(
             device_id,
             &crate::rendering::queue::QueuedRenderAuthority::User(user_id.clone()),
-            layout.clone(),
+            layout,
           )
           .await?;
 
         id = Some(result.0);
+        break;
       }
     }
 

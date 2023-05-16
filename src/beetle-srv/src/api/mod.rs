@@ -91,6 +91,7 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/devices/unregister").post(devices::unregister);
   app.at("/device-info").get(devices::info);
   app.at("/device-message").post(devices::message);
+  app.at("/device-queue").post(devices::queue);
 
   app.at("/status").get(heartbeat);
   app.at("/*").all(missing);

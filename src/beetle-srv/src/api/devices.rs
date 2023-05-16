@@ -16,6 +16,30 @@ struct MessagePayload {
   message: String,
 }
 
+/// The api wrapper around convenience types for the underlying layout kinds.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum QueuePayloadKind {
+  /// Controls the lights.
+  Lights(bool),
+  /// Renders text.
+  Message(String),
+  /// Predefined.
+  Away,
+  /// Clears screen.
+  Clear,
+}
+
+/// The api used to add various layouts to a device queue.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct QueuePayload {
+  /// The id of the device.
+  device_id: String,
+  /// The contents of the message.
+  kind: QueuePayloadKind,
+}
+
 /// The schema of our api to registration of a device.
 #[derive(Debug, Deserialize)]
 struct RegistrationPayload {
@@ -59,6 +83,73 @@ async fn parse_message(request: &mut tide::Request<super::worker::Worker>) -> ti
 /// Route: message
 ///
 /// Sends a message to the device.
+pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
+  let queue_payload = request.body_json::<QueuePayload>().await.map_err(|error| {
+    log::warn!("bad device message payload - {error}");
+    tide::Error::from_str(422, "bad-request")
+  })?;
+  log::info!("queue payload request received - {queue_payload:?}");
+
+  let worker = request.state();
+
+  let user = worker
+    .request_authority(&request)
+    .await?
+    .ok_or_else(|| {
+      log::warn!("no user found");
+      tide::Error::from_str(404, "missing-user")
+    })
+    .map_err(|error| {
+      log::warn!("unable to determine request authority - {error}");
+      error
+    })?;
+
+  if !user
+    .devices
+    .as_ref()
+    .map(|list| list.contains_key(&queue_payload.device_id))
+    .unwrap_or(false)
+  {
+    log::warn!("'{}' has no access to device '{}'", user.oid, queue_payload.device_id);
+    return Err(tide::Error::from_str(400, "not-found"));
+  }
+
+  log::info!("user {user:?} creating message for device - {:?}", queue_payload.kind);
+
+  let layout = match &queue_payload.kind {
+    QueuePayloadKind::Away => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayout::Message("Busy")),
+    QueuePayloadKind::Lights(on) => {
+      let light_layout = if *on {
+        crate::rendering::LightingLayout::On
+      } else {
+        crate::rendering::LightingLayout::Off
+      };
+      crate::rendering::RenderVariant::Lighting(light_layout)
+    }
+    QueuePayloadKind::Clear => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayout::Message("")),
+    QueuePayloadKind::Message(m) => {
+      crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayout::Message(m.as_str()))
+    }
+  };
+
+  let request_id = worker
+    .queue_render(&queue_payload.device_id, &user.oid, layout)
+    .await
+    .map_err(|error| {
+      log::warn!(
+        "unable to queue render for device '{}' -> '{error}'",
+        queue_payload.device_id
+      );
+      error
+    })?;
+
+  tide::Body::from_json(&RegistrationResponse { id: request_id })
+    .map(|body| tide::Response::builder(200).body(body).build())
+}
+
+/// Route: message
+///
+/// Sends a message to the device.
 pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
   let body = parse_message(&mut request).await.map_err(|error| {
     log::warn!("bad device message payload - {error}");
@@ -67,8 +158,7 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
 
   let worker = request.state();
 
-  let user = request
-    .state()
+  let user = worker
     .request_authority(&request)
     .await?
     .ok_or_else(|| {
@@ -91,7 +181,8 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
   }
 
   log::debug!("user {:?} creating message for device - {body:?}", user);
-  worker
+
+  let request_id = worker
     .queue_render(
       &body.device_id,
       &user.oid,
@@ -103,7 +194,7 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
       error
     })?;
 
-  tide::Body::from_json(&RegistrationResponse { id: body.device_id })
+  tide::Body::from_json(&RegistrationResponse { id: request_id })
     .map(|body| tide::Response::builder(200).body(body).build())
 }
 

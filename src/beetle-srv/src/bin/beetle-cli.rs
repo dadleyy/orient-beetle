@@ -71,8 +71,8 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
       };
       let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
       let (request_id, pending) = queue
-        .queue(
-          &id,
+        .queue::<&str, &str>(
+          id,
           &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
           beetle::rendering::RenderVariant::Lighting(inner),
         )
