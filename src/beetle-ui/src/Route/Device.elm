@@ -161,15 +161,15 @@ view model env =
                     )
     in
     Html.div [ ATT.class "px-4 py-3" ]
-        [ Html.div [ ATT.class "pb-1 mb-1" ]
-            [ Html.h2 []
-                [ Html.text model.id ]
+        [ Html.div [ ATT.class "pb-1 mb-1 flex items-center" ]
+            [ Html.div [] [ Html.h2 [] [ Html.text model.id ] ]
+            , Html.div [ ATT.class "lg:hidden flex ml-auto items-center" ] inputToggles
             ]
         , Html.div [ ATT.class "flex items-center" ]
             [ inputNode
             , Html.button [ EV.onClick AttemptMessage, ATT.disabled (isBusy model), ATT.class "ml-4" ]
                 [ Html.text "send" ]
-            , Html.div [ ATT.class "ml-8" ] inputToggles
+            , Html.div [ ATT.class "hidden lg:flex ml-8 items-center" ] inputToggles
             ]
         , case model.loadedDevice of
             Nothing ->
