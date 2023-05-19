@@ -14,16 +14,32 @@ pub mod queue;
 /// things.
 pub mod renderer;
 
+/// Wraps a string.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct RenderMessageLayout<S> {
+  /// The text to draw.
+  pub message: S,
+}
+
+/// Wraps a string.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct RenderScannableLayout<S> {
+  /// The thing to make a qr code of.
+  pub contents: S,
+}
+
 /// The render layout represents the various kinds of layouts that can be rendered into a
 /// rasterized image and sent to the embedded devices.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum RenderLayout<S> {
   /// The simplest form of render layout - a single message.
-  Message(S),
+  Message(RenderMessageLayout<S>),
 
   /// The simplest form of render layout - a single message.
-  Scannable(S),
+  Scannable(RenderScannableLayout<S>),
 }
 
 impl<S> RenderLayout<S>
@@ -33,7 +49,7 @@ where
   /// Turn this layout into a rasterized image.
   pub fn rasterize(self, dimensions: (u32, u32)) -> io::Result<Vec<u8>> {
     match self {
-      Self::Scannable(message) => {
+      Self::Scannable(RenderScannableLayout { contents: message }) => {
         let str_msg = message.as_ref();
         let code = qrcode::QrCode::new(str_msg.as_bytes()).map_err(|error| {
           log::warn!("unable to create QR code from '{str_msg}' - {error}");
@@ -54,7 +70,7 @@ where
         Ok(formatted_buffer.into_inner())
       }
 
-      Self::Message(message) => {
+      Self::Message(RenderMessageLayout { message }) => {
         let mut image = image::GrayImage::new(dimensions.0, dimensions.1);
         imageproc::drawing::draw_filled_rect_mut(
           &mut image,
@@ -93,12 +109,21 @@ pub enum LightingLayout {
   On,
 }
 
-/// Wraps the lighting and display of the device.
+/// Wraps the contents of our outermost enum. It helps serde with more straightforward
+/// serialization.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
+pub struct RenderLayoutContainer<S> {
+  /// The wrapped layout
+  pub layout: S,
+}
+
+/// Wraps the lighting and display of the device.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum RenderVariant<S> {
   /// Requests a layout be rendered to the screen.
-  Layout(RenderLayout<S>),
+  Layout(RenderLayoutContainer<RenderLayout<S>>),
   /// Requests some change in the lighting.
-  Lighting(LightingLayout),
+  Lighting(RenderLayoutContainer<LightingLayout>),
 }

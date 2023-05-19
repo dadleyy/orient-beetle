@@ -33,7 +33,9 @@ pub struct SendImageCommand {
 /// Builds and sends an image to a specific device.
 pub async fn send_scannable(config: &super::CommandLineConfig, command: SendScannableCommand) -> io::Result<()> {
   let mut stream = beetle::redis::connect(&config.redis).await?;
-  let layout = beetle::rendering::RenderLayout::Scannable(&command.content);
+  let layout = beetle::rendering::RenderLayout::Scannable(beetle::rendering::RenderScannableLayout {
+    contents: &command.content,
+  });
 
   if let Some(path) = &command.local_path {
     println!("writing image to {path}");
@@ -54,7 +56,7 @@ pub async fn send_scannable(config: &super::CommandLineConfig, command: SendScan
       })?
   }
 
-  let request = beetle::rendering::RenderVariant::Layout(layout);
+  let request = beetle::rendering::RenderVariant::Layout(beetle::rendering::RenderLayoutContainer { layout });
   let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
   let (request_id, pending) = queue
     .queue(
@@ -76,7 +78,10 @@ pub async fn send_scannable(config: &super::CommandLineConfig, command: SendScan
 /// Builds and sends an image to a specific device.
 pub async fn send_image(config: &super::CommandLineConfig, command: SendImageCommand) -> io::Result<()> {
   let mut stream = beetle::redis::connect(&config.redis).await?;
-  let formatted_buffer = beetle::rendering::RenderLayout::Message(&command.message).rasterize((400, 300))?;
+  let formatted_buffer = beetle::rendering::RenderLayout::Message(beetle::rendering::RenderMessageLayout {
+    message: &command.message,
+  })
+  .rasterize((400, 300))?;
 
   if let Some(path) = &command.local_path {
     println!("writing image to {path}");
@@ -102,7 +107,11 @@ pub async fn send_image(config: &super::CommandLineConfig, command: SendImageCom
     .queue(
       &command.id,
       &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
-      beetle::rendering::RenderVariant::Layout(beetle::rendering::RenderLayout::Message(&command.message)),
+      beetle::rendering::RenderVariant::Layout(beetle::rendering::RenderLayoutContainer {
+        layout: beetle::rendering::RenderLayout::Message(beetle::rendering::RenderMessageLayout {
+          message: &command.message,
+        }),
+      }),
     )
     .await?;
 

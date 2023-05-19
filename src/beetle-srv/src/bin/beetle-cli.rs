@@ -77,7 +77,7 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
         .queue::<&str, &str>(
           id,
           &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
-          beetle::rendering::RenderVariant::Lighting(inner),
+          beetle::rendering::RenderVariant::Lighting(beetle::rendering::RenderLayoutContainer { layout: inner }),
         )
         .await?;
       log::info!("id '{request_id}' | pending {pending}");

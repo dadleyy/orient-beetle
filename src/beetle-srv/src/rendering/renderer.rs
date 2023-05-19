@@ -88,7 +88,6 @@ impl Worker {
         log::info!("found render, rasterizing + publish to '{}'", queued_render.device_id);
 
         let queue_id = crate::redis::device_message_queue_id(&queued_render.device_id);
-        let serialized = serde_json::to_string(&queued_render)?;
 
         let errors = match self.send_layout(&mut c, &queue_id, queued_render.layout.clone()).await {
           Ok(_) => vec![],
@@ -105,13 +104,20 @@ impl Worker {
           .database(&self.config.0.mongo.database)
           .collection::<crate::types::DeviceDiagnostic>(&self.config.0.mongo.collections.device_diagnostics);
 
+        let message_doc = bson::to_bson(&queued_render).map_err(|error| {
+          log::warn!("unable to encode message as bson! - {error}");
+          io::Error::new(io::ErrorKind::Other, format!("serialization error"))
+        })?;
+
         if let Err(error) = devices
           .update_one(
             bson::doc! { "id": &queued_render.device_id },
             bson::doc! {
                 "$inc": { "sent_message_count": 1 },
-                "$push": { "sent_messages": serialized },
-                "$push": { "render_failures": { "$each": errors } },
+                "$push": {
+                    "sent_messages": message_doc,
+                    "render_failures": { "$each": errors },
+                },
             },
             None,
           )
@@ -120,7 +126,7 @@ impl Worker {
           log::warn!("unable to update device diagnostic total message count - {error}");
         }
 
-        log::debug!("mongo diagnostics updated for '{}'", queued_render.device_id);
+        log::info!("mongo diagnostics updated for '{}'", queued_render.device_id);
       }
 
       self.connections.1 = Some(c);
@@ -142,8 +148,8 @@ impl Worker {
     S: std::convert::AsRef<str>,
   {
     match layout {
-      super::RenderVariant::Lighting(layout) => {
-        let inner = match &layout {
+      super::RenderVariant::Lighting(layout_container) => {
+        let inner = match &layout_container.layout {
           super::LightingLayout::On => "on",
           super::LightingLayout::Off => "off",
         };
@@ -155,8 +161,8 @@ impl Worker {
         let res = kramer::execute(connection, &command).await?;
         log::info!("pushed lighting command onto queue - '{res:?}'");
       }
-      super::RenderVariant::Layout(layout) => {
-        let formatted_buffer = layout.rasterize((400, 300))?;
+      super::RenderVariant::Layout(layout_container) => {
+        let formatted_buffer = layout_container.layout.rasterize((400, 300))?;
 
         let mut command = kramer::Command::Lists(kramer::ListCommand::Push(
           (kramer::Side::Left, kramer::Insertion::Always),

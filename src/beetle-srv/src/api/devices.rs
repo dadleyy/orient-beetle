@@ -73,6 +73,9 @@ pub struct DeviceInfoPayload {
 
   /// How man messages are currently pending.
   current_queue_count: i64,
+
+  /// A list of the most recent messages that have been sent to the device.
+  sent_messages: Vec<crate::rendering::queue::QueuedRender<String>>,
 }
 
 /// Parses the payload from our message api. This should live in the request handler.
@@ -117,19 +120,23 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
   log::info!("user {user:?} creating message for device - {:?}", queue_payload.kind);
 
   let layout = match &queue_payload.kind {
-    QueuePayloadKind::Away => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayout::Message("Busy")),
+    QueuePayloadKind::Away => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
+      layout: crate::rendering::RenderLayout::Message(crate::rendering::RenderMessageLayout { message: "Busy" }),
+    }),
     QueuePayloadKind::Lights(on) => {
       let light_layout = if *on {
         crate::rendering::LightingLayout::On
       } else {
         crate::rendering::LightingLayout::Off
       };
-      crate::rendering::RenderVariant::Lighting(light_layout)
+      crate::rendering::RenderVariant::Lighting(crate::rendering::RenderLayoutContainer { layout: light_layout })
     }
-    QueuePayloadKind::Clear => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayout::Message("")),
-    QueuePayloadKind::Message(m) => {
-      crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayout::Message(m.as_str()))
-    }
+    QueuePayloadKind::Clear => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
+      layout: crate::rendering::RenderLayout::Message(crate::rendering::RenderMessageLayout { message: "" }),
+    }),
+    QueuePayloadKind::Message(m) => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
+      layout: crate::rendering::RenderLayout::Message(crate::rendering::RenderMessageLayout { message: m.as_str() }),
+    }),
   };
 
   let request_id = worker
@@ -186,7 +193,11 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
     .queue_render(
       &body.device_id,
       &user.oid,
-      crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayout::Message(&body.message)),
+      crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
+        layout: crate::rendering::RenderLayout::Message(crate::rendering::RenderMessageLayout {
+          message: &body.message,
+        }),
+      }),
     )
     .await
     .map_err(|error| {
@@ -266,6 +277,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
     first_seen: device_diagnostic.first_seen,
     sent_message_count: device_diagnostic.sent_message_count,
     current_queue_count: current_queue_len,
+    sent_messages: device_diagnostic.sent_messages.unwrap_or_default(),
   };
 
   log::debug!("user '{}' fetched device '{}'", user.oid, info.id);

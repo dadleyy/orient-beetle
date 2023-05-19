@@ -32,6 +32,7 @@ type alias Model =
     { id : String
     , newMessage : ( String, Maybe (Maybe String) )
     , loadedDevice : Maybe (Result Http.Error DeviceInfoResponse)
+    , pendingRefresh : Maybe (Maybe (Result Http.Error DeviceInfoResponse))
     , pendingMessageJobs : List String
     }
 
@@ -238,13 +239,29 @@ update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
         Tick _ ->
-            ( model, fetchDevice env model.id )
+            let
+                ( command, pendingRefresh ) =
+                    case model.pendingRefresh of
+                        Just Nothing ->
+                            ( Cmd.none, model.pendingRefresh )
+
+                        Nothing ->
+                            ( fetchDevice env model.id, Just Nothing )
+
+                        Just (Just _) ->
+                            ( fetchDevice env model.id, Just Nothing )
+            in
+            ( { model | pendingRefresh = pendingRefresh }, command )
 
         SetMessage messageText ->
             ( setMessage model messageText, Cmd.none )
 
         LoadedDeviceInfo infoResult ->
-            ( { model | loadedDevice = Just infoResult }, Cmd.none )
+            let
+                pendingRefresh =
+                    Maybe.map (always (Just infoResult)) model.pendingRefresh
+            in
+            ( { model | pendingRefresh = pendingRefresh, loadedDevice = Just infoResult }, Cmd.none )
 
         Loaded _ ->
             ( { model | newMessage = ( "", Nothing ) }, Cmd.none )
@@ -270,6 +287,7 @@ default env id =
       , newMessage = ( "", Nothing )
       , loadedDevice = Nothing
       , pendingMessageJobs = []
+      , pendingRefresh = Nothing
       }
     , Cmd.batch [ fetchDevice env id ]
     )

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 /// Our user record. Stores minimal information; Auth0 is responsible for holding onto all
 /// personally identifiable information.
 #[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
 pub struct User {
   /// The oauth ID of this user.
   pub oid: String,
@@ -26,6 +27,7 @@ fn format_datetime(datetime: &chrono::DateTime<chrono::Utc>) -> String {
 /// This type is serialized into our mongoDB instance for every device and updated periodically
 /// as the device communicates with the server.
 #[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
 pub struct DeviceDiagnostic {
   /// The id of this device.
   pub id: String,
@@ -40,6 +42,9 @@ pub struct DeviceDiagnostic {
 
   /// An accumulated total of messages that have been added to this device's queue.
   pub sent_message_count: Option<u32>,
+
+  /// A list of the most recent messages that have been sent to the device.
+  pub sent_messages: Option<Vec<crate::rendering::queue::QueuedRender<String>>>,
 }
 
 impl std::fmt::Display for DeviceDiagnostic {
