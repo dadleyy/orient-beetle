@@ -1,5 +1,9 @@
 use std::io::{Error, ErrorKind, Result};
 
+/// An alias that wraps our tcp stream in TLS. This should ideally support both secure and
+/// non-secure connections (for local development).
+pub type RedisConnection = async_tls::client::TlsStream<async_std::net::TcpStream>;
+
 /// Helper function to create the key that will be popped from on the device to receive the next
 /// message it should display.
 pub fn device_message_queue_id<S>(input: S) -> String
@@ -11,9 +15,7 @@ where
 
 /// Wraps the configuration we have; the only functionality beyond opening the tcp stream here is
 /// an initial request to the redis instance to authenticate.
-pub async fn connect(
-  config: &crate::config::RedisConfiguration,
-) -> Result<async_tls::client::TlsStream<async_std::net::TcpStream>> {
+pub async fn connect(config: &crate::config::RedisConfiguration) -> Result<RedisConnection> {
   let connector = async_tls::TlsConnector::default();
   let mut stream = connector
     .connect(

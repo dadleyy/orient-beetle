@@ -2,6 +2,20 @@ use clap::Parser;
 use serde::Deserialize;
 use std::io;
 
+/// Creates a scannable render layout and queues it.
+#[derive(Parser, Deserialize, PartialEq, Debug)]
+pub struct SendScannableCommand {
+  /// The id of a device.
+  #[arg(short = 'd', long)]
+  id: String,
+  /// The message to render.
+  #[arg(short = 'c', long)]
+  content: String,
+  /// An optional path on the filesystem where the image can be written.
+  #[arg(short = 'o', long)]
+  local_path: Option<String>,
+}
+
 /// Creates a render layout and rasterizes it. This is then sent to the device.
 #[derive(Parser, Deserialize, PartialEq, Debug)]
 pub struct SendImageCommand {
@@ -14,6 +28,49 @@ pub struct SendImageCommand {
   /// An optional path on the filesystem where the image can be written.
   #[arg(short = 'o', long)]
   local_path: Option<String>,
+}
+
+/// Builds and sends an image to a specific device.
+pub async fn send_scannable(config: &super::CommandLineConfig, command: SendScannableCommand) -> io::Result<()> {
+  let mut stream = beetle::redis::connect(&config.redis).await?;
+  let layout = beetle::rendering::RenderLayout::Scannable(&command.content);
+
+  if let Some(path) = &command.local_path {
+    println!("writing image to {path}");
+    let local_buffer = layout.clone().rasterize((400, 300))?;
+    let mut file = async_std::fs::File::create(&path).await.map_err(|error| {
+      io::Error::new(
+        error.kind(),
+        format!("Unable to open file {path} for saving local copy of image - {error}"),
+      )
+    })?;
+    async_std::io::WriteExt::write_all(&mut file, local_buffer.as_slice())
+      .await
+      .map_err(|error| {
+        io::Error::new(
+          error.kind(),
+          format!("Unable to save file {path} for saving local copy of image - {error}"),
+        )
+      })?
+  }
+
+  let request = beetle::rendering::RenderVariant::Layout(layout);
+  let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
+  let (request_id, pending) = queue
+    .queue(
+      &command.id,
+      &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
+      request,
+    )
+    .await?;
+
+  println!(
+    "message queued successfully. id '{request_id}' ({}/{} in queue)",
+    pending + 1,
+    pending + 1
+  );
+
+  Ok(())
 }
 
 /// Builds and sends an image to a specific device.

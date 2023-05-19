@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::io;
 
+use qrencode as qrcode;
+
 /// Compile-time loading of our `.ttf` data.
 const TEXT_FONT: &[u8] = include_bytes!("../../DejaVuSans.ttf");
 
@@ -19,6 +21,9 @@ pub mod renderer;
 pub enum RenderLayout<S> {
   /// The simplest form of render layout - a single message.
   Message(S),
+
+  /// The simplest form of render layout - a single message.
+  Scannable(S),
 }
 
 impl<S> RenderLayout<S>
@@ -28,6 +33,27 @@ where
   /// Turn this layout into a rasterized image.
   pub fn rasterize(self, dimensions: (u32, u32)) -> io::Result<Vec<u8>> {
     match self {
+      Self::Scannable(message) => {
+        let str_msg = message.as_ref();
+        let code = qrcode::QrCode::new(str_msg.as_bytes()).map_err(|error| {
+          log::warn!("unable to create QR code from '{str_msg}' - {error}");
+          io::Error::new(io::ErrorKind::Other, format!("{error}"))
+        })?;
+
+        let image = code
+          .render::<image::Luma<u8>>()
+          .max_dimensions(dimensions.0, dimensions.1)
+          .build();
+
+        let mut formatted_buffer = std::io::Cursor::new(Vec::with_capacity((dimensions.0 * dimensions.1) as usize));
+
+        image
+          .write_to(&mut formatted_buffer, image::ImageOutputFormat::Png)
+          .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("unable to build image: {error}")))?;
+
+        Ok(formatted_buffer.into_inner())
+      }
+
       Self::Message(message) => {
         let mut image = image::GrayImage::new(dimensions.0, dimensions.1);
         imageproc::drawing::draw_filled_rect_mut(

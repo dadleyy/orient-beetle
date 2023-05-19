@@ -33,12 +33,6 @@ impl Worker {
 
   /// Each "working" cycle of our renderer.
   async fn tick(&mut self) -> io::Result<()> {
-    let mongo = self
-      .connections
-      .0
-      .as_mut()
-      .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no mongo connection".to_string()))?;
-
     // Start with an attempt to re-connect to redis.
     self.connections.1 = match self.connections.1.take() {
       None => {
@@ -96,33 +90,16 @@ impl Worker {
         let queue_id = crate::redis::device_message_queue_id(&queued_render.device_id);
         let serialized = serde_json::to_string(&queued_render)?;
 
-        match queued_render.layout {
-          super::RenderVariant::Lighting(layout) => {
-            let inner = match &layout {
-              super::LightingLayout::On => "on",
-              super::LightingLayout::Off => "off",
-            };
-            let command = kramer::Command::Lists(kramer::ListCommand::Push(
-              (kramer::Side::Left, kramer::Insertion::Always),
-              queue_id.as_str(),
-              kramer::Arity::One(format!("{}:{inner}", crate::constants::LIGHTING_PREFIX)),
-            ));
-            let res = kramer::execute(&mut c, &command).await?;
-            log::info!("pushed lighting command onto queue - '{res:?}'");
-          }
-          super::RenderVariant::Layout(layout) => {
-            let formatted_buffer = layout.rasterize((400, 300))?;
+        let errors = match self.send_layout(&mut c, &queue_id, queued_render.layout.clone()).await {
+          Ok(_) => vec![],
+          Err(error) => vec![format!("{error}")],
+        };
 
-            let mut command = kramer::Command::Lists(kramer::ListCommand::Push(
-              (kramer::Side::Left, kramer::Insertion::Always),
-              queue_id.as_str(),
-              kramer::Arity::One(formatted_buffer.as_slice().iter().enumerate()),
-            ));
-
-            let res = command.execute(&mut c).await?;
-            log::info!("pushed layout command onto queue - '{res:?}'");
-          }
-        }
+        let mongo = self
+          .connections
+          .0
+          .as_mut()
+          .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no mongo connection".to_string()))?;
 
         let devices = mongo
           .database(&self.config.0.mongo.database)
@@ -134,6 +111,7 @@ impl Worker {
             bson::doc! {
                 "$inc": { "sent_message_count": 1 },
                 "$push": { "sent_messages": serialized },
+                "$push": { "render_failures": { "$each": errors } },
             },
             None,
           )
@@ -146,6 +124,49 @@ impl Worker {
       }
 
       self.connections.1 = Some(c);
+    }
+
+    Ok(())
+  }
+
+  /// While the `tick` method is responsible for dealing with redis connections _and_ checking for
+  /// a new layout, this function is solely responsible for dealing with the process of queuing
+  /// that new layout onto the device queue.
+  async fn send_layout<S>(
+    &mut self,
+    connection: &mut crate::redis::RedisConnection,
+    queue_id: &str,
+    layout: super::RenderVariant<S>,
+  ) -> io::Result<()>
+  where
+    S: std::convert::AsRef<str>,
+  {
+    match layout {
+      super::RenderVariant::Lighting(layout) => {
+        let inner = match &layout {
+          super::LightingLayout::On => "on",
+          super::LightingLayout::Off => "off",
+        };
+        let command = kramer::Command::Lists(kramer::ListCommand::Push(
+          (kramer::Side::Left, kramer::Insertion::Always),
+          queue_id,
+          kramer::Arity::One(format!("{}:{inner}", crate::constants::LIGHTING_PREFIX)),
+        ));
+        let res = kramer::execute(connection, &command).await?;
+        log::info!("pushed lighting command onto queue - '{res:?}'");
+      }
+      super::RenderVariant::Layout(layout) => {
+        let formatted_buffer = layout.rasterize((400, 300))?;
+
+        let mut command = kramer::Command::Lists(kramer::ListCommand::Push(
+          (kramer::Side::Left, kramer::Insertion::Always),
+          queue_id,
+          kramer::Arity::One(formatted_buffer.as_slice().iter().enumerate()),
+        ));
+
+        let res = command.execute(connection).await?;
+        log::info!("pushed layout command onto queue - '{res:?}'");
+      }
     }
 
     Ok(())

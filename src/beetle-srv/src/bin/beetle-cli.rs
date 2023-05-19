@@ -28,8 +28,11 @@ enum CommandLineCommand {
   /// Creates the ACL entries that will be used by devices for requesting their unique identifiers.
   Provision(cli::ProvisionCommand),
 
-  /// Creates an image and sends it along to the device.
+  /// Creates request for an image render and queues it.
   SendImage(cli::SendImageCommand),
+
+  /// Creates request for a qr code render and queues it.
+  SendScannable(cli::SendScannableCommand),
 
   /// Turns the lights on.
   Darken(cli::SingleDeviceCommand),
@@ -83,6 +86,7 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
     }
     CommandLineCommand::PrintItems(cmd) => cli::print_queue_size(&config, cmd).await,
     CommandLineCommand::SendImage(cmd) => cli::send_image(&config, cmd).await,
+    CommandLineCommand::SendScannable(cmd) => cli::send_scannable(&config, cmd).await,
   }
 }
 

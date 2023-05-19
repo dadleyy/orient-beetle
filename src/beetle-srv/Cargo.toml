@@ -42,6 +42,7 @@ clap = { version = "^4.0.0", features = ["derive"] }
 imageproc = { version = "^0.23" }
 image = { version = "^0.24" }
 rusttype = { version = "^0.9" }
+qrencode = { version = "^0.14" }
 
 [patch.crates-io]
 kramer = { git = "https://github.com/sizethree/kramer.git", branch = "async-read" }
