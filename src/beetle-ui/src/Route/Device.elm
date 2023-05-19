@@ -3,10 +3,10 @@ module Route.Device exposing (Message(..), Model, default, subscriptions, update
 import Environment
 import Html
 import Html.Attributes as ATT
-import Html.Events
+import Html.Events as EV
 import Http
 import Json.Decode
-import Json.Encode
+import Json.Encode as Encode
 import Time
 
 
@@ -26,20 +26,21 @@ type Message
     | Tick Time.Posix
     | AttemptMessage
     | SetMessage String
+    | UpdateInput InputKinds
+
+
+type InputKinds
+    = Message String
+    | Link String
 
 
 type alias Model =
     { id : String
-    , newMessage : ( String, Maybe (Maybe String) )
+    , activeInput : ( InputKinds, Maybe (Maybe (Result Http.Error String)) )
     , loadedDevice : Maybe (Result Http.Error DeviceInfoResponse)
     , pendingRefresh : Maybe (Maybe (Result Http.Error DeviceInfoResponse))
     , pendingMessageJobs : List String
     }
-
-
-setMessage : Model -> String -> Model
-setMessage model message =
-    { model | newMessage = ( message, Nothing ) }
 
 
 subscriptions : Model -> Sub Message
@@ -47,16 +48,11 @@ subscriptions model =
     Time.every 2000 Tick
 
 
-getMessage : Model -> String
-getMessage model =
-    Tuple.first model.newMessage
-
-
 isBusy : Model -> Bool
 isBusy model =
     let
         isSending =
-            Tuple.second model.newMessage |> Maybe.map (always True) |> Maybe.withDefault False
+            Tuple.second model.activeInput |> Maybe.map (always True) |> Maybe.withDefault False
 
         isLoading =
             case model.loadedDevice of
@@ -130,20 +126,50 @@ formatDeviceTime time =
 
 view : Model -> Environment.Environment -> Html.Html Message
 view model env =
+    let
+        isDisabled =
+            case Tuple.second model.activeInput of
+                Just Nothing ->
+                    True
+
+                Nothing ->
+                    False
+
+                Just (Just _) ->
+                    True
+
+        ( inputNode, inputToggles ) =
+            case model.activeInput of
+                ( Link current, _ ) ->
+                    ( Html.input [ EV.onInput SetMessage, ATT.value current, ATT.disabled isDisabled ]
+                        []
+                    , [ Html.button [ ATT.disabled True, ATT.class "ml-4" ]
+                            [ Html.text "link" ]
+                      , Html.button [ EV.onClick (UpdateInput (Message "")), ATT.disabled (isBusy model), ATT.class "ml-4" ]
+                            [ Html.text "message" ]
+                      ]
+                    )
+
+                ( Message current, _ ) ->
+                    ( Html.input [ EV.onInput SetMessage, ATT.value current, ATT.disabled isDisabled ]
+                        []
+                    , [ Html.button [ EV.onClick (UpdateInput (Link "")), ATT.disabled (isBusy model), ATT.class "ml-4" ]
+                            [ Html.text "link" ]
+                      , Html.button [ ATT.disabled True, ATT.class "ml-4" ]
+                            [ Html.text "message" ]
+                      ]
+                    )
+    in
     Html.div [ ATT.class "px-4 py-3" ]
         [ Html.div [ ATT.class "pb-1 mb-1" ]
             [ Html.h2 []
                 [ Html.text model.id ]
             ]
         , Html.div [ ATT.class "flex items-center" ]
-            [ Html.input
-                [ Html.Events.onInput SetMessage
-                , ATT.value (getMessage model)
-                , ATT.disabled (isBusy model)
-                ]
-                []
-            , Html.button [ Html.Events.onClick AttemptMessage, ATT.disabled (isBusy model) ]
+            [ inputNode
+            , Html.button [ EV.onClick AttemptMessage, ATT.disabled (isBusy model), ATT.class "ml-4" ]
                 [ Html.text "send" ]
+            , Html.div [ ATT.class "ml-8" ] inputToggles
             ]
         , case model.loadedDevice of
             Nothing ->
@@ -187,13 +213,6 @@ view model env =
                             ]
                         ]
                     ]
-
-        -- Html.div [ ATT.class "mt-2 pt-2" ]
-        --     [ Html.div [] [ Html.code [] [ Html.text ("total messages sent: " ++ sentMessageCount) ] ]
-        --     , Html.div [] [ Html.code [] [ Html.text ("current messages queued: " ++ String.fromInt info.current_queue_count) ] ]
-        --     , Html.div [] [ Html.code [] [ Html.text ("last seen: " ++ formatDeviceTime info.last_seen ++ "UTC") ] ]
-        --     , Html.div [] [ Html.code [] [ Html.text ("first seen: " ++ formatDeviceTime info.first_seen ++ "UTC") ] ]
-        --     ]
         ]
 
 
@@ -204,15 +223,38 @@ queuedMessageDecoder =
 
 postMessage : Environment.Environment -> Model -> Cmd Message
 postMessage env model =
+    let
+        payload =
+            case Tuple.first model.activeInput of
+                Link str ->
+                    Http.jsonBody
+                        (Encode.object
+                            [ ( "device_id", Encode.string model.id )
+                            , ( "kind"
+                              , Encode.object
+                                    [ ( "beetle:kind", Encode.string "link" )
+                                    , ( "beetle:content", Encode.string str )
+                                    ]
+                              )
+                            ]
+                        )
+
+                Message str ->
+                    Http.jsonBody
+                        (Encode.object
+                            [ ( "device_id", Encode.string model.id )
+                            , ( "kind"
+                              , Encode.object
+                                    [ ( "beetle:kind", Encode.string "message" )
+                                    , ( "beetle:content", Encode.string str )
+                                    ]
+                              )
+                            ]
+                        )
+    in
     Http.post
-        { url = Environment.apiRoute env "device-message"
-        , body =
-            Http.jsonBody
-                (Json.Encode.object
-                    [ ( "device_id", Json.Encode.string model.id )
-                    , ( "message", Json.Encode.string (getMessage model) )
-                    ]
-                )
+        { url = Environment.apiRoute env "device-queue"
+        , body = payload
         , expect = Http.expectWhatever Loaded
         }
 
@@ -253,8 +295,21 @@ update env message model =
             in
             ( { model | pendingRefresh = pendingRefresh }, command )
 
+        UpdateInput newInput ->
+            ( { model | activeInput = ( newInput, Tuple.second model.activeInput ) }, Cmd.none )
+
         SetMessage messageText ->
-            ( setMessage model messageText, Cmd.none )
+            let
+                nextInput =
+                    case Tuple.first model.activeInput of
+                        Message _ ->
+                            Message messageText
+
+                        Link _ ->
+                            Link messageText
+            in
+            -- ( setMessage model messageText, Cmd.none )
+            ( { model | activeInput = ( nextInput, Tuple.second model.activeInput ) }, Cmd.none )
 
         LoadedDeviceInfo infoResult ->
             let
@@ -264,27 +319,31 @@ update env message model =
             ( { model | pendingRefresh = pendingRefresh, loadedDevice = Just infoResult }, Cmd.none )
 
         Loaded _ ->
-            ( { model | newMessage = ( "", Nothing ) }, Cmd.none )
+            let
+                emptiedInput =
+                    case Tuple.first model.activeInput of
+                        Message _ ->
+                            Message ""
+
+                        Link _ ->
+                            Link ""
+            in
+            ( { model | activeInput = ( emptiedInput, Nothing ) }, Cmd.none )
 
         QueuedMessageJob (Ok jobId) ->
-            ( { model
-                | newMessage = ( "", Nothing )
-                , pendingMessageJobs = jobId :: model.pendingMessageJobs
-              }
-            , Cmd.none
-            )
+            ( { model | pendingMessageJobs = jobId :: model.pendingMessageJobs }, Cmd.none )
 
         QueuedMessageJob (Err _) ->
-            ( { model | newMessage = ( "", Nothing ) }, Cmd.none )
+            ( model, Cmd.none )
 
         AttemptMessage ->
-            ( { model | newMessage = ( Tuple.first model.newMessage, Just Nothing ) }, postMessage env model )
+            ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }, postMessage env model )
 
 
 default : Environment.Environment -> String -> ( Model, Cmd Message )
 default env id =
     ( { id = id
-      , newMessage = ( "", Nothing )
+      , activeInput = ( Message "", Nothing )
       , loadedDevice = Nothing
       , pendingMessageJobs = []
       , pendingRefresh = Nothing

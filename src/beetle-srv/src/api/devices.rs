@@ -18,12 +18,14 @@ struct MessagePayload {
 
 /// The api wrapper around convenience types for the underlying layout kinds.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 enum QueuePayloadKind {
   /// Controls the lights.
   Lights(bool),
   /// Renders text.
   Message(String),
+  /// Renders text.
+  Link(String),
   /// Predefined.
   Away,
   /// Clears screen.
@@ -133,6 +135,11 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
     }
     QueuePayloadKind::Clear => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
       layout: crate::rendering::RenderLayout::Message(crate::rendering::RenderMessageLayout { message: "" }),
+    }),
+    QueuePayloadKind::Link(m) => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
+      layout: crate::rendering::RenderLayout::Scannable(crate::rendering::RenderScannableLayout {
+        contents: m.as_str(),
+      }),
     }),
     QueuePayloadKind::Message(m) => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
       layout: crate::rendering::RenderLayout::Message(crate::rendering::RenderMessageLayout { message: m.as_str() }),
