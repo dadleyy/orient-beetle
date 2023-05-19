@@ -26,12 +26,19 @@ type Message
     | Tick Time.Posix
     | AttemptMessage
     | SetMessage String
+    | ToggleLights Bool
     | UpdateInput InputKinds
 
 
 type InputKinds
     = Message String
     | Link String
+
+
+type QueuePayloadKinds
+    = MessagePayload String
+    | LinkPayload String
+    | LightPayload Bool
 
 
 type alias Model =
@@ -192,24 +199,30 @@ view model env =
                     sentMessageCount =
                         Maybe.withDefault 0 info.sent_message_count |> String.fromInt
                 in
-                Html.table [ ATT.class "w-full mt-2" ]
-                    [ Html.thead [] []
-                    , Html.tbody []
-                        [ Html.tr []
-                            [ Html.td [] [ Html.text "Total Messages Sent" ]
-                            , Html.td [] [ Html.text sentMessageCount ]
-                            ]
-                        , Html.tr []
-                            [ Html.td [] [ Html.text "Current Queue" ]
-                            , Html.td [] [ Html.text (String.fromInt info.current_queue_count) ]
-                            ]
-                        , Html.tr []
-                            [ Html.td [] [ Html.text "Last Seen" ]
-                            , Html.td [] [ Html.text (formatDeviceTime info.last_seen ++ "UTC") ]
-                            ]
-                        , Html.tr []
-                            [ Html.td [] [ Html.text "First Seen" ]
-                            , Html.td [] [ Html.text (formatDeviceTime info.first_seen ++ "UTC") ]
+                Html.div []
+                    [ Html.div [ ATT.class "flex items-center mt-2 justify-center" ]
+                        [ Html.button [ EV.onClick (ToggleLights True) ] [ Html.text "lights on" ]
+                        , Html.button [ EV.onClick (ToggleLights False), ATT.class "ml-2" ] [ Html.text "lights off" ]
+                        ]
+                    , Html.table [ ATT.class "w-full mt-2" ]
+                        [ Html.thead [] []
+                        , Html.tbody []
+                            [ Html.tr []
+                                [ Html.td [] [ Html.text "Total Messages Sent" ]
+                                , Html.td [] [ Html.text sentMessageCount ]
+                                ]
+                            , Html.tr []
+                                [ Html.td [] [ Html.text "Current Queue" ]
+                                , Html.td [] [ Html.text (String.fromInt info.current_queue_count) ]
+                                ]
+                            , Html.tr []
+                                [ Html.td [] [ Html.text "Last Seen" ]
+                                , Html.td [] [ Html.text (formatDeviceTime info.last_seen ++ "UTC") ]
+                                ]
+                            , Html.tr []
+                                [ Html.td [] [ Html.text "First Seen" ]
+                                , Html.td [] [ Html.text (formatDeviceTime info.first_seen ++ "UTC") ]
+                                ]
                             ]
                         ]
                     ]
@@ -221,15 +234,28 @@ queuedMessageDecoder =
     Json.Decode.field "id" Json.Decode.string
 
 
-postMessage : Environment.Environment -> Model -> Cmd Message
-postMessage env model =
+postMessage : Environment.Environment -> String -> QueuePayloadKinds -> Cmd Message
+postMessage env id payloadKind =
     let
         payload =
-            case Tuple.first model.activeInput of
-                Link str ->
+            case payloadKind of
+                LightPayload isOn ->
                     Http.jsonBody
                         (Encode.object
-                            [ ( "device_id", Encode.string model.id )
+                            [ ( "device_id", Encode.string id )
+                            , ( "kind"
+                              , Encode.object
+                                    [ ( "beetle:kind", Encode.string "lights" )
+                                    , ( "beetle:content", Encode.bool isOn )
+                                    ]
+                              )
+                            ]
+                        )
+
+                LinkPayload str ->
+                    Http.jsonBody
+                        (Encode.object
+                            [ ( "device_id", Encode.string id )
                             , ( "kind"
                               , Encode.object
                                     [ ( "beetle:kind", Encode.string "link" )
@@ -239,10 +265,10 @@ postMessage env model =
                             ]
                         )
 
-                Message str ->
+                MessagePayload str ->
                     Http.jsonBody
                         (Encode.object
-                            [ ( "device_id", Encode.string model.id )
+                            [ ( "device_id", Encode.string id )
                             , ( "kind"
                               , Encode.object
                                     [ ( "beetle:kind", Encode.string "message" )
@@ -330,6 +356,11 @@ update env message model =
             in
             ( { model | activeInput = ( emptiedInput, Nothing ) }, Cmd.none )
 
+        ToggleLights state ->
+            ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }
+            , postMessage env model.id (LightPayload state)
+            )
+
         QueuedMessageJob (Ok jobId) ->
             ( { model | pendingMessageJobs = jobId :: model.pendingMessageJobs }, Cmd.none )
 
@@ -337,7 +368,16 @@ update env message model =
             ( model, Cmd.none )
 
         AttemptMessage ->
-            ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }, postMessage env model )
+            let
+                payload =
+                    case Tuple.first model.activeInput of
+                        Message str ->
+                            MessagePayload str
+
+                        Link str ->
+                            LinkPayload str
+            in
+            ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }, postMessage env model.id payload )
 
 
 default : Environment.Environment -> String -> ( Model, Cmd Message )
