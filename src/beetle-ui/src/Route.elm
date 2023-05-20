@@ -137,7 +137,7 @@ routeLoadedEnv env url maybeId =
 
                         -- Parse the quey, but pretend we're at the root, no matter where we are. This
                         -- is a workaround to avoid having to deal with the path we're actually hosted
-                        -- under
+                        -- under.
                         parsedQuery =
                             UrlParser.parse parser { url | path = "" }
 

@@ -392,6 +392,10 @@ jobs:
 
       - uses: actions/download-artifact@v3
         with:
+          name: "beetle-srv-docs-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+
+      - uses: actions/download-artifact@v3
+        with:
           name: "beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
       - uses: actions/download-artifact@v3
@@ -420,6 +424,11 @@ jobs:
           arm_artifact="beetle-server-armv7-unknown-linux-gnueabihf-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
           x86_artifact="beetle-server-x86-unknown-linux-gnu-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
           ui_artifact="beetle-ui-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+          docs_artifact="beetle-srv-docs-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
+
+          ./aws/dist/aws s3 cp \
+            ../$docs_artifact \
+            s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/$docs_artifact
 
           ./aws/dist/aws s3 cp \
             ../$arm_artifact \
