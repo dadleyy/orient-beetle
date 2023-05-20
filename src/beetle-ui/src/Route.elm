@@ -9,7 +9,7 @@ import Route.Device
 import Route.DeviceRegistration
 import Route.Home
 import Url
-import Url.Parser as UrlParser exposing ((<?>))
+import Url.Parser as UrlParser exposing ((</>))
 import Url.Parser.Query as QueryParser
 
 
@@ -133,10 +133,13 @@ routeLoadedEnv env url maybeId =
                 ( "register-device", Just _ ) ->
                     let
                         parser =
-                            UrlParser.s "register-device" <?> targetDeviceIdQueryParser
+                            UrlParser.query targetDeviceIdQueryParser
 
+                        -- Parse the quey, but pretend we're at the root, no matter where we are. This
+                        -- is a workaround to avoid having to deal with the path we're actually hosted
+                        -- under
                         parsedQuery =
-                            UrlParser.parse parser url
+                            UrlParser.parse parser { url | path = "" }
 
                         initialModel =
                             case parsedQuery of
