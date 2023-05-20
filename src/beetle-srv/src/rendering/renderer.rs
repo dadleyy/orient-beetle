@@ -106,7 +106,7 @@ impl Worker {
 
         let message_doc = bson::to_bson(&queued_render).map_err(|error| {
           log::warn!("unable to encode message as bson! - {error}");
-          io::Error::new(io::ErrorKind::Other, format!("serialization error"))
+          io::Error::new(io::ErrorKind::Other, "serialization error".to_string())
         })?;
 
         if let Err(error) = devices

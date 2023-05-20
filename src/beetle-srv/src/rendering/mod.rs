@@ -130,6 +130,8 @@ pub enum RenderVariant<S> {
 }
 
 impl<S> RenderVariant<S> {
+  /// A helper "type constructor" that will wrap the deep-inner scannable content in the
+  /// container types.
   pub fn scannable(contents: S) -> Self {
     let layout = RenderLayout::Scannable(RenderScannableLayout { contents });
     Self::Layout(RenderLayoutContainer { layout })
