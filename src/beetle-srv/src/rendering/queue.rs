@@ -9,6 +9,9 @@ pub enum QueuedRenderAuthority {
   /// The queued render was sent by the cli.
   CommandLine,
 
+  /// The queued render was sent by the registrar.
+  Registrar,
+
   /// The queued render was sent by a user.
   User(String),
 }

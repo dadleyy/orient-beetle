@@ -1,4 +1,4 @@
-module Route.DeviceRegistration exposing (Message(..), Model, default, update, view)
+module Route.DeviceRegistration exposing (Message(..), Model, default, update, view, withInitialId)
 
 import Browser.Navigation as Nav
 import Environment
@@ -36,6 +36,11 @@ default =
     { newDevice = ( "", Nothing ), alert = Nothing }
 
 
+withInitialId : String -> Model
+withInitialId id =
+    { newDevice = ( id, Nothing ), alert = Nothing }
+
+
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
@@ -43,7 +48,9 @@ update env message model =
             ( { model | newDevice = ( id, Nothing ) }, Cmd.none )
 
         AttemptDeviceClaim ->
-            ( { model | newDevice = ( Tuple.first model.newDevice, Just Nothing ) }, addDevice env (Tuple.first model.newDevice) )
+            ( { model | newDevice = ( Tuple.first model.newDevice, Just Nothing ) }
+            , addDevice env (Tuple.first model.newDevice)
+            )
 
         RegisteredDevice result ->
             case result of

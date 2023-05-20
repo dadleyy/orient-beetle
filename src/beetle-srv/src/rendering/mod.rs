@@ -9,6 +9,7 @@ const TEXT_FONT: &[u8] = include_bytes!("../../DejaVuSans.ttf");
 /// The rendering queue module contains the central business logic for taking a layout and adding
 /// it to the queue of things to be rendered and sent to devices.
 pub mod queue;
+pub use queue::QueuedRenderAuthority;
 
 /// The renderer itself is responsible for periodically popping from the queue and doing the
 /// things.
@@ -126,4 +127,11 @@ pub enum RenderVariant<S> {
   Layout(RenderLayoutContainer<RenderLayout<S>>),
   /// Requests some change in the lighting.
   Lighting(RenderLayoutContainer<LightingLayout>),
+}
+
+impl<S> RenderVariant<S> {
+  pub fn scannable(contents: S) -> Self {
+    let layout = RenderLayout::Scannable(RenderScannableLayout { contents });
+    Self::Layout(RenderLayoutContainer { layout })
+  }
 }

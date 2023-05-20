@@ -9,6 +9,8 @@ import Route.Device
 import Route.DeviceRegistration
 import Route.Home
 import Url
+import Url.Parser as UrlParser exposing ((<?>))
+import Url.Parser.Query as QueryParser
 
 
 type RouteInitialization
@@ -116,9 +118,12 @@ deviceRouting env normalizedUrl =
             Redirect (Environment.buildRoutePath env "login")
 
 
-routeLoadedEnv : Environment.Environment -> String -> Maybe String -> RouteInitialization
-routeLoadedEnv env normalizedUrl maybeId =
-    --  TODO: is there a better way to navigate/route subroute?
+routeLoadedEnv : Environment.Environment -> Url.Url -> Maybe String -> RouteInitialization
+routeLoadedEnv env url maybeId =
+    let
+        normalizedUrl =
+            Environment.normalizeUrlPath env url
+    in
     case String.startsWith "devices" normalizedUrl of
         True ->
             deviceRouting env normalizedUrl
@@ -126,7 +131,22 @@ routeLoadedEnv env normalizedUrl maybeId =
         False ->
             case ( normalizedUrl, maybeId ) of
                 ( "register-device", Just _ ) ->
-                    Matched ( Just (DeviceRegistration Route.DeviceRegistration.default), Cmd.none )
+                    let
+                        parser =
+                            UrlParser.s "register-device" <?> targetDeviceIdQueryParser
+
+                        parsedQuery =
+                            UrlParser.parse parser url
+
+                        initialModel =
+                            case parsedQuery of
+                                Just (Just id) ->
+                                    Route.DeviceRegistration.withInitialId id
+
+                                _ ->
+                                    Route.DeviceRegistration.default
+                    in
+                    Matched ( Just (DeviceRegistration initialModel), Cmd.none )
 
                 ( "login", Just _ ) ->
                     Redirect (Environment.buildRoutePath env "home")
@@ -150,13 +170,14 @@ routeLoadedEnv env normalizedUrl maybeId =
 
 fromUrl : Environment.Environment -> Url.Url -> RouteInitialization
 fromUrl env url =
-    let
-        normalizedUrl =
-            Environment.normalizeUrlPath env url
-    in
     Environment.getLoadedId env
-        |> Maybe.map (routeLoadedEnv env normalizedUrl)
+        |> Maybe.map (routeLoadedEnv env url)
         |> Maybe.withDefault (Matched ( Nothing, Cmd.none ))
+
+
+targetDeviceIdQueryParser : QueryParser.Parser (Maybe String)
+targetDeviceIdQueryParser =
+    QueryParser.string "device_target_id"
 
 
 renderLogin : Environment.Environment -> Html.Html Message

@@ -75,12 +75,12 @@ void display_render_state(const states::Working * working_state, uint32_t t) {
 
     if (strstr(message->content, LIGHTING_PREFIX) != nullptr) {
       log_i("irrelevant message for layout rendering '%s'", message->content);
+      sent = true;
       continue;
     }
 
     log_i("parsing '%d' bytes as if they were png", message->size);
     auto rc = png.openRAM((uint8_t *) message->content, message->size, draw_row);
-
 
     if (rc == PNG_SUCCESS) {
       display.firstPage();
