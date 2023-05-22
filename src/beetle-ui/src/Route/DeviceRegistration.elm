@@ -14,8 +14,9 @@ import Html
 import Html.Attributes
 import Html.Events
 import Http
-import Json.Decode
-import Json.Encode
+import Job
+import Json.Decode as Decode
+import Json.Encode as Encode
 import Time
 
 
@@ -23,9 +24,16 @@ type alias RegistrationResponse =
     { id : String }
 
 
+type JobPollingState
+    = WaitingForId
+    | PollingId String
+    | PolledId String
+
+
 type alias Model =
-    { newDevice : ( String, Maybe (Maybe Http.Error) )
-    , pendingAttempt : Maybe String
+    { newDevice : String
+    , pendingAttempt : Maybe JobPollingState
+    , loadingJob : Bool
     , alert : Maybe Alert
     }
 
@@ -35,7 +43,7 @@ type Message
     | AttemptDeviceClaim
     | RegisteredDevice (Result Http.Error RegistrationResponse)
     | Tick Time.Posix
-    | LoadedJob (Result Http.Error ())
+    | LoadedJob (Result Http.Error Job.Job)
 
 
 type Alert
@@ -45,12 +53,12 @@ type Alert
 
 default : Model
 default =
-    { newDevice = ( "", Nothing ), alert = Nothing, pendingAttempt = Nothing }
+    { newDevice = "", alert = Nothing, pendingAttempt = Nothing, loadingJob = False }
 
 
 withInitialId : String -> Model
 withInitialId id =
-    { newDevice = ( id, Nothing ), alert = Nothing, pendingAttempt = Nothing }
+    { default | newDevice = id }
 
 
 loadPendingJob : Environment.Environment -> String -> Cmd Message
@@ -61,8 +69,18 @@ loadPendingJob env jobId =
     in
     Http.get
         { url = url
-        , expect = Http.expectWhatever LoadedJob
+        , expect = Http.expectJson LoadedJob Job.decoder
         }
+
+
+finishPollAttempt : JobPollingState -> JobPollingState
+finishPollAttempt state =
+    case state of
+        PolledId id ->
+            PollingId id
+
+        _ ->
+            state
 
 
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
@@ -70,30 +88,63 @@ update env message model =
     case message of
         Tick time ->
             let
-                fetchCmd =
-                    Maybe.map (loadPendingJob env) model.pendingAttempt
-                        |> Maybe.withDefault Cmd.none
-            in
-            ( model, fetchCmd )
+                ( pendingAttempt, fetchCmd ) =
+                    case model.pendingAttempt of
+                        Just WaitingForId ->
+                            ( Just WaitingForId, Cmd.none )
 
-        LoadedJob _ ->
-            ( model, Cmd.none )
+                        Just (PollingId id) ->
+                            ( Just (PolledId id), loadPendingJob env id )
+
+                        Just (PolledId id) ->
+                            ( Just (PolledId id), Cmd.none )
+
+                        Nothing ->
+                            ( Nothing, Cmd.none )
+            in
+            ( { model | pendingAttempt = pendingAttempt }, fetchCmd )
+
+        LoadedJob loadResult ->
+            let
+                mappedResult =
+                    Result.map Job.asResult loadResult
+
+                ( alert, pendingAttempt, cmd ) =
+                    case mappedResult of
+                        Err err ->
+                            ( Just (Warning "Failed"), Nothing, Cmd.none )
+
+                        Ok Job.Pending ->
+                            ( Nothing, Maybe.map finishPollAttempt model.pendingAttempt, Cmd.none )
+
+                        Ok Job.Success ->
+                            let
+                                redir =
+                                    Nav.pushUrl env.navKey ("/devices/" ++ model.newDevice)
+                            in
+                            ( Nothing, Nothing, redir )
+
+                        Ok (Job.Failed reason) ->
+                            ( Just (Warning reason), Nothing, Cmd.none )
+
+                        Ok Job.Unknown ->
+                            ( Just (Warning "Unknown job result"), Nothing, Cmd.none )
+            in
+            ( { model | loadingJob = False, pendingAttempt = pendingAttempt, alert = alert }, cmd )
 
         SetNewDeviceId id ->
-            ( { model | newDevice = ( id, Nothing ) }, Cmd.none )
+            ( { model | newDevice = id }, Cmd.none )
 
         AttemptDeviceClaim ->
-            ( { model | newDevice = ( Tuple.first model.newDevice, Just Nothing ) }
-            , addDevice env (Tuple.first model.newDevice)
-            )
+            ( { model | pendingAttempt = Just WaitingForId }, addDevice env model.newDevice )
 
         RegisteredDevice result ->
             case result of
                 Ok registrationRes ->
-                    ( { model | pendingAttempt = Just registrationRes.id }, Cmd.none )
+                    ( { model | pendingAttempt = Just (PollingId registrationRes.id) }, Cmd.none )
 
                 Err error ->
-                    ( { model | newDevice = ( "", Nothing ), alert = Just (Warning "Failed") }, Cmd.none )
+                    ( { model | newDevice = "", pendingAttempt = Nothing, alert = Just (Warning "Failed") }, Cmd.none )
 
 
 view : Environment.Environment -> Model -> Html.Html Message
@@ -103,21 +154,21 @@ view env model =
 
 hasPendingAddition : Model -> Bool
 hasPendingAddition model =
-    Tuple.second model.newDevice |> Maybe.map (always True) |> Maybe.withDefault False
+    model.pendingAttempt |> Maybe.map (always True) |> Maybe.withDefault False
 
 
 addDevice : Environment.Environment -> String -> Cmd Message
 addDevice env id =
     Http.post
         { url = Environment.apiRoute env "devices/register"
-        , body = Http.jsonBody (Json.Encode.object [ ( "device_id", Json.Encode.string id ) ])
+        , body = Http.jsonBody (Encode.object [ ( "device_id", Encode.string id ) ])
         , expect = Http.expectJson RegisteredDevice registrationDecoder
         }
 
 
-registrationDecoder : Json.Decode.Decoder RegistrationResponse
+registrationDecoder : Decode.Decoder RegistrationResponse
 registrationDecoder =
-    Json.Decode.map RegistrationResponse (Json.Decode.field "id" Json.Decode.string)
+    Decode.map RegistrationResponse (Decode.field "id" Decode.string)
 
 
 subscriptions : Model -> Sub Message
@@ -137,14 +188,14 @@ deviceRegistrationForm env model =
         , Html.div [ Html.Attributes.class "flex items-center" ]
             [ Html.input
                 [ Html.Attributes.placeholder "device id"
-                , Html.Attributes.value (Tuple.first model.newDevice)
+                , Html.Attributes.value model.newDevice
                 , Html.Attributes.class "block mr-2"
                 , Html.Attributes.disabled (hasPendingAddition model)
                 , Html.Events.onInput SetNewDeviceId
                 ]
                 []
             , Html.button
-                [ Html.Attributes.disabled (hasPendingAddition model || String.isEmpty (Tuple.first model.newDevice))
+                [ Html.Attributes.disabled (hasPendingAddition model || String.isEmpty model.newDevice)
                 , Html.Events.onClick AttemptDeviceClaim
                 ]
                 [ Html.text "Add" ]

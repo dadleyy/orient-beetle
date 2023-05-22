@@ -48,23 +48,29 @@ impl Worker {
   pub(super) async fn queue_job(&self, job: crate::registrar::RegistrarJob) -> Result<String> {
     let serialized = serde_json::to_string(&job)
       .map_err(|err| Error::new(ErrorKind::Other, format!("unable to serialize job - {err}")))?;
-    let mut redis_connection = self.get_redis_lock().await?;
 
-    if let Some(ref mut connection) = *redis_connection {
-      kramer::execute(
-        connection,
-        kramer::Command::Lists(kramer::ListCommand::Push(
-          (kramer::Side::Right, kramer::Insertion::Always),
-          crate::constants::REGISTRAR_JOB_QUEUE,
-          kramer::Arity::One(serialized),
-        )),
-      )
+    let pending_json = serde_json::to_string(&crate::job_result::JobResult::Pending).map_err(|error| {
+      log::warn!("unable to serialize pending job state - {error}");
+      Error::new(ErrorKind::Other, "job-serialize")
+    })?;
+
+    self
+      .command(&kramer::Command::Hashes(kramer::HashCommand::Set(
+        crate::constants::REGISTRAR_JOB_RESULTS,
+        kramer::Arity::One((&job.id, &pending_json)),
+        kramer::Insertion::Always,
+      )))
       .await?;
 
-      return Ok(job.id);
-    }
+    self
+      .command(&kramer::Command::Lists(kramer::ListCommand::Push(
+        (kramer::Side::Right, kramer::Insertion::Always),
+        crate::constants::REGISTRAR_JOB_QUEUE,
+        kramer::Arity::One(serialized),
+      )))
+      .await?;
 
-    Err(Error::new(ErrorKind::Other, "invaid-redis-lock"))
+    Ok(job.id)
   }
 
   /// Will attempt to queue a render request.
@@ -101,7 +107,22 @@ impl Worker {
       }
     }
 
-    id.ok_or_else(|| Error::new(ErrorKind::Other, "unable to queue within reasonable amount of attempts"))
+    let id = id.ok_or_else(|| Error::new(ErrorKind::Other, "unable to queue within reasonable amount of attempts"))?;
+
+    let pending_json = serde_json::to_string(&crate::job_result::JobResult::Pending).map_err(|error| {
+      log::warn!("unable to serialize pending job state - {error}");
+      Error::new(ErrorKind::Other, "job-serialize")
+    })?;
+
+    self
+      .command(&kramer::Command::Hashes(kramer::HashCommand::Set(
+        crate::constants::REGISTRAR_JOB_RESULTS,
+        kramer::Arity::One((&id, &pending_json)),
+        kramer::Insertion::Always,
+      )))
+      .await?;
+
+    Ok(id)
   }
 
   /// Attempts to execute a command against the redis instance.

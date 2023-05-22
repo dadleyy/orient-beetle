@@ -26,7 +26,7 @@ pub async fn find(request: tide::Request<super::worker::Worker>) -> tide::Result
       error
     })?;
 
-  log::info!("attempting to find result for job '{}'", query.id);
+  log::debug!("attempting to find result for job '{}'", query.id);
 
   let res = worker
     .command::<&str, &str>(&kramer::Command::Hashes(kramer::HashCommand::Get(
@@ -40,8 +40,9 @@ pub async fn find(request: tide::Request<super::worker::Worker>) -> tide::Result
     })?;
 
   match res {
+    kramer::Response::Item(kramer::ResponseValue::Empty) => Ok(tide::Response::builder(404).build()),
     kramer::Response::Item(kramer::ResponseValue::String(contents)) => {
-      log::info!("found job contents - '{contents:?}'");
+      log::debug!("found job contents - '{contents:?}'");
       let parsed = serde_json::from_str::<crate::job_result::JobResult>(&contents).map_err(|error| {
         log::warn!("unable to lookup job - {error}");
         tide::Error::from_str(500, "internal error")
