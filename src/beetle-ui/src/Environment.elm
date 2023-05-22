@@ -40,6 +40,7 @@ type alias Session =
 
 type alias Configuration =
     { api : String
+    , apiDocsUrl : String
     , root : String
     , loginUrl : String
     , logoutUrl : String

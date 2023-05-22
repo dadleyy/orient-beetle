@@ -17,7 +17,7 @@ pub struct Worker {
 
   /// The redis TCP connection. This is not a "pool" just yet; we're currently only using a single
   /// tcp connection across all connections.
-  redis_pool: Arc<Mutex<Option<async_tls::client::TlsStream<async_std::net::TcpStream>>>>,
+  redis_pool: Arc<Mutex<Option<crate::redis::RedisConnection>>>,
 }
 
 impl Worker {
@@ -42,6 +42,29 @@ impl Worker {
       mongo: (mongo, config.mongo),
       redis_pool,
     })
+  }
+
+  /// Will attempt to queue a render request.
+  pub(super) async fn queue_job(&self, job: crate::registrar::RegistrarJob) -> Result<String> {
+    let serialized = serde_json::to_string(&job)
+      .map_err(|err| Error::new(ErrorKind::Other, format!("unable to serialize job - {err}")))?;
+    let mut redis_connection = self.get_redis_lock().await?;
+
+    if let Some(ref mut connection) = *redis_connection {
+      kramer::execute(
+        connection,
+        kramer::Command::Lists(kramer::ListCommand::Push(
+          (kramer::Side::Right, kramer::Insertion::Always),
+          crate::constants::REGISTRAR_JOB_QUEUE,
+          kramer::Arity::One(serialized),
+        )),
+      )
+      .await?;
+
+      return Ok(job.id);
+    }
+
+    Err(Error::new(ErrorKind::Other, "invaid-redis-lock"))
   }
 
   /// Will attempt to queue a render request.
@@ -195,6 +218,15 @@ impl Worker {
         .database(&self.mongo.1.database)
         .collection(&self.mongo.1.collections.users),
     )
+  }
+
+  /// Attempts to return the access level for a user given a device id.
+  pub async fn user_access(
+    &self,
+    user_id: &String,
+    device_id: &String,
+  ) -> Result<Option<crate::registrar::AccessLevel>> {
+    crate::registrar::user_access(&self.mongo.0, &self.mongo.1, user_id, device_id).await
   }
 
   /// Attempts to aquire a lock, filling the contents with either a new connection, or just

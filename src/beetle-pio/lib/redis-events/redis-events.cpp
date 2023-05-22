@@ -197,7 +197,7 @@ namespace redisevents {
 
         if (_framebuffer_size > 0) {
           log_e("received strange response after attempting device-specific acl: '%s'", _framebuffer);
-          _strange_thing_count = _strange_thing_count + 1;
+          reset();
         }
 
         return std::nullopt;

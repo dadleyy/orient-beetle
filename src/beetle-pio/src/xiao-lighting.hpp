@@ -8,7 +8,7 @@
 #define XIAO_NEOPIXEL_PIN D6
 
 #ifndef XIAO_NEOPIXEL_COUNT
-#define XIAO_NEOPIXEL_COUNT 2
+#define XIAO_NEOPIXEL_COUNT 10
 #endif
 
 namespace lighting {
@@ -16,7 +16,7 @@ namespace lighting {
     public:
       Lighting():
         _override(false),
-        _pixels(XIAO_NEOPIXEL_COUNT, XIAO_NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800) {}
+        _pixels(XIAO_NEOPIXEL_COUNT, XIAO_NEOPIXEL_PIN, NEO_GRB + NEO_KHZ400) {}
       ~Lighting() = default;
 
       Lighting(const Lighting&) = delete;

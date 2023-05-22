@@ -14,11 +14,11 @@ RELEASE_MAIN_CSS=$(subst debug,release,$(MAIN_CSS))
 RELEASE_BOOT_JS=$(subst .js,.min.js,$(subst debug,release,$(BOOT_JS)))
 RELEASE_INDEX=$(subst debug,release,$(INDEX_HTML))
 
-.PHONY: all clean fmt
+.PHONY: all clean fmt debug_font release_font
 
-all: $(MAIN_JS) $(BOOT_JS) $(INDEX_HTML) $(MAIN_CSS)
+all: $(MAIN_JS) $(BOOT_JS) $(INDEX_HTML) $(MAIN_CSS) debug_font
 
-release: $(RELEASE_MAIN_JS) $(RELEASE_BOOT_JS) $(RELEASE_INDEX) $(RELEASE_MAIN_CSS)
+release: $(RELEASE_MAIN_JS) $(RELEASE_BOOT_JS) $(RELEASE_INDEX) $(RELEASE_MAIN_CSS) release_font
 
 fmt:
 	$(NPM) run lint:elm -- --yes
@@ -65,3 +65,33 @@ $(MAIN_CSS): ./src/main.css $(ELM_SOURCES) ./src/index.pug src/boot.ts
 # relies on sass compiling vanilla `.css` correctly.
 $(RELEASE_MAIN_CSS): ./src/main.css $(ELM_SOURCES)
 	$(NPM) run tailwind -- --minify --input $< --output $@
+
+debug_font: \
+	target/debug/icon-font/style.css \
+	target/debug/icon-font/fonts/icomoon.ttf \
+	target/debug/icon-font/fonts/icomoon.eot \
+	target/debug/icon-font/fonts/icomoon.svg \
+	target/debug/icon-font/fonts/icomoon.woff
+
+target/debug/icon-font/%.css: static/icon-font/%.css
+	mkdir -p target/debug/icon-font
+	cp -v $< $@
+
+target/debug/icon-font/fonts/%: static/icon-font/fonts/%
+	mkdir -p target/debug/icon-font/fonts
+	cp -v $< $@
+
+release_font: \
+	target/release/icon-font/style.css \
+	target/release/icon-font/fonts/icomoon.ttf \
+	target/release/icon-font/fonts/icomoon.eot \
+	target/release/icon-font/fonts/icomoon.svg \
+	target/release/icon-font/fonts/icomoon.woff
+
+target/release/icon-font/%.css: static/icon-font/%.css
+	mkdir -p target/release/icon-font
+	cp -v $< $@
+
+target/release/icon-font/fonts/%: static/icon-font/fonts/%
+	mkdir -p target/release/icon-font/fonts
+	cp -v $< $@

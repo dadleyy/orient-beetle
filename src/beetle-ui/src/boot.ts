@@ -8,6 +8,7 @@ type Environment = {
   logoutUrl: string,
   version: string,
   release: boolean,
+  apiDocsUrl: string,
   localization: Array<[string, string]>,
 };
 

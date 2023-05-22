@@ -34,6 +34,9 @@ type Message
 subscriptions : Route -> Sub Message
 subscriptions route =
     case route of
+        DeviceRegistration regModel ->
+            Sub.map DeviceRegistrationMessage (Route.DeviceRegistration.subscriptions regModel)
+
         Device deviceModel ->
             Sub.map DeviceMessage (Route.Device.subscriptions deviceModel)
 

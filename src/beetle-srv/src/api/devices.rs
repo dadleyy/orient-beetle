@@ -109,12 +109,7 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
       error
     })?;
 
-  if !user
-    .devices
-    .as_ref()
-    .map(|list| list.contains_key(&queue_payload.device_id))
-    .unwrap_or(false)
-  {
+  if worker.user_access(&user.oid, &queue_payload.device_id).await?.is_none() {
     log::warn!("'{}' has no access to device '{}'", user.oid, queue_payload.device_id);
     return Err(tide::Error::from_str(400, "not-found"));
   }
@@ -184,12 +179,7 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
       error
     })?;
 
-  if !user
-    .devices
-    .as_ref()
-    .map(|list| list.contains_key(&body.device_id))
-    .unwrap_or(false)
-  {
+  if worker.user_access(&user.oid, &body.device_id).await?.is_none() {
     log::warn!("'{}' has no access to device '{}'", user.oid, body.device_id);
     return Err(tide::Error::from_str(400, "not-found"));
   }
@@ -230,12 +220,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
 
   let query = request.query::<LookupQuery>()?;
 
-  if !user
-    .devices
-    .as_ref()
-    .map(|list| list.contains_key(&query.id))
-    .unwrap_or(false)
-  {
+  if worker.user_access(&user.oid, &query.id).await?.is_none() {
     log::warn!("'{}' has no access to device '{}'", user.oid, query.id);
     return Err(tide::Error::from_str(400, "not-found"));
   }
@@ -359,79 +344,31 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
 /// This api route will attempt to parse the request payload and register the device id
 /// with the user identified in the request cookie.
 pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
-  let worker = request.state();
-  let devices = worker.device_diagnostic_collection()?;
-  let users = worker.users_collection()?;
-
-  let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
-    log::warn!("device-register -> no user found");
-    tide::Error::from_str(404, "missing-user")
-  })?;
-
   let payload = request.body_json::<RegistrationPayload>().await.map_err(|error| {
     log::warn!("device-register -> invalid request payload - {error}");
     tide::Error::from_str(422, "bad-payload")
   })?;
 
-  let found_device = devices.find_one(bson::doc! { "id": &payload.device_id }, None).await;
+  let worker = request.state();
 
-  match found_device {
-    Ok(Some(diagnostic)) => log::trace!("device-register -> found device for registration - {diagnostic:?}"),
-    Ok(None) => {
-      log::warn!("device-register -> unable to find '{}'", payload.device_id);
-      return Err(tide::Error::from_str(404, "not-found"));
-    }
-    Err(error) => {
-      log::warn!(
-        "unable to query for '{}' during registration - {error}",
-        payload.device_id
-      );
-      return Err(tide::Error::from_str(404, "not-found"));
-    }
-  }
+  let user = worker.request_authority(&request).await?.ok_or_else(|| {
+    log::warn!("device-register -> no user found");
+    tide::Error::from_str(404, "missing-user")
+  })?;
 
-  let query = bson::doc! { "oid": user.oid.clone() };
-
-  // Update or create our new devices hash for this user.
-  let devices = user
-    .devices
-    .take()
-    .map(|mut existing_devices| {
-      existing_devices.insert(payload.device_id.clone(), 1);
-      existing_devices
-    })
-    .or_else(|| {
-      let mut start = std::collections::HashMap::with_capacity(1);
-      start.insert(payload.device_id.clone(), 0);
-      Some(start)
-    });
-
-  let updated = crate::types::User { devices, ..user };
-  let options = mongodb::options::FindOneAndUpdateOptions::builder()
-    .upsert(true)
-    .return_document(mongodb::options::ReturnDocument::After)
-    .build();
-
-  users
-    .find_one_and_update(
-      query,
-      bson::doc! { "$set": bson::to_bson(&updated).map_err(|error| {
-        log::warn!("unable to serialize user update - {error}");
-        tide::Error::from_str(500, "user-failure")
-      })? },
-      options,
-    )
-    .await
-    .map_err(|error| {
-      log::warn!("unable to create new user - {:?}", error);
-      tide::Error::from_str(500, "user-failure")
-    })?;
+  let job_id = worker
+    .queue_job(crate::registrar::RegistrarJob::device_ownership(
+      &user.oid,
+      &payload.device_id,
+    ))
+    .await?;
 
   log::info!(
     "device-register -> user '{}' registered '{}'",
-    updated.oid,
+    user.oid,
     payload.device_id
   );
-  tide::Body::from_json(&RegistrationResponse { id: payload.device_id })
+
+  tide::Body::from_json(&RegistrationResponse { id: job_id })
     .map(|body| tide::Response::builder(200).body(body).build())
 }

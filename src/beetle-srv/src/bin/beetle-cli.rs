@@ -34,6 +34,9 @@ enum CommandLineCommand {
   /// Creates request for a qr code render and queues it.
   SendScannable(cli::SendScannableCommand),
 
+  /// Resets the device registration state so the renderer will send a new registration qr code.
+  ResetRegistration(cli::SingleDeviceCommand),
+
   /// Turns the lights on.
   Darken(cli::SingleDeviceCommand),
 
@@ -87,6 +90,33 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
     CommandLineCommand::PrintItems(cmd) => cli::print_queue_size(&config, cmd).await,
     CommandLineCommand::SendImage(cmd) => cli::send_image(&config, cmd).await,
     CommandLineCommand::SendScannable(cmd) => cli::send_scannable(&config, cmd).await,
+    CommandLineCommand::ResetRegistration(cmd) => {
+      log::info!("resetting device '{}' to force qr code", cmd.id);
+      let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
+      let collection = mongo
+        .database(&config.mongo.database)
+        .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
+      let updated_reg = beetle::types::DeviceDiagnosticRegistration::Initial;
+      let serialized_registration = bson::to_bson(&updated_reg).map_err(|error| {
+        log::warn!("unable to serialize registration_state: {error}");
+        io::Error::new(io::ErrorKind::Other, format!("{error}"))
+      })?;
+      if let Err(error) = collection
+        .find_one_and_update(
+          bson::doc! { "id": &cmd.id },
+          bson::doc! { "$set": { "registration_state": serialized_registration } },
+          mongodb::options::FindOneAndUpdateOptions::builder()
+            .upsert(true)
+            .return_document(mongodb::options::ReturnDocument::After)
+            .build(),
+        )
+        .await
+      {
+        log::warn!("unable to update device registration state - {error}");
+      }
+
+      Ok(())
+    }
   }
 }
 

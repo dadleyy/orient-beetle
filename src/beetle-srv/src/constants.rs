@@ -10,5 +10,11 @@ pub const REGISTRAR_INDEX: &str = "ob:s";
 /// LIST: rendering queue.
 pub const RENDERING_QUEUE: &str = "ob:rendering";
 
+/// LIST: general registrar job queue.
+pub const REGISTRAR_JOB_QUEUE: &str = "ob:registrar-jobs";
+
+/// HASH:  registrar job queue.
+pub const REGISTRAR_JOB_RESULTS: &str = "ob:registrar-job-results";
+
 /// The prefix used for lighting command messages.
 pub const LIGHTING_PREFIX: &str = "lighting";

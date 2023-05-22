@@ -24,6 +24,52 @@ fn format_datetime(datetime: &chrono::DateTime<chrono::Utc>) -> String {
   format!("{}", datetime.format("%b %d, %Y %H:%M:%S"))
 }
 
+/// The various kinds of authority models supported for devices.
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
+pub enum DeviceAuthorityModel {
+  /// When a device is in an exclusive authority model, only a single user can manage it.
+  Exclusive(String),
+
+  /// When a device is in a shared authority model, a list ofusers can manage it.
+  Shared(String, Vec<String>),
+}
+
+/// The schema of our records that are stored in `device_authorities` collection.
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct DeviceAuthorityRecord {
+  /// The id of a device.
+  pub(crate) device_id: String,
+
+  /// The model.
+  pub(crate) authority_model: Option<DeviceAuthorityModel>,
+}
+
+/// At the end of the day, what devices a user has access to is still being maintained on the user
+/// record (for efficiency of permission checks).
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct DeviceDiagnosticOwnership {
+  /// The if of the user that first registered this device.
+  pub original_owner: String,
+}
+
+/// This type represents the different states of "registration" a device may be in.
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
+pub enum DeviceDiagnosticRegistration {
+  /// The state where we have seen the device, but nobody has claimed it yet.
+  #[default]
+  Initial,
+
+  /// The state where we have heard from the device, and sent it the initial image.
+  PendingRegistration,
+
+  /// The state where some user has claimed a device.
+  Owned(DeviceDiagnosticOwnership),
+}
+
 /// This type is serialized into our mongoDB instance for every device and updated periodically
 /// as the device communicates with the server.
 #[derive(Deserialize, Serialize, Debug, Default)]
@@ -45,6 +91,9 @@ pub struct DeviceDiagnostic {
 
   /// A list of the most recent messages that have been sent to the device.
   pub sent_messages: Option<Vec<crate::rendering::queue::QueuedRender<String>>>,
+
+  /// The state of this device's registration.
+  pub registration_state: Option<DeviceDiagnosticRegistration>,
 }
 
 impl std::fmt::Display for DeviceDiagnostic {

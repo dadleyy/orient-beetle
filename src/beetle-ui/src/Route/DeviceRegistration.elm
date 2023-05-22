@@ -1,4 +1,12 @@
-module Route.DeviceRegistration exposing (Message(..), Model, default, update, view, withInitialId)
+module Route.DeviceRegistration exposing
+    ( Message(..)
+    , Model
+    , default
+    , subscriptions
+    , update
+    , view
+    , withInitialId
+    )
 
 import Browser.Navigation as Nav
 import Environment
@@ -8,6 +16,7 @@ import Html.Events
 import Http
 import Json.Decode
 import Json.Encode
+import Time
 
 
 type alias RegistrationResponse =
@@ -16,6 +25,7 @@ type alias RegistrationResponse =
 
 type alias Model =
     { newDevice : ( String, Maybe (Maybe Http.Error) )
+    , pendingAttempt : Maybe String
     , alert : Maybe Alert
     }
 
@@ -24,6 +34,8 @@ type Message
     = SetNewDeviceId String
     | AttemptDeviceClaim
     | RegisteredDevice (Result Http.Error RegistrationResponse)
+    | Tick Time.Posix
+    | LoadedJob (Result Http.Error ())
 
 
 type Alert
@@ -33,17 +45,40 @@ type Alert
 
 default : Model
 default =
-    { newDevice = ( "", Nothing ), alert = Nothing }
+    { newDevice = ( "", Nothing ), alert = Nothing, pendingAttempt = Nothing }
 
 
 withInitialId : String -> Model
 withInitialId id =
-    { newDevice = ( id, Nothing ), alert = Nothing }
+    { newDevice = ( id, Nothing ), alert = Nothing, pendingAttempt = Nothing }
+
+
+loadPendingJob : Environment.Environment -> String -> Cmd Message
+loadPendingJob env jobId =
+    let
+        url =
+            Environment.apiRoute env "jobs" ++ "?id=" ++ jobId
+    in
+    Http.get
+        { url = url
+        , expect = Http.expectWhatever LoadedJob
+        }
 
 
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
+        Tick time ->
+            let
+                fetchCmd =
+                    Maybe.map (loadPendingJob env) model.pendingAttempt
+                        |> Maybe.withDefault Cmd.none
+            in
+            ( model, fetchCmd )
+
+        LoadedJob _ ->
+            ( model, Cmd.none )
+
         SetNewDeviceId id ->
             ( { model | newDevice = ( id, Nothing ) }, Cmd.none )
 
@@ -55,7 +90,7 @@ update env message model =
         RegisteredDevice result ->
             case result of
                 Ok registrationRes ->
-                    ( model, Nav.pushUrl env.navKey ("/devices/" ++ registrationRes.id) )
+                    ( { model | pendingAttempt = Just registrationRes.id }, Cmd.none )
 
                 Err error ->
                     ( { model | newDevice = ( "", Nothing ), alert = Just (Warning "Failed") }, Cmd.none )
@@ -83,6 +118,16 @@ addDevice env id =
 registrationDecoder : Json.Decode.Decoder RegistrationResponse
 registrationDecoder =
     Json.Decode.map RegistrationResponse (Json.Decode.field "id" Json.Decode.string)
+
+
+subscriptions : Model -> Sub Message
+subscriptions model =
+    case model.pendingAttempt of
+        Just _ ->
+            Time.every 2000 Tick
+
+        Nothing ->
+            Sub.none
 
 
 deviceRegistrationForm : Environment.Environment -> Model -> Html.Html Message

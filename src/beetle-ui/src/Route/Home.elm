@@ -1,11 +1,13 @@
 module Route.Home exposing (Message, Model, default, update, view)
 
+import Button
 import Dict
 import Environment
 import Html
 import Html.Attributes
 import Html.Events
 import Http
+import Icon
 import Json.Decode
 import Json.Encode
 import Random
@@ -259,14 +261,13 @@ renderDevice env device =
                 [ Html.text device.id
                 ]
             ]
-        , Html.td
-            [ Html.Attributes.class "px-3 py-2 text-right" ]
-            [ Html.button
-                [ Html.Attributes.disabled device.busy
-                , Html.Events.onClick (AttemptDeviceRemove device.id)
-                ]
-                [ Html.text "Remove" ]
-            ]
+        , Html.td [ Html.Attributes.class "px-3 py-2 text-right" ]
+            (if device.busy then
+                [ Button.view (Button.DisabledIcon Icon.Trash) ]
+
+             else
+                [ Button.view (Button.Icon Icon.Trash (AttemptDeviceRemove device.id)) ]
+            )
         ]
 
 
@@ -278,10 +279,7 @@ deviceList data env =
                 [ Html.tr [ Html.Attributes.class "text-left" ]
                     [ Html.th [ Html.Attributes.class "px-3 pb-2" ] [ Html.text "Devices" ]
                     , Html.th [ Html.Attributes.class "px-3 py-2 text-right" ]
-                        [ Html.a
-                            [ Html.Attributes.href (Environment.buildRoutePath env "register-device") ]
-                            [ Html.text "Register" ]
-                        ]
+                        [ Icon.link Icon.Add (Environment.buildRoutePath env "register-device") ]
                     ]
                 ]
             , Html.tbody [] (List.map (renderDevice env) data.devices)
