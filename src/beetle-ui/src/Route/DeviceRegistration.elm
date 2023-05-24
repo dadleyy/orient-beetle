@@ -9,11 +9,13 @@ module Route.DeviceRegistration exposing
     )
 
 import Browser.Navigation as Nav
+import Button
 import Environment
 import Html
 import Html.Attributes
 import Html.Events
 import Http
+import Icon
 import Job
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -183,10 +185,28 @@ subscriptions model =
 
 deviceRegistrationForm : Environment.Environment -> Model -> Html.Html Message
 deviceRegistrationForm env model =
-    Html.div [ Html.Attributes.class "flex-1" ]
-        [ Html.div [ Html.Attributes.class "pb-3 py-2" ] [ Html.b [] [ Html.text "Add Device" ] ]
-        , Html.div [ Html.Attributes.class "flex items-center" ]
-            [ Html.input
+    let
+        addButton =
+            case hasPendingAddition model || String.isEmpty model.newDevice of
+                True ->
+                    Button.view (Button.DisabledIcon Icon.Add)
+
+                False ->
+                    Button.view (Button.PrimaryIcon Icon.Add AttemptDeviceClaim)
+
+        alert =
+            case model.alert of
+                Nothing ->
+                    Html.div [] []
+
+                Just (Happy text) ->
+                    Html.div [ Html.Attributes.class "mt-2 pill happy" ] [ Html.text text ]
+
+                Just (Warning text) ->
+                    Html.div [ Html.Attributes.class "mt-2 pill sad" ] [ Html.text text ]
+
+        input =
+            Html.input
                 [ Html.Attributes.placeholder "device id"
                 , Html.Attributes.value model.newDevice
                 , Html.Attributes.class "block mr-2"
@@ -194,19 +214,10 @@ deviceRegistrationForm env model =
                 , Html.Events.onInput SetNewDeviceId
                 ]
                 []
-            , Html.button
-                [ Html.Attributes.disabled (hasPendingAddition model || String.isEmpty model.newDevice)
-                , Html.Events.onClick AttemptDeviceClaim
-                ]
-                [ Html.text "Add" ]
-            ]
-        , case model.alert of
-            Nothing ->
-                Html.div [] []
-
-            Just (Happy text) ->
-                Html.div [ Html.Attributes.class "mt-2 pill happy" ] [ Html.text text ]
-
-            Just (Warning text) ->
-                Html.div [ Html.Attributes.class "mt-2 pill sad" ] [ Html.text text ]
+    in
+    Html.div [ Html.Attributes.class "flex-1" ]
+        [ Html.div [ Html.Attributes.class "pb-3 py-2" ] [ Html.b [] [ Html.text "Add Device" ] ]
+        , Html.div [ Html.Attributes.class "flex items-center" ]
+            [ input, addButton ]
+        , alert
         ]

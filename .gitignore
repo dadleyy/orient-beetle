@@ -1,3 +1,6 @@
 /target
 *.DS_Store
 orient-beetle-ci.key
+.env
+env.toml
+.storage

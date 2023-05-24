@@ -1,13 +1,17 @@
 module Route.Device exposing (Message(..), Model, default, subscriptions, update, view)
 
+import Button
 import Environment
 import Html
 import Html.Attributes as ATT
 import Html.Events as EV
 import Http
+import Icon
 import Json.Decode
 import Json.Encode as Encode
+import Task
 import Time
+import TimeDiff
 
 
 type alias DeviceInfoResponse =
@@ -28,6 +32,7 @@ type Message
     | SetMessage String
     | ToggleLights Bool
     | UpdateInput InputKinds
+    | LoadedTime Time.Posix
 
 
 type InputKinds
@@ -47,6 +52,7 @@ type alias Model =
     , loadedDevice : Maybe (Result Http.Error DeviceInfoResponse)
     , pendingRefresh : Maybe (Maybe (Result Http.Error DeviceInfoResponse))
     , pendingMessageJobs : List String
+    , currentTime : Maybe Time.Posix
     }
 
 
@@ -135,37 +141,57 @@ view : Model -> Environment.Environment -> Html.Html Message
 view model env =
     let
         isDisabled =
-            case Tuple.second model.activeInput of
-                Just Nothing ->
-                    True
-
-                Nothing ->
-                    False
-
-                Just (Just _) ->
-                    True
+            isBusy model
 
         ( inputNode, inputToggles ) =
-            case model.activeInput of
-                ( Link current, _ ) ->
-                    ( Html.input [ EV.onInput SetMessage, ATT.value current, ATT.disabled isDisabled ]
+            case ( model.activeInput, isDisabled ) of
+                ( _, True ) ->
+                    ( Html.input [ EV.onInput SetMessage, ATT.value "", ATT.disabled isDisabled ]
                         []
-                    , [ Html.button [ ATT.disabled True, ATT.class "ml-4" ]
-                            [ Html.text "link" ]
-                      , Html.button [ EV.onClick (UpdateInput (Message "")), ATT.disabled (isBusy model), ATT.class "ml-4" ]
-                            [ Html.text "message" ]
+                    , [ Button.view (Button.DisabledIcon Icon.Link)
+                      , Html.div [ ATT.class "ml-2" ]
+                            [ Button.view (Button.DisabledIcon Icon.File) ]
                       ]
                     )
 
-                ( Message current, _ ) ->
+                ( ( Link current, _ ), _ ) ->
                     ( Html.input [ EV.onInput SetMessage, ATT.value current, ATT.disabled isDisabled ]
                         []
-                    , [ Html.button [ EV.onClick (UpdateInput (Link "")), ATT.disabled (isBusy model), ATT.class "ml-4" ]
-                            [ Html.text "link" ]
-                      , Html.button [ ATT.disabled True, ATT.class "ml-4" ]
-                            [ Html.text "message" ]
+                    , [ Button.view (Button.DisabledIcon Icon.Link)
+                      , Html.div [ ATT.class "ml-2" ]
+                            [ Button.view (Button.PrimaryIcon Icon.File (UpdateInput (Message ""))) ]
                       ]
                     )
+
+                ( ( Message current, _ ), _ ) ->
+                    ( Html.input [ EV.onInput SetMessage, ATT.value current, ATT.disabled isDisabled ]
+                        []
+                    , [ Button.view (Button.PrimaryIcon Icon.Link (UpdateInput (Link "")))
+                      , Html.div [ ATT.class "ml-2" ]
+                            [ Button.view (Button.DisabledIcon Icon.File) ]
+                      ]
+                    )
+
+        sendButton =
+            if isBusy model then
+                Button.DisabledIcon Icon.Send
+
+            else
+                Button.PrimaryIcon Icon.Send AttemptMessage
+
+        lightButtons =
+            case isBusy model of
+                True ->
+                    [ Button.view (Button.DisabledIcon Icon.Sun)
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.DisabledIcon Icon.Moon) ]
+                    ]
+
+                False ->
+                    [ Button.view (Button.SecondaryIcon Icon.Sun (ToggleLights True))
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.SecondaryIcon Icon.Moon (ToggleLights False)) ]
+                    ]
     in
     Html.div [ ATT.class "px-4 py-3" ]
         [ Html.div [ ATT.class "pb-1 mb-1 flex items-center" ]
@@ -174,8 +200,7 @@ view model env =
             ]
         , Html.div [ ATT.class "flex items-center" ]
             [ inputNode
-            , Html.button [ EV.onClick AttemptMessage, ATT.disabled (isBusy model), ATT.class "ml-4" ]
-                [ Html.text "send" ]
+            , Html.div [ ATT.class "ml-2" ] [ Button.view sendButton ]
             , Html.div [ ATT.class "hidden lg:flex ml-8 items-center" ] inputToggles
             ]
         , case model.loadedDevice of
@@ -195,37 +220,67 @@ view model env =
                 Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text failureString ]
 
             Just (Ok info) ->
-                let
-                    sentMessageCount =
-                        Maybe.withDefault 0 info.sent_message_count |> String.fromInt
-                in
                 Html.div []
-                    [ Html.div [ ATT.class "flex items-center mt-2 justify-center" ]
-                        [ Html.button [ EV.onClick (ToggleLights True) ] [ Html.text "lights on" ]
-                        , Html.button [ EV.onClick (ToggleLights False), ATT.class "ml-2" ] [ Html.text "lights off" ]
-                        ]
-                    , Html.table [ ATT.class "w-full mt-2" ]
-                        [ Html.thead [] []
-                        , Html.tbody []
-                            [ Html.tr []
-                                [ Html.td [] [ Html.text "Total Messages Sent" ]
-                                , Html.td [] [ Html.text sentMessageCount ]
-                                ]
-                            , Html.tr []
-                                [ Html.td [] [ Html.text "Current Queue" ]
-                                , Html.td [] [ Html.text (String.fromInt info.current_queue_count) ]
-                                ]
-                            , Html.tr []
-                                [ Html.td [] [ Html.text "Last Seen" ]
-                                , Html.td [] [ Html.text (formatDeviceTime info.last_seen ++ "UTC") ]
-                                ]
-                            , Html.tr []
-                                [ Html.td [] [ Html.text "First Seen" ]
-                                , Html.td [] [ Html.text (formatDeviceTime info.first_seen ++ "UTC") ]
-                                ]
-                            ]
-                        ]
+                    [ Html.div [ ATT.class "flex items-center mt-2 justify-center" ] lightButtons
+                    , deviceInfoTable model info
                     ]
+        ]
+
+
+type TimeDiff
+    = Days Int (Maybe Int) (Maybe Int) (Maybe Int)
+    | Hours Int (Maybe Int) (Maybe Int)
+    | Minutes Int (Maybe Int)
+    | Seconds Int
+
+
+justIfNonZeo : Float -> Maybe Int
+justIfNonZeo amt =
+    if truncate amt > 0 then
+        Just (truncate amt)
+
+    else
+        Nothing
+
+
+deviceInfoTable : Model -> DeviceInfoResponse -> Html.Html Message
+deviceInfoTable model info =
+    let
+        sentMessageCount =
+            Maybe.withDefault 0 info.sent_message_count |> String.fromInt
+
+        lastSeenText =
+            case model.currentTime of
+                Just time ->
+                    let
+                        theDiff =
+                            TimeDiff.diff time (Time.millisToPosix info.last_seen)
+                    in
+                    Html.text (TimeDiff.toString theDiff)
+
+                Nothing ->
+                    Html.text (formatDeviceTime info.last_seen ++ "UTC")
+    in
+    Html.table [ ATT.class "w-full mt-2" ]
+        [ Html.thead [] []
+        , Html.tbody []
+            [ Html.tr []
+                [ Html.td [] [ Html.text "Total Messages Sent" ]
+                , Html.td [] [ Html.text sentMessageCount ]
+                ]
+            , Html.tr []
+                [ Html.td [] [ Html.text "Current Queue" ]
+                , Html.td [] [ Html.text (String.fromInt info.current_queue_count) ]
+                ]
+            , Html.tr []
+                [ Html.td [] [ Html.text "Last Seen" ]
+                , Html.td [] [ lastSeenText ]
+                ]
+            , Html.tr []
+                [ Html.td [] [ Html.text "First Seen" ]
+                , Html.td [] [ Html.text (formatDeviceTime info.first_seen ++ "UTC") ]
+                ]
+            ]
         ]
 
 
@@ -306,7 +361,7 @@ fetchDevice env id =
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
-        Tick _ ->
+        Tick time ->
             let
                 ( command, pendingRefresh ) =
                     case model.pendingRefresh of
@@ -319,7 +374,7 @@ update env message model =
                         Just (Just _) ->
                             ( fetchDevice env model.id, Just Nothing )
             in
-            ( { model | pendingRefresh = pendingRefresh }, command )
+            ( { model | currentTime = Just time, pendingRefresh = pendingRefresh }, command )
 
         UpdateInput newInput ->
             ( { model | activeInput = ( newInput, Tuple.second model.activeInput ) }, Cmd.none )
@@ -376,8 +431,19 @@ update env message model =
 
                         Link str ->
                             LinkPayload str
+
+                newInput =
+                    ( Tuple.first model.activeInput, Just Nothing )
             in
-            ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }, postMessage env model.id payload )
+            ( { model | activeInput = newInput }, postMessage env model.id payload )
+
+        LoadedTime now ->
+            ( { model | currentTime = Just now }, Cmd.none )
+
+
+getNow : Cmd Message
+getNow =
+    Task.perform LoadedTime Time.now
 
 
 default : Environment.Environment -> String -> ( Model, Cmd Message )
@@ -387,6 +453,7 @@ default env id =
       , loadedDevice = Nothing
       , pendingMessageJobs = []
       , pendingRefresh = Nothing
+      , currentTime = Nothing
       }
-    , Cmd.batch [ fetchDevice env id ]
+    , Cmd.batch [ fetchDevice env id, getNow ]
     )

@@ -9,12 +9,36 @@ type Icon
     | Docs
     | Home
     | Trash
+    | Lightbulb
+    | Link
+    | File
+    | Moon
+    | Sun
     | Add
+    | Send
 
 
 view : Icon -> Html.Html a
 view icon =
     case icon of
+        Link ->
+            Html.i [ A.class "icon-link" ] []
+
+        File ->
+            Html.i [ A.class "icon-file" ] []
+
+        Moon ->
+            Html.i [ A.class "icon-moon-o" ] []
+
+        Sun ->
+            Html.i [ A.class "icon-sun-o" ] []
+
+        Send ->
+            Html.i [ A.class "icon-send" ] []
+
+        Lightbulb ->
+            Html.i [ A.class "icon-lightbulb-o" ] []
+
         Add ->
             Html.i [ A.class "icon-plus" ] []
 

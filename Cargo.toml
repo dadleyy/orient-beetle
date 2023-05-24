@@ -1,0 +1,7 @@
+[workspace]
+members = [
+  "src/beetle-srv"
+]
+
+[patch.crates-io]
+kramer = { git = "https://github.com/sizethree/kramer.git", branch = "async-read" }

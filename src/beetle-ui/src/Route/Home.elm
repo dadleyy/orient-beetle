@@ -177,18 +177,24 @@ markDeviceBusy id data =
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
-        LoadedDevices item ->
-            case item of
-                Ok inner ->
-                    case model of
-                        Just (Ok data) ->
-                            ( Just (Ok { data | devices = Dict.keys inner.devices |> List.map ownedDevice }), Cmd.none )
-
-                        _ ->
-                            ( Just (Ok { emptyData | devices = Dict.keys inner.devices |> List.map ownedDevice }), Cmd.none )
-
-                Err e ->
+        LoadedDevices deviceResponse ->
+            case ( deviceResponse, model ) of
+                ( Err e, _ ) ->
                     ( Just (Ok emptyData), Cmd.none )
+
+                ( Ok responseData, Just (Ok loadedModel) ) ->
+                    let
+                        devices =
+                            Dict.keys responseData.devices |> List.map ownedDevice
+                    in
+                    ( Just (Ok { loadedModel | devices = devices }), Cmd.none )
+
+                ( Ok responseData, _ ) ->
+                    let
+                        devices =
+                            Dict.keys responseData.devices |> List.map ownedDevice
+                    in
+                    ( Just (Ok { emptyData | devices = devices }), Cmd.none )
 
         AttemptDeviceClaim ->
             let
@@ -215,71 +221,38 @@ update env message model =
             ( model |> Maybe.map (Result.map (setNewDeviceId id)), Cmd.none )
 
 
-deviceRegistrationForm : Data -> Html.Html Message
-deviceRegistrationForm data =
-    let
-        ( value, _ ) =
-            data.newDevice
-    in
-    Html.div [ Html.Attributes.class "flex-1" ]
-        [ Html.div [ Html.Attributes.class "pb-3 py-2" ] [ Html.b [] [ Html.text "Add Device" ] ]
-        , Html.div [ Html.Attributes.class "flex items-center" ]
-            [ Html.input
-                [ Html.Attributes.placeholder "device id"
-                , Html.Attributes.value value
-                , Html.Attributes.class "block mr-2"
-                , Html.Attributes.disabled (hasPendingAddition data)
-                , Html.Events.onInput SetNewDeviceId
-                ]
-                []
-            , Html.button
-                [ Html.Attributes.disabled (hasPendingAddition data)
-                , Html.Events.onClick AttemptDeviceClaim
-                ]
-                [ Html.text "Add" ]
-            ]
-        , case data.alert of
-            Nothing ->
-                Html.div [] []
-
-            Just (Happy text) ->
-                Html.div [ Html.Attributes.class "mt-2 pill happy" ] [ Html.text text ]
-
-            Just (Warning text) ->
-                Html.div [ Html.Attributes.class "mt-2 pill sad" ] [ Html.text text ]
-        ]
-
-
 renderDevice : Environment.Environment -> OwnedDevice -> Html.Html Message
 renderDevice env device =
     Html.tr []
         [ Html.td
             [ Html.Attributes.class "px-3 py-2" ]
             [ Html.a
-                [ Html.Attributes.href (Environment.buildRoutePath env ("devices/" ++ device.id))
-                ]
-                [ Html.text device.id
-                ]
+                [ Html.Attributes.href (Environment.buildRoutePath env ("devices/" ++ device.id)) ]
+                [ Html.text device.id ]
             ]
         , Html.td [ Html.Attributes.class "px-3 py-2 text-right" ]
             (if device.busy then
                 [ Button.view (Button.DisabledIcon Icon.Trash) ]
 
              else
-                [ Button.view (Button.Icon Icon.Trash (AttemptDeviceRemove device.id)) ]
+                [ Button.view (Button.PrimaryIcon Icon.Trash (AttemptDeviceRemove device.id)) ]
             )
         ]
 
 
 deviceList : Data -> Environment.Environment -> Html.Html Message
 deviceList data env =
+    let
+        addButton =
+            Button.view (Button.LinkIcon Icon.Add (Environment.buildRoutePath env "register-device"))
+    in
     Html.div [ Html.Attributes.class "flex-1" ]
         [ Html.table [ Html.Attributes.class "w-full" ]
             [ Html.thead []
                 [ Html.tr [ Html.Attributes.class "text-left" ]
                     [ Html.th [ Html.Attributes.class "px-3 pb-2" ] [ Html.text "Devices" ]
                     , Html.th [ Html.Attributes.class "px-3 py-2 text-right" ]
-                        [ Icon.link Icon.Add (Environment.buildRoutePath env "register-device") ]
+                        [ addButton ]
                     ]
                 ]
             , Html.tbody [] (List.map (renderDevice env) data.devices)
@@ -296,7 +269,8 @@ view model env =
         Just result ->
             case result of
                 Err error ->
-                    Html.div [ Html.Attributes.class "flex px-4 py-3" ] [ Html.text "failed, please refresh" ]
+                    Html.div [ Html.Attributes.class "flex px-4 py-3" ]
+                        [ Html.text "failed, please refresh" ]
 
                 Ok modelData ->
                     Html.div [ Html.Attributes.class "flex px-4 py-3" ]
