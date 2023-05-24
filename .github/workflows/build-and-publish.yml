@@ -30,7 +30,7 @@ jobs:
       - name: "(srv-test) bundle: prepare"
         run: mkdir -p beetle-srv-docs
       - name: "(srv-test) bundle: copy"
-        run: cp -rv target/doc beetle-srv-docs
+        run: cp -rv $GITHUB_WORKSPACE/target/doc beetle-srv-docs
       - name: "(srv-test) bundle: create"
         run: tar cvzf beetle-srv-docs-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz beetle-srv-docs
       - uses: actions/upload-artifact@v3
@@ -354,7 +354,7 @@ jobs:
 
       - name: "bundle: populate"
         run: |
-          cp -v target/armv7-unknown-linux-gnueabihf/release/beetle-srv-updater \
+          cp -v $GITHUB_WORKSPACE/target/armv7-unknown-linux-gnueabihf/release/beetle-srv-updater \
                 $DISTRIBUTABLE_DIRECTORY_NAME/bin/
 
       - name: "bundle: create"

@@ -30,6 +30,10 @@ for tool in $tools; do
   if [ -z "$target" ]; then
     tool_path="target/release/$tool"
 
+    if [ -d $GITHUB_WORKSPACE ]; then
+      tool_path="$GITHUB_WORKSPACE/$tool_path"
+    fi
+
     if [ ! -f $tool_path ]; then
       echo "[$0] unable to find '$tool' at $tool_path"
       continue
@@ -38,6 +42,10 @@ for tool in $tools; do
     cp -v $tool_path $bundle_root/bin/$tool
   else
     tool_path="target/$target/release/$tool"
+
+    if [ -d $GITHUB_WORKSPACE ]; then
+      tool_path="$GITHUB_WORKSPACE/$tool_path"
+    fi
 
     if [ ! -f $tool_path ]; then
       echo "[$0] unable to find '$tool' (at $tool_path)"
