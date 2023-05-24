@@ -12,8 +12,8 @@ import Browser.Navigation as Nav
 import Button
 import Environment
 import Html
-import Html.Attributes
-import Html.Events
+import Html.Attributes as A
+import Html.Events as E
 import Http
 import Icon
 import Job
@@ -45,6 +45,7 @@ type Message
     | AttemptDeviceClaim
     | RegisteredDevice (Result Http.Error RegistrationResponse)
     | Tick Time.Posix
+    | InputKeyup Int
     | LoadedJob (Result Http.Error Job.Job)
 
 
@@ -137,6 +138,14 @@ update env message model =
         SetNewDeviceId id ->
             ( { model | newDevice = id }, Cmd.none )
 
+        InputKeyup code ->
+            case code of
+                13 ->
+                    ( { model | pendingAttempt = Just WaitingForId }, addDevice env model.newDevice )
+
+                _ ->
+                    ( model, Cmd.none )
+
         AttemptDeviceClaim ->
             ( { model | pendingAttempt = Just WaitingForId }, addDevice env model.newDevice )
 
@@ -151,7 +160,7 @@ update env message model =
 
 view : Environment.Environment -> Model -> Html.Html Message
 view env model =
-    Html.div [ Html.Attributes.class "px-4 py-3" ] [ deviceRegistrationForm env model ]
+    Html.div [ A.class "px-4 py-3" ] [ deviceRegistrationForm env model ]
 
 
 hasPendingAddition : Model -> Bool
@@ -200,24 +209,25 @@ deviceRegistrationForm env model =
                     Html.div [] []
 
                 Just (Happy text) ->
-                    Html.div [ Html.Attributes.class "mt-2 pill happy" ] [ Html.text text ]
+                    Html.div [ A.class "mt-2 pill happy" ] [ Html.text text ]
 
                 Just (Warning text) ->
-                    Html.div [ Html.Attributes.class "mt-2 pill sad" ] [ Html.text text ]
+                    Html.div [ A.class "mt-2 pill sad" ] [ Html.text text ]
 
         input =
             Html.input
-                [ Html.Attributes.placeholder "device id"
-                , Html.Attributes.value model.newDevice
-                , Html.Attributes.class "block mr-2"
-                , Html.Attributes.disabled (hasPendingAddition model)
-                , Html.Events.onInput SetNewDeviceId
+                [ A.placeholder "device id"
+                , A.value model.newDevice
+                , A.class "block mr-2"
+                , A.disabled (hasPendingAddition model)
+                , E.onInput SetNewDeviceId
+                , E.on "keyup" (Decode.map InputKeyup E.keyCode)
                 ]
                 []
     in
-    Html.div [ Html.Attributes.class "flex-1" ]
-        [ Html.div [ Html.Attributes.class "pb-3 py-2" ] [ Html.b [] [ Html.text "Add Device" ] ]
-        , Html.div [ Html.Attributes.class "flex items-center" ]
+    Html.div [ A.class "flex-1" ]
+        [ Html.div [ A.class "pb-3 py-2" ] [ Html.b [] [ Html.text "Add Device" ] ]
+        , Html.div [ A.class "flex items-center" ]
             [ input, addButton ]
         , alert
         ]

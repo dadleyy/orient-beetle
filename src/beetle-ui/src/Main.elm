@@ -143,8 +143,7 @@ header model =
     case Environment.getSession model.env of
         Nothing ->
             Html.div [ A.class "cont-dark px-4 py-3" ]
-                [ Html.text "Orient Beetle."
-                ]
+                [ Html.text "Orient Beetle." ]
 
         Just loadedSession ->
             Html.div [ A.class "cont-dark px-4 py-3 flex items-center" ]
@@ -159,7 +158,7 @@ header model =
                             [ Html.text "logout" ]
                         ]
                     , Html.div [ A.class "truncate ml-auto" ]
-                        [ Html.div []
+                        [ Html.a [ A.href (Environment.buildRoutePath model.env "account"), A.class "block" ]
                             [ if String.isEmpty loadedSession.picture then
                                 Html.div [] [ Html.text loadedSession.oid ]
 
@@ -176,17 +175,21 @@ header model =
 body : Model -> Html.Html Msg
 body model =
     case ( Environment.getId model.env, model.route ) of
+        -- If we don't have a user id + matched the login route, render the login page.
         ( Nothing, Just Route.Login ) ->
             Html.div
                 [ A.class "flex-1 main" ]
                 [ Route.view model.env Route.Login |> Html.map RouteMessage ]
 
+        -- If we have a session _and_ we matched some route, render the route.
         ( Just _, Just route ) ->
             Html.div
                 [ A.class "flex-1 main" ]
                 [ Route.view model.env route |> Html.map RouteMessage ]
 
-        -- If we have a session but not a route, link back to home.
+        -- If we have a session but not a route, link back to home. This basically the "404" page,
+        -- which is _also_ handled in the `Route` `fromUrl` method which will only return `Nothing`
+        -- under dubious circumstances.
         ( Just _, Nothing ) ->
             Html.div
                 [ A.class "flex-1 px-4 py-3 main" ]

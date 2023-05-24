@@ -60,11 +60,11 @@ $(RELEASE_BOOT_JS): $(BOOT_JS)
 ##
 
 $(MAIN_CSS): ./src/main.css $(ELM_SOURCES) ./src/index.pug src/boot.ts
-	$(NPM) run tailwind -- --input $< --output $@
+	$(NPM) run postcss -- $< --output $@
 
 # relies on sass compiling vanilla `.css` correctly.
 $(RELEASE_MAIN_CSS): ./src/main.css $(ELM_SOURCES)
-	$(NPM) run tailwind -- --minify --input $< --output $@
+	$(NPM) run postcss -- $< --output $@
 
 debug_font: \
 	target/debug/icon-font/style.css \

@@ -22,12 +22,19 @@ struct MessagePayload {
 enum QueuePayloadKind {
   /// Controls the lights.
   Lights(bool),
+
   /// Renders text.
   Message(String),
-  /// Renders text.
+
+  /// Will queue a QR code render for the device.
   Link(String),
+
+  /// Attempts to rename the device.
+  Rename(String),
+
   /// Predefined.
   Away,
+
   /// Clears screen.
   Clear,
 }
@@ -117,28 +124,19 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
   log::info!("user {user:?} creating message for device - {:?}", queue_payload.kind);
 
   let layout = match &queue_payload.kind {
-    QueuePayloadKind::Away => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
-      layout: crate::rendering::RenderLayout::Message(crate::rendering::RenderMessageLayout { message: "Busy" }),
-    }),
-    QueuePayloadKind::Lights(on) => {
-      let light_layout = if *on {
-        crate::rendering::LightingLayout::On
-      } else {
-        crate::rendering::LightingLayout::Off
-      };
-      crate::rendering::RenderVariant::Lighting(crate::rendering::RenderLayoutContainer { layout: light_layout })
+    QueuePayloadKind::Rename(new_name) => {
+      let job = crate::registrar::RegistrarJob::rename_device(queue_payload.device_id.clone(), new_name.clone());
+      let id = worker.queue_job(job).await?;
+
+      return tide::Body::from_json(&RegistrationResponse { id })
+        .map(|body| tide::Response::builder(200).body(body).build());
     }
-    QueuePayloadKind::Clear => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
-      layout: crate::rendering::RenderLayout::Message(crate::rendering::RenderMessageLayout { message: "" }),
-    }),
-    QueuePayloadKind::Link(m) => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
-      layout: crate::rendering::RenderLayout::Scannable(crate::rendering::RenderScannableLayout {
-        contents: m.as_str(),
-      }),
-    }),
-    QueuePayloadKind::Message(m) => crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
-      layout: crate::rendering::RenderLayout::Message(crate::rendering::RenderMessageLayout { message: m.as_str() }),
-    }),
+    QueuePayloadKind::Away => crate::rendering::RenderVariant::message("Busy"),
+    QueuePayloadKind::Lights(true) => crate::rendering::RenderVariant::on(),
+    QueuePayloadKind::Lights(false) => crate::rendering::RenderVariant::off(),
+    QueuePayloadKind::Clear => crate::rendering::RenderVariant::message(""),
+    QueuePayloadKind::Link(m) => crate::rendering::RenderVariant::scannable(m.as_str()),
+    QueuePayloadKind::Message(m) => crate::rendering::RenderVariant::message(m.as_str()),
   };
 
   let request_id = worker
@@ -190,11 +188,7 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
     .queue_render(
       &body.device_id,
       &user.oid,
-      crate::rendering::RenderVariant::Layout(crate::rendering::RenderLayoutContainer {
-        layout: crate::rendering::RenderLayout::Message(crate::rendering::RenderMessageLayout {
-          message: &body.message,
-        }),
-      }),
+      crate::rendering::RenderVariant::message(&body.message),
     )
     .await
     .map_err(|error| {

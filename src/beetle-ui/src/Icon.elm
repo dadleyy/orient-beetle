@@ -9,18 +9,30 @@ type Icon
     | Docs
     | Home
     | Trash
+    | Cancel
     | Lightbulb
+    | Pencil
     | Link
     | File
     | Moon
     | Sun
     | Add
     | Send
+    | EllipsisH
 
 
 view : Icon -> Html.Html a
 view icon =
     case icon of
+        Cancel ->
+            Html.i [ A.class "icon-close" ] []
+
+        EllipsisH ->
+            Html.i [ A.class "icon-ellipsis-h" ] []
+
+        Pencil ->
+            Html.i [ A.class "icon-pencil" ] []
+
         Link ->
             Html.i [ A.class "icon-link" ] []
 

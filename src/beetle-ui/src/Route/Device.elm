@@ -1,6 +1,7 @@
 module Route.Device exposing (Message(..), Model, default, subscriptions, update, view)
 
 import Button
+import Dropdown
 import Environment
 import Html
 import Html.Attributes as ATT
@@ -23,6 +24,11 @@ type alias DeviceInfoResponse =
     }
 
 
+type SettingsMenuMessage
+    = StartRename
+    | QueueRegister
+
+
 type Message
     = Loaded (Result Http.Error ())
     | LoadedDeviceInfo (Result Http.Error DeviceInfoResponse)
@@ -32,18 +38,21 @@ type Message
     | SetMessage String
     | ToggleLights Bool
     | UpdateInput InputKinds
+    | SettingsMenuUpdate Dropdown.Dropdown (Maybe SettingsMenuMessage)
     | LoadedTime Time.Posix
 
 
 type InputKinds
     = Message String
     | Link String
+    | DeviceName String
 
 
 type QueuePayloadKinds
     = MessagePayload String
     | LinkPayload String
     | LightPayload Bool
+    | DeviceRenamePayload String
 
 
 type alias Model =
@@ -53,12 +62,16 @@ type alias Model =
     , pendingRefresh : Maybe (Maybe (Result Http.Error DeviceInfoResponse))
     , pendingMessageJobs : List String
     , currentTime : Maybe Time.Posix
+    , settingsMenu : Dropdown.Dropdown
     }
 
 
 subscriptions : Model -> Sub Message
 subscriptions model =
-    Time.every 2000 Tick
+    Sub.batch
+        [ Time.every 2000 Tick
+        , Dropdown.subscriptions SettingsMenuUpdate model.settingsMenu
+        ]
 
 
 isBusy : Model -> Bool
@@ -78,63 +91,28 @@ isBusy model =
     isSending || isLoading
 
 
-formatDeviceMonth : Time.Month -> String
-formatDeviceMonth month =
-    case month of
-        Time.Jan ->
-            "01"
-
-        Time.Feb ->
-            "02"
-
-        Time.Mar ->
-            "03"
-
-        Time.Apr ->
-            "04"
-
-        Time.May ->
-            "05"
-
-        Time.Jun ->
-            "06"
-
-        Time.Jul ->
-            "07"
-
-        Time.Aug ->
-            "08"
-
-        Time.Sep ->
-            "09"
-
-        Time.Oct ->
-            "10"
-
-        Time.Nov ->
-            "11"
-
-        Time.Dec ->
-            "12"
+activeLinkToggles : List (Html.Html Message)
+activeLinkToggles =
+    [ Button.view (Button.DisabledIcon Icon.Link)
+    , Html.div [ ATT.class "ml-2" ]
+        [ Button.view (Button.PrimaryIcon Icon.File (UpdateInput (Message ""))) ]
+    ]
 
 
-formatDeviceTime : Int -> String
-formatDeviceTime time =
-    let
-        posixValue =
-            Time.millisToPosix time
-    in
-    String.join "/"
-        [ String.fromInt (Time.toYear Time.utc posixValue)
-        , formatDeviceMonth (Time.toMonth Time.utc posixValue)
-        , String.fromInt (Time.toDay Time.utc posixValue)
-        ]
-        ++ " "
-        ++ String.join ":"
-            [ String.padLeft 2 '0' (String.fromInt (Time.toHour Time.utc posixValue))
-            , String.padLeft 2 '0' (String.fromInt (Time.toMinute Time.utc posixValue))
-            , String.padLeft 2 '0' (String.fromInt (Time.toSecond Time.utc posixValue))
-            ]
+activeMessageToggles : List (Html.Html Message)
+activeMessageToggles =
+    [ Button.view (Button.PrimaryIcon Icon.Link (UpdateInput (Link "")))
+    , Html.div [ ATT.class "ml-2" ]
+        [ Button.view (Button.DisabledIcon Icon.File) ]
+    ]
+
+
+disabledToggles : List (Html.Html Message)
+disabledToggles =
+    [ Button.view (Button.DisabledIcon Icon.Link)
+    , Html.div [ ATT.class "ml-2" ]
+        [ Button.view (Button.DisabledIcon Icon.File) ]
+    ]
 
 
 view : Model -> Environment.Environment -> Html.Html Message
@@ -143,34 +121,32 @@ view model env =
         isDisabled =
             isBusy model
 
+        activeInputTextbox str =
+            Html.input [ EV.onInput SetMessage, ATT.value str, ATT.disabled isDisabled ] []
+
         ( inputNode, inputToggles ) =
             case ( model.activeInput, isDisabled ) of
                 ( _, True ) ->
-                    ( Html.input [ EV.onInput SetMessage, ATT.value "", ATT.disabled isDisabled ]
-                        []
-                    , [ Button.view (Button.DisabledIcon Icon.Link)
-                      , Html.div [ ATT.class "ml-2" ]
-                            [ Button.view (Button.DisabledIcon Icon.File) ]
-                      ]
-                    )
+                    ( activeInputTextbox "", disabledToggles )
+
+                ( ( DeviceName current, _ ), _ ) ->
+                    let
+                        back =
+                            Button.view (Button.PrimaryIcon Icon.Cancel (UpdateInput (Message "")))
+
+                        wrapped =
+                            Html.div [ ATT.class "flex items-center flex-1" ]
+                                [ Html.div [ ATT.class "mr-4" ] [ Html.text "Rename:" ]
+                                , activeInputTextbox current
+                                ]
+                    in
+                    ( wrapped, [ back ] )
 
                 ( ( Link current, _ ), _ ) ->
-                    ( Html.input [ EV.onInput SetMessage, ATT.value current, ATT.disabled isDisabled ]
-                        []
-                    , [ Button.view (Button.DisabledIcon Icon.Link)
-                      , Html.div [ ATT.class "ml-2" ]
-                            [ Button.view (Button.PrimaryIcon Icon.File (UpdateInput (Message ""))) ]
-                      ]
-                    )
+                    ( activeInputTextbox current, activeLinkToggles )
 
                 ( ( Message current, _ ), _ ) ->
-                    ( Html.input [ EV.onInput SetMessage, ATT.value current, ATT.disabled isDisabled ]
-                        []
-                    , [ Button.view (Button.PrimaryIcon Icon.Link (UpdateInput (Link "")))
-                      , Html.div [ ATT.class "ml-2" ]
-                            [ Button.view (Button.DisabledIcon Icon.File) ]
-                      ]
-                    )
+                    ( activeInputTextbox current, activeMessageToggles )
 
         sendButton =
             if isBusy model then
@@ -192,11 +168,18 @@ view model env =
                     , Html.div [ ATT.class "ml-2" ]
                         [ Button.view (Button.SecondaryIcon Icon.Moon (ToggleLights False)) ]
                     ]
+
+        settingsMenu =
+            [ ( StartRename, Html.div [] [ Html.text "Rename Device" ] )
+            , ( QueueRegister, Html.div [] [ Html.text "Send Registration Scannable" ] )
+            ]
     in
     Html.div [ ATT.class "px-4 py-3" ]
         [ Html.div [ ATT.class "pb-1 mb-1 flex items-center" ]
             [ Html.div [] [ Html.h2 [] [ Html.text model.id ] ]
-            , Html.div [ ATT.class "lg:hidden flex ml-auto items-center" ] inputToggles
+            , Html.div [ ATT.class "ml-auto" ]
+                [ Dropdown.view model.settingsMenu SettingsMenuUpdate settingsMenu ]
+            , Html.div [ ATT.class "lg:hidden flex ml-2 items-center" ] inputToggles
             ]
         , Html.div [ ATT.class "flex items-center" ]
             [ inputNode
@@ -243,7 +226,7 @@ deviceInfoTable model info =
                     Html.text (TimeDiff.toString theDiff)
 
                 Nothing ->
-                    Html.text (formatDeviceTime info.last_seen ++ "UTC")
+                    Html.text (TimeDiff.formatDeviceTime info.last_seen ++ "UTC")
     in
     Html.table [ ATT.class "w-full mt-2" ]
         [ Html.thead [] []
@@ -262,7 +245,7 @@ deviceInfoTable model info =
                 ]
             , Html.tr []
                 [ Html.td [] [ Html.text "First Seen" ]
-                , Html.td [] [ Html.text (formatDeviceTime info.first_seen ++ "UTC") ]
+                , Html.td [] [ Html.text (TimeDiff.formatDeviceTime info.first_seen ++ "UTC") ]
                 ]
             ]
         ]
@@ -273,49 +256,38 @@ queuedMessageDecoder =
     Json.Decode.field "id" Json.Decode.string
 
 
+encodeStringPayloadWithKind : String -> String -> Encode.Value -> Encode.Value
+encodeStringPayloadWithKind id kind content =
+    Encode.object
+        [ ( "device_id", Encode.string id )
+        , ( "kind"
+          , Encode.object
+                [ ( "beetle:kind", Encode.string kind )
+                , ( "beetle:content", content )
+                ]
+          )
+        ]
+
+
 postMessage : Environment.Environment -> String -> QueuePayloadKinds -> Cmd Message
 postMessage env id payloadKind =
     let
+        encoder =
+            encodeStringPayloadWithKind id
+
         payload =
             case payloadKind of
+                DeviceRenamePayload newName ->
+                    Http.jsonBody (encoder "rename" (Encode.string newName))
+
                 LightPayload isOn ->
-                    Http.jsonBody
-                        (Encode.object
-                            [ ( "device_id", Encode.string id )
-                            , ( "kind"
-                              , Encode.object
-                                    [ ( "beetle:kind", Encode.string "lights" )
-                                    , ( "beetle:content", Encode.bool isOn )
-                                    ]
-                              )
-                            ]
-                        )
+                    Http.jsonBody (encoder "lights" (Encode.bool isOn))
 
                 LinkPayload str ->
-                    Http.jsonBody
-                        (Encode.object
-                            [ ( "device_id", Encode.string id )
-                            , ( "kind"
-                              , Encode.object
-                                    [ ( "beetle:kind", Encode.string "link" )
-                                    , ( "beetle:content", Encode.string str )
-                                    ]
-                              )
-                            ]
-                        )
+                    Http.jsonBody (encoder "link" (Encode.string str))
 
                 MessagePayload str ->
-                    Http.jsonBody
-                        (Encode.object
-                            [ ( "device_id", Encode.string id )
-                            , ( "kind"
-                              , Encode.object
-                                    [ ( "beetle:kind", Encode.string "message" )
-                                    , ( "beetle:content", Encode.string str )
-                                    ]
-                              )
-                            ]
-                        )
+                    Http.jsonBody (encoder "message" (Encode.string str))
     in
     Http.post
         { url = Environment.apiRoute env "device-queue"
@@ -342,9 +314,31 @@ fetchDevice env id =
         }
 
 
+setActiveInputText : String -> InputKinds -> InputKinds
+setActiveInputText newValue kind =
+    case kind of
+        DeviceName _ ->
+            DeviceName newValue
+
+        Message _ ->
+            Message newValue
+
+        Link _ ->
+            Link newValue
+
+
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
+        SettingsMenuUpdate dropdown (Just StartRename) ->
+            ( { model | settingsMenu = dropdown, activeInput = ( DeviceName "", Nothing ) }, Cmd.none )
+
+        SettingsMenuUpdate dropdown (Just QueueRegister) ->
+            ( { model | settingsMenu = dropdown }, Cmd.none )
+
+        SettingsMenuUpdate dropdown Nothing ->
+            ( { model | settingsMenu = dropdown }, Cmd.none )
+
         Tick time ->
             let
                 ( command, pendingRefresh ) =
@@ -366,12 +360,8 @@ update env message model =
         SetMessage messageText ->
             let
                 nextInput =
-                    case Tuple.first model.activeInput of
-                        Message _ ->
-                            Message messageText
-
-                        Link _ ->
-                            Link messageText
+                    Tuple.first model.activeInput
+                        |> setActiveInputText messageText
             in
             -- ( setMessage model messageText, Cmd.none )
             ( { model | activeInput = ( nextInput, Tuple.second model.activeInput ) }, Cmd.none )
@@ -387,6 +377,9 @@ update env message model =
             let
                 emptiedInput =
                     case Tuple.first model.activeInput of
+                        DeviceName _ ->
+                            DeviceName ""
+
                         Message _ ->
                             Message ""
 
@@ -410,6 +403,9 @@ update env message model =
             let
                 payload =
                     case Tuple.first model.activeInput of
+                        DeviceName str ->
+                            DeviceRenamePayload str
+
                         Message str ->
                             MessagePayload str
 
@@ -438,6 +434,7 @@ default env id =
       , pendingMessageJobs = []
       , pendingRefresh = Nothing
       , currentTime = Nothing
+      , settingsMenu = Dropdown.empty
       }
     , Cmd.batch [ fetchDevice env id, getNow ]
     )

@@ -71,17 +71,13 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
       log::info!("toggling light state");
       let mut stream = beetle::redis::connect(&config.redis).await?;
       let (id, inner) = match &inner {
-        CommandLineCommand::Darken(inner) => (&inner.id, beetle::rendering::LightingLayout::Off),
-        CommandLineCommand::Lighten(inner) => (&inner.id, beetle::rendering::LightingLayout::On),
+        CommandLineCommand::Darken(inner) => (&inner.id, beetle::rendering::RenderVariant::off()),
+        CommandLineCommand::Lighten(inner) => (&inner.id, beetle::rendering::RenderVariant::on()),
         _ => unreachable!(),
       };
       let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
       let (request_id, pending) = queue
-        .queue::<&str, &str>(
-          id,
-          &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
-          beetle::rendering::RenderVariant::Lighting(beetle::rendering::RenderLayoutContainer { layout: inner }),
-        )
+        .queue::<&str, &str>(id, &beetle::rendering::queue::QueuedRenderAuthority::CommandLine, inner)
         .await?;
       log::info!("id '{request_id}' | pending {pending}");
 

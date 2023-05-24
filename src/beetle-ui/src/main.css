@@ -81,3 +81,47 @@ button.secondary-button:not(:disabled) {
   @apply bg-green-500;
   @apply text-white;
 }
+
+code {
+  @apply rounded;
+  @apply px-1 py-1;
+  @apply bg-neutral-800;
+  @apply text-neutral-300;
+  @apply border border-solid border-neutral-900;
+}
+
+table.info-table {
+  td {
+    @apply border-b border-t border-l border-solid border-neutral-800;
+    @apply px-2 py-1;
+  }
+
+  td:last-child {
+    @apply border-r;
+    @apply border-l-0;
+  }
+
+  td:first-child {
+    @apply bg-neutral-600;
+    @apply border-neutral-800;
+  }
+}
+
+.dropdown-item {
+  @apply border-x border-solid border-neutral-950;
+  @apply px-2 py-1 bg-neutral-900 cursor-pointer whitespace-nowrap;
+  min-width: 25vw;
+}
+
+.dropdown-item:hover {
+  @apply bg-neutral-950;
+  @apply text-green-400;
+}
+
+.dropdown-item:last-child {
+  @apply border-b;
+}
+
+.dropdown-item:first-child {
+  @apply border-t;
+}

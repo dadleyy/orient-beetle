@@ -10,6 +10,10 @@ mod pool;
 /// This module defines functionality associated with managing the acl pool.
 mod diagnostics;
 
+/// Just a place to put the types generally associated with background work.
+pub mod jobs;
+pub use jobs::{DeviceRenameRequest, RegistrarJob, RegistrarJobKind};
+
 /// If no value is provided in the api, this value will be used as the minimum amount of entries in
 /// our pool that we need. If the current amount is less than this, we will generate ids for and
 /// store them in the system.
@@ -33,41 +37,6 @@ pub struct RegistrarConfiguration {
 
   /// Where to send devices on their initial connection
   pub initial_scannable_addr: String,
-}
-
-/// The individual kinds of jobs.
-#[derive(Deserialize, Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
-pub enum RegistrarJobKind {
-  /// A job queued to request ownership.
-  Ownership(ownership::DeviceOwnershipRequest),
-}
-
-/// The job container exposed by this module.
-#[derive(Deserialize, Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct RegistrarJob {
-  /// A unique id for this request.
-  pub(crate) id: String,
-
-  /// The inner job type.
-  job: RegistrarJobKind,
-}
-
-impl RegistrarJob {
-  /// Builds a request for taking device ownership.
-  pub fn device_ownership<S>(user_id: S, device_id: S) -> Self
-  where
-    S: std::convert::AsRef<str>,
-  {
-    let id = uuid::Uuid::new_v4().to_string();
-    let user_id = user_id.as_ref().to_string();
-    let device_id = device_id.as_ref().to_string();
-    Self {
-      id,
-      job: RegistrarJobKind::Ownership(ownership::DeviceOwnershipRequest { user_id, device_id }),
-    }
-  }
 }
 
 /// The publicly deserializable interface for our registrar worker configuration.
@@ -202,6 +171,10 @@ async fn work_jobs(worker: &mut Worker, mut inner: &mut crate::redis::RedisConne
 
   if let Some(job_container) = next_job {
     let result = match &job_container.job {
+      RegistrarJobKind::Rename(request) => {
+        log::info!("device rename request being processed - {request:?}");
+        Ok(crate::job_result::JobResult::Success)
+      }
       RegistrarJobKind::Ownership(o) => {
         log::info!("registrar found next ownership claims job - {o:?}");
         let job_result = register_device(worker, o).await;
@@ -280,7 +253,8 @@ pub async fn user_access(
 
   // With the preexisting model, or our newly created, exclusive one, just the verification as user
   // against the current user.
-  log::info!("current authority record - {authority_record:?}");
+  log::debug!("current authority record - {authority_record:?}");
+
   match authority_record.as_ref().and_then(|rec| rec.authority_model.as_ref()) {
     Some(crate::types::DeviceAuthorityModel::Shared(owner, guests)) => {
       let mut found = false;

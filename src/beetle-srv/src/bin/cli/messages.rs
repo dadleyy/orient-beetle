@@ -56,7 +56,7 @@ pub async fn send_scannable(config: &super::CommandLineConfig, command: SendScan
       })?
   }
 
-  let request = beetle::rendering::RenderVariant::Layout(beetle::rendering::RenderLayoutContainer { layout });
+  let request = beetle::rendering::RenderVariant::scannable(&command.content);
   let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
   let (request_id, pending) = queue
     .queue(
@@ -107,11 +107,7 @@ pub async fn send_image(config: &super::CommandLineConfig, command: SendImageCom
     .queue(
       &command.id,
       &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
-      beetle::rendering::RenderVariant::Layout(beetle::rendering::RenderLayoutContainer {
-        layout: beetle::rendering::RenderLayout::Message(beetle::rendering::RenderMessageLayout {
-          message: &command.message,
-        }),
-      }),
+      beetle::rendering::RenderVariant::message(&command.message),
     )
     .await?;
 

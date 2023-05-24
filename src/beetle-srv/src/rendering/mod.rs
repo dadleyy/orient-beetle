@@ -117,6 +117,9 @@ pub enum LightingLayout {
 pub struct RenderLayoutContainer<S> {
   /// The wrapped layout
   pub layout: S,
+
+  /// When this layout was created.
+  pub created: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Wraps the lighting and display of the device.
@@ -130,10 +133,34 @@ pub enum RenderVariant<S> {
 }
 
 impl<S> RenderVariant<S> {
+  /// Helper constructor for turning lights on.
+  pub fn on() -> Self {
+    Self::Lighting(RenderLayoutContainer {
+      created: Some(chrono::Utc::now()),
+      layout: LightingLayout::On,
+    })
+  }
+
+  /// Helper constructor for turning lights off.
+  pub fn off() -> Self {
+    Self::Lighting(RenderLayoutContainer {
+      created: Some(chrono::Utc::now()),
+      layout: LightingLayout::Off,
+    })
+  }
+
   /// A helper "type constructor" that will wrap the deep-inner scannable content in the
   /// container types.
   pub fn scannable(contents: S) -> Self {
     let layout = RenderLayout::Scannable(RenderScannableLayout { contents });
-    Self::Layout(RenderLayoutContainer { layout })
+    let created = Some(chrono::Utc::now());
+    Self::Layout(RenderLayoutContainer { layout, created })
+  }
+
+  /// Helper type constructor
+  pub fn message(message: S) -> Self {
+    let layout = RenderLayout::Message(RenderMessageLayout { message });
+    let created = Some(chrono::Utc::now());
+    Self::Layout(RenderLayoutContainer { layout, created })
   }
 }

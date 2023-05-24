@@ -305,7 +305,11 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
               if header_size > 0 {
                 let terminal = header_size + remainder;
                 log::info!("image located @ {header_size} -> {terminal}");
-                image_buffer.extend_from_slice(&frame_buffer[header_size..terminal]);
+                if frame_buffer.len() < terminal {
+                  log::warn!("confused - header: '{header_size}' remainder: '{remainder}'");
+                } else {
+                  image_buffer.extend_from_slice(&frame_buffer[header_size..terminal]);
+                }
                 break 'response_read;
               }
             }
