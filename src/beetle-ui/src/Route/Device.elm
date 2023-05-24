@@ -227,22 +227,6 @@ view model env =
         ]
 
 
-type TimeDiff
-    = Days Int (Maybe Int) (Maybe Int) (Maybe Int)
-    | Hours Int (Maybe Int) (Maybe Int)
-    | Minutes Int (Maybe Int)
-    | Seconds Int
-
-
-justIfNonZeo : Float -> Maybe Int
-justIfNonZeo amt =
-    if truncate amt > 0 then
-        Just (truncate amt)
-
-    else
-        Nothing
-
-
 deviceInfoTable : Model -> DeviceInfoResponse -> Html.Html Message
 deviceInfoTable model info =
     let
