@@ -1,6 +1,8 @@
 [workspace]
 members = [
-  "src/beetle-srv"
+  "src/beetle-srv",
+  "tools/beetle-updater",
+  "tools/wchgen"
 ]
 
 [patch.crates-io]
