@@ -3,6 +3,10 @@
 # This script is simple a convience for the github workflow; it is meant to
 # make the process of defining what artifacts from the cargo build are bundled
 # into the tarball.
+#
+# It is _not_ expected this will be used by developers day-to-day; the filesystem
+# paths built here are manipulated in a specific way based on the github actions
+# environment.
 
 tools="beetle-cli beetle-web beetle-registrar beetle-renderer"
 bundle_name=$1
