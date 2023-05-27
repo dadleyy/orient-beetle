@@ -39,8 +39,12 @@ pub enum DeviceAuthorityModel {
   /// When a device is in an exclusive authority model, only a single user can manage it.
   Exclusive(String),
 
-  /// When a device is in a shared authority model, a list ofusers can manage it.
+  /// When a device is in a shared authority model, a list of users can manage it.
   Shared(String, Vec<String>),
+
+  /// When a device is in an "open" model, anyone can send things to it. We will retain the list of
+  /// folks who have added themselves as a way to transition easily into "shared".
+  Public(String, Vec<String>),
 }
 
 /// The schema of our records that are stored in `device_authorities` collection.

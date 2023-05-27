@@ -1,3 +1,14 @@
+//! This module contains the majortiy of all "background" operations that are performed outside of
+//! the context of a web request. This includes, but is not limited to, checking for active devices
+//! and updating `last_seen` timestamps, polling + executing jobs.
+//!
+//! TODO(s):
+//!     - The whole layout of the module could use some fine tuning; there is a `jobs` submodule
+//!       but there are nice logical places for the jobs themselves anyways (e.g `ownership` vs.
+//!       `rename`, vs etc...)
+//!     - The ownership job types could probably be consolidated into a single enum. The ownership
+//!       "change" vs ownership "request" doesnt make sense.
+
 use serde::Deserialize;
 use std::io;
 
@@ -205,10 +216,14 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
         let job_result = rename::rename(worker, request).await;
         job_result.map(|_| crate::job_result::JobResult::Success)
       }
-      RegistrarJobKind::Ownership(o) => {
-        log::info!("registrar found next ownership claims job - {o:?}");
-        let job_result = ownership::register_device(worker, o).await;
-        log::info!("registration result - {job_result:?}");
+      RegistrarJobKind::OwnershipChange(request) => {
+        let job_result = ownership::process_change(worker, request).await;
+        job_result.map(|_| crate::job_result::JobResult::Success)
+      }
+      RegistrarJobKind::Ownership(ownership_request) => {
+        log::debug!("registrar found next ownership claims job - '{ownership_request:?}'");
+        let job_result = ownership::register_device(worker, ownership_request).await;
+        log::debug!("registration result - {job_result:?}");
         job_result.map(|_| crate::job_result::JobResult::Success)
       }
     };

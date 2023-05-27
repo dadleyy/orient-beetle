@@ -65,6 +65,10 @@ struct CommandLineOptions {
 
 /// The main async cli runtime.
 async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io::Result<()> {
+  println!("== cli context");
+  println!("  redis:   {}:{}", config.redis.host, config.redis.port);
+  println!("  mongofb: {}", config.mongo.url);
+  println!("==");
   match command {
     CommandLineCommand::DropCollections => {
       let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;

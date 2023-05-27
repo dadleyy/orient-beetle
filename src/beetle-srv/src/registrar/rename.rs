@@ -66,7 +66,7 @@ pub async fn rename(worker: &mut super::Worker, request: &DeviceRenameRequest) -
     }
   }
 
-  log::info!("found device for rename - '{found_device:?}'");
+  log::info!("found device for rename - '{}'", found_device.id);
 
   Ok(())
 }

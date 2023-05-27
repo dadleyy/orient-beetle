@@ -30,6 +30,8 @@ type alias DeviceInfoResponse =
 type SettingsMenuMessage
     = StartRename
     | QueueWelcomeScannable
+    | MakePublic
+    | MakePrivate
 
 
 type Message
@@ -58,6 +60,7 @@ type QueuePayloadKinds
     | LightPayload Bool
     | DeviceRenamePayload String
     | WelcomeMessage
+    | PublicAccessChange Bool
 
 
 type alias Model =
@@ -194,6 +197,8 @@ view model env =
         settingsMenu =
             [ ( StartRename, Html.div [] [ Html.text "Rename Device" ] )
             , ( QueueWelcomeScannable, Html.div [] [ Html.text "Send Registration Scannable" ] )
+            , ( MakePublic, Html.div [] [ Html.text "Make Public" ] )
+            , ( MakePrivate, Html.div [] [ Html.text "Make Private" ] )
             ]
     in
     Html.div [ ATT.class "px-4 py-3" ]
@@ -337,6 +342,26 @@ postMessage env id payloadKind =
                 LinkPayload str ->
                     Http.jsonBody (encoder "link" (Encode.string str))
 
+                PublicAccessChange value ->
+                    Http.jsonBody
+                        (Encode.object
+                            [ ( "device_id", Encode.string id )
+                            , ( "kind"
+                              , Encode.object
+                                    [ ( "beetle:kind"
+                                      , Encode.string
+                                            (if value then
+                                                "make_public"
+
+                                             else
+                                                "make_private"
+                                            )
+                                      )
+                                    ]
+                              )
+                            ]
+                        )
+
                 MessagePayload str ->
                     Http.jsonBody (encoder "message" (Encode.string str))
     in
@@ -365,6 +390,13 @@ fetchDevice env id =
         , expect = Http.expectJson LoadedDeviceInfo infoDecoder
         }
 
+fetchDeviceAuthority : Environment.Environment -> String -> Cmd Message
+fetchDeviceAuthority env id =
+    Http.get
+        { url = Environment.apiRoute env ("device-authority?id=" ++ id)
+        , expect = Http.expectWhatever Loaded
+        }
+
 
 setActiveInputText : String -> InputKinds -> InputKinds
 setActiveInputText newValue kind =
@@ -387,6 +419,12 @@ update env message model =
 
         SettingsMenuUpdate dropdown (Just QueueWelcomeScannable) ->
             ( { model | settingsMenu = dropdown }, postMessage env model.id WelcomeMessage )
+
+        SettingsMenuUpdate dropdown (Just MakePublic) ->
+            ( { model | settingsMenu = dropdown }, postMessage env model.id (PublicAccessChange True) )
+
+        SettingsMenuUpdate dropdown (Just MakePrivate) ->
+            ( { model | settingsMenu = dropdown }, postMessage env model.id (PublicAccessChange False) )
 
         SettingsMenuUpdate dropdown Nothing ->
             ( { model | settingsMenu = dropdown }, Cmd.none )
@@ -533,5 +571,5 @@ default env id =
       , settingsMenu = Dropdown.empty
       , alert = Nothing
       }
-    , Cmd.batch [ fetchDevice env id, getNow ]
+    , Cmd.batch [ fetchDevice env id, getNow, fetchDeviceAuthority env id ]
     )

@@ -52,7 +52,7 @@ pub struct MongoCollectionsConfiguration {
 #[serde(rename_all = "snake_case")]
 pub struct MongoConfiguration {
   /// The url that we will pass on to the `mongodb` crate when creating clients.
-  pub(crate) url: String,
+  pub url: String,
   /// Configures database name we will be using.
   pub database: String,
   /// Configures the collection names inside our database.

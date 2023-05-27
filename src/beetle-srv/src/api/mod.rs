@@ -93,6 +93,7 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/devices/register").post(devices::register);
   app.at("/devices/unregister").post(devices::unregister);
   app.at("/device-info").get(devices::info);
+  app.at("/device-authority").get(devices::authority);
   app.at("/device-message").post(devices::message);
   app.at("/device-queue").post(devices::queue);
   app.at("/jobs").get(jobs::find);

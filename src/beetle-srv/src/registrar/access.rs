@@ -8,13 +8,15 @@ pub enum AccessLevel {
   All,
 }
 
-/// Returns the access level that a given user has for a given device.
+/// Returns the access level that a given user has for a given device, as well as the record that
+/// was found. The latter is useful in situations where we will be updating it after checking the
+/// permissions.
 pub async fn user_access(
   mongo: &mongodb::Client,
   config: &crate::config::MongoConfiguration,
   user_id: &String,
   device_id: &String,
-) -> io::Result<Option<AccessLevel>> {
+) -> io::Result<Option<(AccessLevel, Option<crate::types::DeviceAuthorityRecord>)>> {
   let authority_collection = mongo
     .database(&config.database)
     .collection(&config.collections.device_authorities);
@@ -67,10 +69,11 @@ pub async fn user_access(
         return Ok(None);
       }
     }
-    other => {
-      log::info!("authority model '{other:?}' checks out, adding '{}'", user_id);
+    Some(crate::types::DeviceAuthorityModel::Public(_, _)) => return Ok(Some((AccessLevel::All, authority_record))),
+    None => {
+      log::warn!("no authority record found for '{device_id}'!");
     }
   }
 
-  Ok(Some(AccessLevel::All))
+  Ok(Some((AccessLevel::All, authority_record)))
 }

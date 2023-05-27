@@ -246,7 +246,12 @@ impl Worker {
     &self,
     user_id: &String,
     device_id: &String,
-  ) -> Result<Option<crate::registrar::AccessLevel>> {
+  ) -> Result<
+    Option<(
+      crate::registrar::AccessLevel,
+      Option<crate::types::DeviceAuthorityRecord>,
+    )>,
+  > {
     crate::registrar::user_access(&self.mongo.0, &self.mongo.1, user_id, device_id).await
   }
 

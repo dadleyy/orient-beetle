@@ -19,6 +19,9 @@ pub enum RegistrarJobKind {
   /// A job queued to request ownership.
   Ownership(ownership::DeviceOwnershipRequest),
 
+  /// A job queued to request an update to the ownership model.
+  OwnershipChange(ownership::DeviceOwnershipChangeRequest),
+
   /// Renaming devices can be expensive; it is a job.
   Rename(DeviceRenameRequest),
 
@@ -38,6 +41,21 @@ pub struct RegistrarJob {
 }
 
 impl RegistrarJob {
+  /// Builds a request for toggling ownership record model type.
+  pub fn set_public_availability<S>(device_id: S, private: bool) -> Self
+  where
+    S: std::convert::AsRef<str>,
+  {
+    let id = uuid::Uuid::new_v4().to_string();
+    let device_id = device_id.as_ref().to_string();
+    Self {
+      id,
+      job: RegistrarJobKind::OwnershipChange(ownership::DeviceOwnershipChangeRequest::SetPublicAvailability(
+        device_id, private,
+      )),
+    }
+  }
+
   /// Builds a request for taking device ownership.
   pub fn registration_scannable<S>(device_id: S) -> Self
   where

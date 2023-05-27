@@ -35,6 +35,14 @@ enum QueuePayloadKind {
   /// Attempts to queue a message that will force redisplay of registration.
   Registration,
 
+  /// Will update the ownership record model to be public. This should be combined with the
+  /// `MakePrivate` variant, but expressing with a boolean on some `Toggle` variant always leads to
+  /// the confusion of what `true` means.
+  MakePublic,
+
+  /// Will update the ownership record model to be private.
+  MakePrivate,
+
   /// Predefined.
   Away,
 
@@ -130,6 +138,14 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
   log::info!("user {user:?} creating message for device - {:?}", queue_payload.kind);
 
   let layout = match &queue_payload.kind {
+    kind @ QueuePayloadKind::MakePublic | kind @ QueuePayloadKind::MakePrivate => {
+      let privacy = matches!(kind, QueuePayloadKind::MakePublic);
+      let job = crate::registrar::RegistrarJob::set_public_availability(queue_payload.device_id.clone(), privacy);
+      let id = worker.queue_job(job).await?;
+
+      return tide::Body::from_json(&RegistrationResponse { id })
+        .map(|body| tide::Response::builder(200).body(body).build());
+    }
     QueuePayloadKind::Registration => {
       let job = crate::registrar::RegistrarJob::registration_scannable(queue_payload.device_id.clone());
       let id = worker.queue_job(job).await?;
@@ -211,6 +227,23 @@ pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide:
 
   tide::Body::from_json(&RegistrationResponse { id: request_id })
     .map(|body| tide::Response::builder(200).body(body).build())
+}
+
+/// Route: authority
+///
+/// Returns the device authority record.
+pub async fn authority(request: tide::Request<super::worker::Worker>) -> tide::Result {
+  let worker = request.state();
+  let user = worker.request_authority(&request).await?.ok_or_else(|| {
+    log::warn!("no user found");
+    tide::Error::from_str(404, "missing-user")
+  })?;
+  let query = request.query::<LookupQuery>()?;
+  let (_, model) = worker.user_access(&user.oid, &query.id).await?.ok_or_else(|| {
+    log::warn!("'{}' has no access to device '{}'", user.oid, query.id);
+    tide::Error::from_str(400, "not-found")
+  })?;
+  tide::Body::from_json(&model).map(|body| tide::Response::builder(200).body(body).build())
 }
 
 /// Route: info
