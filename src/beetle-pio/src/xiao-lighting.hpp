@@ -16,7 +16,7 @@ namespace lighting {
     public:
       Lighting():
         _override(false),
-        _pixels(XIAO_NEOPIXEL_COUNT, XIAO_NEOPIXEL_PIN, NEO_GRB + NEO_KHZ400) {}
+        _pixels(XIAO_NEOPIXEL_COUNT, XIAO_NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800) {}
       ~Lighting() = default;
 
       Lighting(const Lighting&) = delete;
