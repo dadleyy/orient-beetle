@@ -8,6 +8,7 @@ type Environment = {
   logoutUrl: string,
   version: string,
   release: boolean,
+  apiDocsUrl: string,
   localization: Array<[string, string]>,
 };
 
@@ -31,7 +32,17 @@ const LOCALIZATION = [
     </div>
 
     <h3>Latest Update:</h3>
-    <div style="position: relative; width: 100%; height: 100%;"><iframe height="100%" width="100%" src="https://www.youtube.com/embed/SwGfOSLR5tA" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+    <div style="position: relative; width: 100%; height: 100%; max-height: 600px">
+      <iframe
+        height="100%"
+        width="100%"
+        src="https://www.youtube.com/embed/SwGfOSLR5tA"
+        title="YouTube video player"
+        frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen
+      ></iframe>
+    </div>
     `,
   ],
 ];

@@ -9,6 +9,9 @@ pub enum QueuedRenderAuthority {
   /// The queued render was sent by the cli.
   CommandLine,
 
+  /// The queued render was sent by the registrar.
+  Registrar,
+
   /// The queued render was sent by a user.
   User(String),
 }
@@ -23,7 +26,7 @@ pub struct QueuedRender<S> {
   /// The authority.
   pub(super) auth: QueuedRenderAuthority,
   /// The content.
-  pub(super) layout: super::RenderLayout<S>,
+  pub(super) layout: super::RenderVariant<S>,
   /// The target.
   pub(super) device_id: String,
 }
@@ -45,14 +48,15 @@ where
   }
 
   /// Creates a queued render, serializes it, and adds it to the redis list for popping later.
-  pub async fn queue<S>(
+  pub async fn queue<S, T>(
     &mut self,
     device_id: S,
     auth: &QueuedRenderAuthority,
-    layout: super::RenderLayout<S>,
+    layout: super::RenderVariant<T>,
   ) -> io::Result<(String, i64)>
   where
     S: AsRef<str> + Serialize,
+    T: AsRef<str> + Serialize,
   {
     let queued_item = QueuedRender {
       id: uuid::Uuid::new_v4().to_string(),

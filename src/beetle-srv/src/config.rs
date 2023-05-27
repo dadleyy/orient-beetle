@@ -12,7 +12,7 @@ pub struct RedisConfiguration {
   /// The port; e.g `1231`
   pub port: u16,
   /// The password to authenticate with. This is typically the `default` acl role.
-  pub auth: String,
+  pub auth: Option<String>,
 }
 
 /// Auth0 api client credential + endpoint configuration vauoles.
@@ -40,6 +40,8 @@ pub struct Auth0Configuration {
 pub struct MongoCollectionsConfiguration {
   /// The collection name which holds our list of users (which includes their device access).
   pub users: String,
+  /// The collection name which holds permission information between devices and users.
+  pub device_authorities: String,
   /// The collection to store device information that will be periodically updated as the device
   /// interacts with the server.
   pub device_diagnostics: String,

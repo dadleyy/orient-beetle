@@ -12,6 +12,9 @@ mod devices;
 /// The main worker module.
 mod worker;
 
+/// Routes related to the job result store;
+mod jobs;
+
 pub use worker::Worker;
 
 /// These configuration definitions makes it easy for the web binary to
@@ -91,6 +94,8 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/devices/unregister").post(devices::unregister);
   app.at("/device-info").get(devices::info);
   app.at("/device-message").post(devices::message);
+  app.at("/device-queue").post(devices::queue);
+  app.at("/jobs").get(jobs::find);
 
   app.at("/status").get(heartbeat);
   app.at("/*").all(missing);

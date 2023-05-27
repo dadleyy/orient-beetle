@@ -5,10 +5,18 @@ import Html
 import Html.Attributes
 import Html.Parser
 import Html.Parser.Util as HTP
+import Route.Account
 import Route.Device
 import Route.DeviceRegistration
 import Route.Home
 import Url
+import Url.Parser as UrlParser exposing ((</>))
+import Url.Parser.Query as QueryParser
+
+
+
+-- When trying to initialize a route based on a url, we will either find a route and initialize it to
+-- its default state, or have some redirect to another url.
 
 
 type RouteInitialization
@@ -18,20 +26,29 @@ type RouteInitialization
 
 type Route
     = Login
+    | Account Route.Account.Model
     | Home Route.Home.Model
     | Device Route.Device.Model
     | DeviceRegistration Route.DeviceRegistration.Model
+
+
+type RouteUrl
+    = AccountUrl
 
 
 type Message
     = HomeMessage Route.Home.Message
     | DeviceMessage Route.Device.Message
     | DeviceRegistrationMessage Route.DeviceRegistration.Message
+    | AccountMessage Route.Account.Message
 
 
 subscriptions : Route -> Sub Message
 subscriptions route =
     case route of
+        DeviceRegistration regModel ->
+            Sub.map DeviceRegistrationMessage (Route.DeviceRegistration.subscriptions regModel)
+
         Device deviceModel ->
             Sub.map DeviceMessage (Route.Device.subscriptions deviceModel)
 
@@ -48,6 +65,9 @@ view env route =
 
         Home inner ->
             Route.Home.view inner env |> Html.map HomeMessage
+
+        Account inner ->
+            Route.Account.view inner env |> Html.map AccountMessage
 
         Device inner ->
             Route.Device.view inner env |> Html.map DeviceMessage
@@ -116,47 +136,115 @@ deviceRouting env normalizedUrl =
             Redirect (Environment.buildRoutePath env "login")
 
 
-routeLoadedEnv : Environment.Environment -> String -> Maybe String -> RouteInitialization
-routeLoadedEnv env normalizedUrl maybeId =
-    --  TODO: is there a better way to navigate/route subroute?
-    case String.startsWith "devices" normalizedUrl of
-        True ->
-            deviceRouting env normalizedUrl
+routeParser : UrlParser.Parser (RouteUrl -> a) a
+routeParser =
+    UrlParser.oneOf
+        [ UrlParser.map AccountUrl (UrlParser.s "account" </> UrlParser.top)
+        ]
 
-        False ->
-            case ( normalizedUrl, maybeId ) of
-                ( "register-device", Just _ ) ->
-                    Matched ( Just (DeviceRegistration Route.DeviceRegistration.default), Cmd.none )
 
-                ( "login", Just _ ) ->
-                    Redirect (Environment.buildRoutePath env "home")
+trimLeftMatches : String -> String -> String
+trimLeftMatches predicate input =
+    if String.startsWith predicate input then
+        String.dropLeft (String.length predicate) input
 
-                ( "login", Nothing ) ->
-                    Matched ( Just Login, Cmd.none )
+    else
+        input
 
-                ( "home", Nothing ) ->
-                    Redirect (Environment.buildRoutePath env "login")
 
-                ( "home", Just _ ) ->
-                    let
-                        ( route, cmd ) =
-                            Route.Home.default env
-                    in
-                    Matched ( Just (Home route), cmd |> Cmd.map HomeMessage )
 
-                _ ->
-                    Redirect (Environment.buildRoutePath env "home")
+-- TODO: update all routing to use canonical methods provided by elm. Some of the following
+--       was implemented using a nasty handrolled version.
+
+
+routeLoadedEnv : Environment.Environment -> Url.Url -> Maybe String -> RouteInitialization
+routeLoadedEnv env url maybeId =
+    let
+        normalizedUrl =
+            Environment.normalizeUrlPath env url
+
+        normalizedUrlPathing =
+            { url | path = trimLeftMatches env.configuration.root url.path }
+
+        parsedUrl =
+            UrlParser.parse routeParser normalizedUrlPathing
+
+        homeRedirect =
+            Redirect (Environment.buildRoutePath env "home")
+    in
+    case parsedUrl of
+        Just AccountUrl ->
+            let
+                ( maybeAccountModel, cmd ) =
+                    Route.Account.default env
+            in
+            maybeAccountModel
+                |> Maybe.map (\m -> Matched ( Just (Account m), cmd |> Cmd.map AccountMessage ))
+                |> Maybe.withDefault homeRedirect
+
+        Nothing ->
+            case String.startsWith "devices" normalizedUrl of
+                True ->
+                    deviceRouting env normalizedUrl
+
+                False ->
+                    case ( normalizedUrl, maybeId ) of
+                        ( "register-device", Just _ ) ->
+                            let
+                                parser =
+                                    UrlParser.query targetDeviceIdQueryParser
+
+                                -- Parse the quey, but pretend we're at the root, no matter where we are. This
+                                -- is a workaround to avoid having to deal with the path we're actually hosted
+                                -- under.
+                                parsedQuery =
+                                    UrlParser.parse parser { url | path = "" }
+
+                                initialModel =
+                                    case parsedQuery of
+                                        Just (Just id) ->
+                                            Route.DeviceRegistration.withInitialId id
+
+                                        _ ->
+                                            Route.DeviceRegistration.default
+                            in
+                            Matched ( Just (DeviceRegistration initialModel), Cmd.none )
+
+                        ( "login", Just _ ) ->
+                            Redirect (Environment.buildRoutePath env "home")
+
+                        ( "login", Nothing ) ->
+                            Matched ( Just Login, Cmd.none )
+
+                        ( "home", Nothing ) ->
+                            Redirect (Environment.buildRoutePath env "login")
+
+                        ( "home", Just _ ) ->
+                            let
+                                ( route, cmd ) =
+                                    Route.Home.default env
+                            in
+                            Matched ( Just (Home route), cmd |> Cmd.map HomeMessage )
+
+                        _ ->
+                            Redirect (Environment.buildRoutePath env "home")
+
+
+
+-- Given a URL, try to match on the route. The first thing this will do is try to find an id
+-- associated with the session/environment and match on "authenticated" routes.
 
 
 fromUrl : Environment.Environment -> Url.Url -> RouteInitialization
 fromUrl env url =
-    let
-        normalizedUrl =
-            Environment.normalizeUrlPath env url
-    in
     Environment.getLoadedId env
-        |> Maybe.map (routeLoadedEnv env normalizedUrl)
+        |> Maybe.map (routeLoadedEnv env url)
         |> Maybe.withDefault (Matched ( Nothing, Cmd.none ))
+
+
+targetDeviceIdQueryParser : QueryParser.Parser (Maybe String)
+targetDeviceIdQueryParser =
+    QueryParser.string "device_target_id"
 
 
 renderLogin : Environment.Environment -> Html.Html Message

@@ -9,16 +9,19 @@ html(lang="en")
     - var version = process.env['BEETLE_VERSION'] || 'dev'
     - var loginUrl = process.env['BEETLE_LOGIN_URL'] || 'http://0.0.0.0:8337/auth/redirect'
     - var logoutUrl = process.env['BEETLE_LOGOUT_URL'] || 'http://0.0.0.0:8337/auth/logout'
-    - var environment = JSON.stringify({ release, api, root, version, loginUrl, logoutUrl })
+    - var apiDocsUrl = process.env['BEETLE_API_DOCS_URL'] || 'https://www.krumpled.com/beetle-docs/beetle/index.html'
+    - var environment = JSON.stringify({ release, api, root, version, loginUrl, logoutUrl, apiDocsUrl })
     - var mainsrc = release ? `${root}main.min.js` : `${root}main.js`
     - var bootsrc = release ? `${root}boot.min.js` : `${root}boot.js`
     - var maincss = `${root}main.css`
+    - var fontcss = `${root}icon-font/style.css`
     meta(name="environment", value=environment)
     meta(
       name="viewport",
       content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1"
     )
     link(rel="stylesheet", href=maincss)
+    link(rel="stylesheet", href=fontcss)
     script(type="text/javascript", src=mainsrc)
     script(type="text/javascript", src=bootsrc)
   body

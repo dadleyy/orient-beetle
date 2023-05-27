@@ -32,7 +32,8 @@ const server = http.createServer(function(request, response) {
   }
 
   const resource = serveUnder ? request.url.replace('/beetle', '') : request.url;
-  const staticPath = path.join(__dirname, 'target', buildTargetName, resource);
+  const [withoutQuery] = resource.split('?');
+  const staticPath = path.join(__dirname, 'target', buildTargetName, withoutQuery);
 
   fs.stat(staticPath, function (error, stats) {
     const resolvedPath = !error && stats.isFile()

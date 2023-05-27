@@ -1,7 +1,0 @@
-[[units]]
-kind = "github-release-tarball"
-name = "beetle-srv"
-repo = "dadleyy/orient-beetle"
-semver_storage = ""
-artifact_naming = { starts_with = "beetle-ui", ends_with = ".tar.gz" }
-extraction = { destination = "" }

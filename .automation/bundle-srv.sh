@@ -3,6 +3,10 @@
 # This script is simple a convience for the github workflow; it is meant to
 # make the process of defining what artifacts from the cargo build are bundled
 # into the tarball.
+#
+# It is _not_ expected this will be used by developers day-to-day; the filesystem
+# paths built here are manipulated in a specific way based on the github actions
+# environment.
 
 tools="beetle-cli beetle-web beetle-registrar beetle-renderer"
 bundle_name=$1
@@ -30,6 +34,10 @@ for tool in $tools; do
   if [ -z "$target" ]; then
     tool_path="target/release/$tool"
 
+    if [ -d $GITHUB_WORKSPACE ]; then
+      tool_path="$GITHUB_WORKSPACE/$tool_path"
+    fi
+
     if [ ! -f $tool_path ]; then
       echo "[$0] unable to find '$tool' at $tool_path"
       continue
@@ -38,6 +46,10 @@ for tool in $tools; do
     cp -v $tool_path $bundle_root/bin/$tool
   else
     tool_path="target/$target/release/$tool"
+
+    if [ -d $GITHUB_WORKSPACE ]; then
+      tool_path="$GITHUB_WORKSPACE/$tool_path"
+    fi
 
     if [ ! -f $tool_path ]; then
       echo "[$0] unable to find '$tool' (at $tool_path)"

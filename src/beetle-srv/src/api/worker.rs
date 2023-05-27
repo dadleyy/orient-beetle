@@ -1,4 +1,5 @@
 use async_std::sync::{Arc, Mutex};
+use serde::Serialize;
 use std::io::{Error, ErrorKind, Result};
 
 /// The type shared by all web worker requests.
@@ -16,7 +17,7 @@ pub struct Worker {
 
   /// The redis TCP connection. This is not a "pool" just yet; we're currently only using a single
   /// tcp connection across all connections.
-  redis_pool: Arc<Mutex<Option<async_tls::client::TlsStream<async_std::net::TcpStream>>>>,
+  redis_pool: Arc<Mutex<Option<crate::redis::RedisConnection>>>,
 }
 
 impl Worker {
@@ -44,12 +45,44 @@ impl Worker {
   }
 
   /// Will attempt to queue a render request.
-  pub(super) async fn queue_render(
+  pub(super) async fn queue_job(&self, job: crate::registrar::RegistrarJob) -> Result<String> {
+    let serialized = serde_json::to_string(&job)
+      .map_err(|err| Error::new(ErrorKind::Other, format!("unable to serialize job - {err}")))?;
+
+    let pending_json = serde_json::to_string(&crate::job_result::JobResult::Pending).map_err(|error| {
+      log::warn!("unable to serialize pending job state - {error}");
+      Error::new(ErrorKind::Other, "job-serialize")
+    })?;
+
+    self
+      .command(&kramer::Command::Hashes(kramer::HashCommand::Set(
+        crate::constants::REGISTRAR_JOB_RESULTS,
+        kramer::Arity::One((&job.id, &pending_json)),
+        kramer::Insertion::Always,
+      )))
+      .await?;
+
+    self
+      .command(&kramer::Command::Lists(kramer::ListCommand::Push(
+        (kramer::Side::Right, kramer::Insertion::Always),
+        crate::constants::REGISTRAR_JOB_QUEUE,
+        kramer::Arity::One(serialized),
+      )))
+      .await?;
+
+    Ok(job.id)
+  }
+
+  /// Will attempt to queue a render request.
+  pub(super) async fn queue_render<S>(
     &self,
     device_id: &String,
     user_id: &String,
-    layout: crate::rendering::RenderLayout<&String>,
-  ) -> Result<String> {
+    layout: crate::rendering::RenderVariant<S>,
+  ) -> Result<String>
+  where
+    S: AsRef<str> + Serialize,
+  {
     let mut retries = 1;
     let mut id = None;
 
@@ -65,15 +98,31 @@ impl Worker {
           .queue(
             device_id,
             &crate::rendering::queue::QueuedRenderAuthority::User(user_id.clone()),
-            layout.clone(),
+            layout,
           )
           .await?;
 
         id = Some(result.0);
+        break;
       }
     }
 
-    id.ok_or_else(|| Error::new(ErrorKind::Other, "unable to queue within reasonable amount of attempts"))
+    let id = id.ok_or_else(|| Error::new(ErrorKind::Other, "unable to queue within reasonable amount of attempts"))?;
+
+    let pending_json = serde_json::to_string(&crate::job_result::JobResult::Pending).map_err(|error| {
+      log::warn!("unable to serialize pending job state - {error}");
+      Error::new(ErrorKind::Other, "job-serialize")
+    })?;
+
+    self
+      .command(&kramer::Command::Hashes(kramer::HashCommand::Set(
+        crate::constants::REGISTRAR_JOB_RESULTS,
+        kramer::Arity::One((&id, &pending_json)),
+        kramer::Insertion::Always,
+      )))
+      .await?;
+
+    Ok(id)
   }
 
   /// Attempts to execute a command against the redis instance.
@@ -192,11 +241,18 @@ impl Worker {
     )
   }
 
+  /// Attempts to return the access level for a user given a device id.
+  pub async fn user_access(
+    &self,
+    user_id: &String,
+    device_id: &String,
+  ) -> Result<Option<crate::registrar::AccessLevel>> {
+    crate::registrar::user_access(&self.mongo.0, &self.mongo.1, user_id, device_id).await
+  }
+
   /// Attempts to aquire a lock, filling the contents with either a new connection, or just
   /// re-using the existing one.
-  async fn get_redis_lock(
-    &self,
-  ) -> Result<async_std::sync::MutexGuard<'_, Option<async_tls::client::TlsStream<async_std::net::TcpStream>>>> {
+  async fn get_redis_lock(&self) -> Result<async_std::sync::MutexGuard<'_, Option<crate::redis::RedisConnection>>> {
     let mut lock_result = self.redis_pool.lock().await;
 
     match lock_result.take() {

@@ -36,12 +36,16 @@ jsonwebtoken = { version = "^7.2.0", default-features = false }
 http-types = { version = "^2.0", default-features = false }
 surf = { version = "^2.3.0", default-features = false, features = ["curl-client", "middleware-logger", "encoding"] }
 toml = { version = "^0.5", default-features = false }
-bson = { version = "2.0.0", features = ["uuid-0_8"], default-features = false }
+bson = { version = "2.0.0", features = ["uuid-0_8", "serde_with"], default-features = false }
 mongodb = { version = "^2.0.0", features = ["async-std-runtime", "bson-uuid-0_8"], default-features = false }
 clap = { version = "^4.0.0", features = ["derive"] }
 imageproc = { version = "^0.23" }
 image = { version = "^0.24" }
 rusttype = { version = "^0.9" }
+qrencode = { version = "^0.14" }
+
+[features]
+redis-insecure = []
 
 [patch.crates-io]
 kramer = { git = "https://github.com/sizethree/kramer.git", branch = "async-read" }

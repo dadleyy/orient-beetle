@@ -1,5 +1,0 @@
-updater.toml
-*.env
-*.version
-.env
-/target

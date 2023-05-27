@@ -124,7 +124,7 @@ fn save_image(args: &CommandLineArguments, image_buffer: Vec<u8>) -> io::Result<
 async fn get_device_id(
   args: &CommandLineArguments,
   config: &beetle::registrar::Configuration,
-  mut connection: &mut async_tls::client::TlsStream<async_std::net::TcpStream>,
+  mut connection: &mut beetle::redis::RedisConnection,
 ) -> io::Result<String> {
   let mut id_storage_path = std::path::PathBuf::from(&args.storage);
   id_storage_path.push(".device_id");
@@ -224,7 +224,14 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
     io::Error::new(io::ErrorKind::Other, "bad-config")
   })?;
 
-  let mut connection = beetle::redis::connect(&config.redis).await?;
+  log::info!("mock starting with config - '{config:?}'");
+
+  let mut connection = beetle::redis::connect(&config.redis).await.map_err(|error| {
+    io::Error::new(
+      io::ErrorKind::Other,
+      format!("failed redis connection '{:?}' - {error}", config.redis),
+    )
+  })?;
 
   let mock_device_id = get_device_id(&args, &config, &mut connection).await?;
 
@@ -265,6 +272,8 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
       .await
       {
         Ok(amount) => {
+          log::info!("has {amount} bytes");
+
           if amount == 5 && matches!(std::str::from_utf8(&frame_buffer[0..amount]), Ok("*-1\r\n")) {
             log::info!("empty read from redis, moving on immediately");
             break 'response_read;
@@ -273,8 +282,12 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
           // Try to parse _something_ - this will normally be the `*2\r\n...` bit that contains our
           // array size followed by two entries for the key + actual image data.
           let (message_header, header_size) = match std::str::from_utf8(&frame_buffer) {
-            Ok(inner) => (Ok(inner), amount),
+            Ok(inner) => {
+              log::info!("parsed whole buffer as utf-8 - '{inner}'");
+              (Ok(inner), amount)
+            }
             Err(error) if error.valid_up_to() > 0 => {
+              log::warn!("parially read buffer as utf8 - {error:?}");
               let header_size = error.valid_up_to();
               (std::str::from_utf8(&frame_buffer[0..header_size]), header_size)
             }
@@ -285,19 +298,34 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
           };
 
           if let Ok(header) = message_header {
+            log::info!("parser started with {parser:?}");
             parser = header.chars().fold(parser, |p, c| p.take(c));
           }
 
-          // If we finished parsing the `message_header` as a bulk string that is yet to be read,
-          // attempt to push into our actual image buffer that range of the slice starting from
-          // where the header ended, to where the image is expected to end.
-          if let MessageState::BulkString(BulkStringLocation::Reading(remainder, _, _), _) = parser {
-            if header_size > 0 {
-              let terminal = header_size + remainder;
-              log::info!("image located @ {header_size} -> {terminal}");
-              image_buffer.extend_from_slice(&frame_buffer[header_size..terminal]);
-              break 'response_read;
+          log::info!("parser concluded with {parser:?}");
+
+          match &parser {
+            // If we finished parsing the `message_header` as a bulk string that is yet to be read,
+            // attempt to push into our actual image buffer that range of the slice starting from
+            // where the header ended, to where the image is expected to end.
+            MessageState::BulkString(BulkStringLocation::Reading(remainder, _, _), _) => {
+              if header_size > 0 {
+                let terminal = header_size + remainder;
+                log::info!("image located @ {header_size} -> {terminal}");
+                if frame_buffer.len() < terminal {
+                  log::warn!("confused - header: '{header_size}' remainder: '{remainder}'");
+                } else {
+                  image_buffer.extend_from_slice(&frame_buffer[header_size..terminal]);
+                }
+                break 'response_read;
+              }
             }
+            MessageState::BulkString(BulkStringLocation::Sizing(0), Some((messages, arr_size)))
+              if *arr_size == messages.len() =>
+            {
+              log::info!("found command = {messages:?}");
+            }
+            other => log::warn!("parser finished with unexpected result - {other:?}"),
           }
         }
 

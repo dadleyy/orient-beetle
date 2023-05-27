@@ -1,0 +1,7 @@
+[alias]
+reg = "run --bin beetle-registrar --features redis-insecure"
+web = "run --bin beetle-web --features redis-insecure"
+cli = "run --bin beetle-cli --features redis-insecure"
+ren = "run --bin beetle-renderer --features redis-insecure"
+mock = "run --bin beetle-pio-mock --features redis-insecure"
+

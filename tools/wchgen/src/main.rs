@@ -1,8 +1,8 @@
 use std::io::{BufRead, BufReader, Error, ErrorKind, Result};
 use std::{fmt, fs, path};
 
-const STATUSLINE: &'static str = "HTTP/1.1 200 OK";
-const CONTENT_TYPE: &'static str = "Content-Type: text/html; charset=utf-8";
+const STATUSLINE: &str = "HTTP/1.1 200 OK";
+const CONTENT_TYPE: &str = "Content-Type: text/html; charset=utf-8";
 
 struct Response<'a>(&'a str);
 
@@ -30,7 +30,7 @@ fn main() -> Result<()> {
 
   let p = path::PathBuf::from(&target);
 
-  if p.is_file() != true {
+  if !p.is_file() {
     let error = format!("'{}' is not a valid file", target);
     return Err(Error::new(ErrorKind::Other, error));
   }
@@ -40,7 +40,7 @@ fn main() -> Result<()> {
   let minified = reader.lines().fold(String::with_capacity(1024), |mut out, line| match line {
     Ok(valid) => {
       out.push_str(valid.trim_start().trim_end());
-      out.replace("\"", "'")
+      out.replace('\"', "'")
     }
     Err(_) => out,
   });
