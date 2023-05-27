@@ -390,6 +390,7 @@ fetchDevice env id =
         , expect = Http.expectJson LoadedDeviceInfo infoDecoder
         }
 
+
 fetchDeviceAuthority : Environment.Environment -> String -> Cmd Message
 fetchDeviceAuthority env id =
     Http.get
