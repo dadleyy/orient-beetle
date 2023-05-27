@@ -143,14 +143,31 @@ routeParser =
         ]
 
 
+trimLeftMatches : String -> String -> String
+trimLeftMatches predicate input =
+    if String.startsWith predicate input then
+        String.dropLeft (String.length predicate) input
+
+    else
+        input
+
+
+
+-- TODO: update all routing to use canonical methods provided by elm. Some of the following
+--       was implemented using a nasty handrolled version.
+
+
 routeLoadedEnv : Environment.Environment -> Url.Url -> Maybe String -> RouteInitialization
 routeLoadedEnv env url maybeId =
     let
         normalizedUrl =
             Environment.normalizeUrlPath env url
 
+        normalizedUrlPathing =
+            { url | path = trimLeftMatches env.configuration.root url.path }
+
         parsedUrl =
-            UrlParser.parse routeParser url
+            UrlParser.parse routeParser normalizedUrlPathing
 
         homeRedirect =
             Redirect (Environment.buildRoutePath env "home")

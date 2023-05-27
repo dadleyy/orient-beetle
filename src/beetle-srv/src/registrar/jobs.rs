@@ -3,6 +3,15 @@ use serde::{Deserialize, Serialize};
 use super::ownership;
 use super::rename::DeviceRenameRequest;
 
+/// Rendering jobs specific to the registrar. Eventually this might be expanded to wrap _all_
+/// rendering jobs that currently go directly to the queue.
+#[derive(Deserialize, Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
+pub enum RegistrarRenderKinds {
+  /// Queues a render for the initial scannable
+  RegistrationScannable(String),
+}
+
 /// The individual kinds of jobs.
 #[derive(Deserialize, Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
@@ -12,6 +21,9 @@ pub enum RegistrarJobKind {
 
   /// Renaming devices can be expensive; it is a job.
   Rename(DeviceRenameRequest),
+
+  /// Render jobs specific to the registrar.
+  Renders(RegistrarRenderKinds),
 }
 
 /// The job container exposed by this module.
@@ -26,6 +38,19 @@ pub struct RegistrarJob {
 }
 
 impl RegistrarJob {
+  /// Builds a request for taking device ownership.
+  pub fn registration_scannable<S>(device_id: S) -> Self
+  where
+    S: std::convert::AsRef<str>,
+  {
+    let id = uuid::Uuid::new_v4().to_string();
+    let device_id = device_id.as_ref().to_string();
+    Self {
+      id,
+      job: RegistrarJobKind::Renders(RegistrarRenderKinds::RegistrationScannable(device_id)),
+    }
+  }
+
   /// Builds a request for taking device ownership.
   pub fn rename_device<S>(device_id: S, new_name: S) -> Self
   where

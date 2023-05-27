@@ -1,6 +1,27 @@
-module Job exposing (Job, JobResult(..), asResult, decoder)
+module Job exposing
+    ( Job
+    , JobHandle
+    , JobPollingState(..)
+    , JobResult(..)
+    , asResult
+    , decoder
+    , handleDecoder
+    , loadPendingJob
+    )
 
+import Environment
+import Http
 import Json.Decode as Decode
+
+
+type alias JobHandle =
+    { id : String }
+
+
+type JobPollingState
+    = WaitingForId
+    | PollingId String
+    | PolledId String
 
 
 type alias Job =
@@ -37,6 +58,11 @@ jobEnumeration maybeStatus =
             Decode.succeed { status = Just "unknown", result = Nothing }
 
 
+handleDecoder : Decode.Decoder JobHandle
+handleDecoder =
+    Decode.map JobHandle (Decode.field "id" Decode.string)
+
+
 decoder : Decode.Decoder Job
 decoder =
     Decode.field "beetle:kind" (Decode.maybe Decode.string)
@@ -60,3 +86,12 @@ asResult job =
 
         _ ->
             Unknown
+
+
+loadPendingJob : Environment.Environment -> (Result Http.Error Job -> a) -> JobHandle -> Cmd a
+loadPendingJob env message handle =
+    let
+        url =
+            Environment.apiRoute env "jobs" ++ "?id=" ++ handle.id
+    in
+    Http.get { url = url, expect = Http.expectJson message decoder }

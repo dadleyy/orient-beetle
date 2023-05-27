@@ -1,5 +1,6 @@
 module Route.Device exposing (Message(..), Model, default, subscriptions, update, view)
 
+import Alert
 import Button
 import Dropdown
 import Environment
@@ -8,7 +9,8 @@ import Html.Attributes as ATT
 import Html.Events as EV
 import Http
 import Icon
-import Json.Decode
+import Job
+import Json.Decode as D
 import Json.Encode as Encode
 import Task
 import Time
@@ -18,6 +20,7 @@ import TimeDiff
 type alias DeviceInfoResponse =
     { id : String
     , last_seen : Int
+    , nickname : Maybe String
     , first_seen : Int
     , sent_message_count : Maybe Int
     , current_queue_count : Int
@@ -26,14 +29,15 @@ type alias DeviceInfoResponse =
 
 type SettingsMenuMessage
     = StartRename
-    | QueueRegister
+    | QueueWelcomeScannable
 
 
 type Message
     = Loaded (Result Http.Error ())
     | LoadedDeviceInfo (Result Http.Error DeviceInfoResponse)
-    | QueuedMessageJob (Result Http.Error String)
+    | QueuedMessageJob (Result Http.Error Job.JobHandle)
     | Tick Time.Posix
+    | LoadedJobHandle Job.JobHandle (Result Http.Error Job.Job)
     | AttemptMessage
     | SetMessage String
     | ToggleLights Bool
@@ -53,14 +57,16 @@ type QueuePayloadKinds
     | LinkPayload String
     | LightPayload Bool
     | DeviceRenamePayload String
+    | WelcomeMessage
 
 
 type alias Model =
     { id : String
     , activeInput : ( InputKinds, Maybe (Maybe (Result Http.Error String)) )
+    , alert : Maybe Alert.Alert
     , loadedDevice : Maybe (Result Http.Error DeviceInfoResponse)
     , pendingRefresh : Maybe (Maybe (Result Http.Error DeviceInfoResponse))
-    , pendingMessageJobs : List String
+    , pendingMessageJobs : List Job.JobHandle
     , currentTime : Maybe Time.Posix
     , settingsMenu : Dropdown.Dropdown
     }
@@ -80,6 +86,9 @@ isBusy model =
         isSending =
             Tuple.second model.activeInput |> Maybe.map (always True) |> Maybe.withDefault False
 
+        isPolling =
+            List.length model.pendingMessageJobs > 0
+
         isLoading =
             case model.loadedDevice of
                 Just (Ok _) ->
@@ -88,7 +97,20 @@ isBusy model =
                 _ ->
                     True
     in
-    isSending || isLoading
+    isSending || isLoading || isPolling
+
+
+resetInput : InputKinds -> InputKinds
+resetInput kind =
+    case kind of
+        DeviceName _ ->
+            DeviceName ""
+
+        Message _ ->
+            Message ""
+
+        Link _ ->
+            Link ""
 
 
 activeLinkToggles : List (Html.Html Message)
@@ -171,12 +193,13 @@ view model env =
 
         settingsMenu =
             [ ( StartRename, Html.div [] [ Html.text "Rename Device" ] )
-            , ( QueueRegister, Html.div [] [ Html.text "Send Registration Scannable" ] )
+            , ( QueueWelcomeScannable, Html.div [] [ Html.text "Send Registration Scannable" ] )
             ]
     in
     Html.div [ ATT.class "px-4 py-3" ]
-        [ Html.div [ ATT.class "pb-1 mb-1 flex items-center" ]
-            [ Html.div [] [ Html.h2 [] [ Html.text model.id ] ]
+        [ viewAlert model
+        , Html.div [ ATT.class "pb-1 mb-1 flex items-center" ]
+            [ modelInfoHeader model
             , Html.div [ ATT.class "ml-auto" ]
                 [ Dropdown.view model.settingsMenu SettingsMenuUpdate settingsMenu ]
             , Html.div [ ATT.class "lg:hidden flex ml-2 items-center" ] inputToggles
@@ -208,6 +231,27 @@ view model env =
                     , deviceInfoTable model info
                     ]
         ]
+
+
+modelInfoHeader : Model -> Html.Html Message
+modelInfoHeader model =
+    case model.loadedDevice of
+        Just (Ok info) ->
+            case info.nickname of
+                Just name ->
+                    Html.div [ ATT.class "flex items-center" ]
+                        [ Html.div [] [ Html.text name ]
+                        , Html.div [ ATT.class "ml-2" ] [ Html.code [] [ Html.text info.id ] ]
+                        ]
+
+                Nothing ->
+                    Html.div [] [ Html.text model.id ]
+
+        Just (Err e) ->
+            Html.div [] [ Html.text model.id ]
+
+        Nothing ->
+            Html.div [] [ Html.text model.id ]
 
 
 deviceInfoTable : Model -> DeviceInfoResponse -> Html.Html Message
@@ -251,11 +295,6 @@ deviceInfoTable model info =
         ]
 
 
-queuedMessageDecoder : Json.Decode.Decoder String
-queuedMessageDecoder =
-    Json.Decode.field "id" Json.Decode.string
-
-
 encodeStringPayloadWithKind : String -> String -> Encode.Value -> Encode.Value
 encodeStringPayloadWithKind id kind content =
     Encode.object
@@ -277,6 +316,18 @@ postMessage env id payloadKind =
 
         payload =
             case payloadKind of
+                WelcomeMessage ->
+                    Http.jsonBody
+                        (Encode.object
+                            [ ( "device_id", Encode.string id )
+                            , ( "kind"
+                              , Encode.object
+                                    [ ( "beetle:kind", Encode.string "registration" )
+                                    ]
+                              )
+                            ]
+                        )
+
                 DeviceRenamePayload newName ->
                     Http.jsonBody (encoder "rename" (Encode.string newName))
 
@@ -292,18 +343,19 @@ postMessage env id payloadKind =
     Http.post
         { url = Environment.apiRoute env "device-queue"
         , body = payload
-        , expect = Http.expectWhatever Loaded
+        , expect = Http.expectJson QueuedMessageJob Job.handleDecoder
         }
 
 
-infoDecoder : Json.Decode.Decoder DeviceInfoResponse
+infoDecoder : D.Decoder DeviceInfoResponse
 infoDecoder =
-    Json.Decode.map5 DeviceInfoResponse
-        (Json.Decode.field "id" Json.Decode.string)
-        (Json.Decode.field "last_seen" Json.Decode.int)
-        (Json.Decode.field "first_seen" Json.Decode.int)
-        (Json.Decode.field "sent_message_count" (Json.Decode.maybe Json.Decode.int))
-        (Json.Decode.field "current_queue_count" Json.Decode.int)
+    D.map6 DeviceInfoResponse
+        (D.field "id" D.string)
+        (D.field "last_seen" D.int)
+        (D.field "nickname" (D.maybe D.string))
+        (D.field "first_seen" D.int)
+        (D.field "sent_message_count" (D.maybe D.int))
+        (D.field "current_queue_count" D.int)
 
 
 fetchDevice : Environment.Environment -> String -> Cmd Message
@@ -333,15 +385,15 @@ update env message model =
         SettingsMenuUpdate dropdown (Just StartRename) ->
             ( { model | settingsMenu = dropdown, activeInput = ( DeviceName "", Nothing ) }, Cmd.none )
 
-        SettingsMenuUpdate dropdown (Just QueueRegister) ->
-            ( { model | settingsMenu = dropdown }, Cmd.none )
+        SettingsMenuUpdate dropdown (Just QueueWelcomeScannable) ->
+            ( { model | settingsMenu = dropdown }, postMessage env model.id WelcomeMessage )
 
         SettingsMenuUpdate dropdown Nothing ->
             ( { model | settingsMenu = dropdown }, Cmd.none )
 
         Tick time ->
             let
-                ( command, pendingRefresh ) =
+                ( refreshCommand, pendingRefresh ) =
                     case model.pendingRefresh of
                         Just Nothing ->
                             ( Cmd.none, model.pendingRefresh )
@@ -351,8 +403,35 @@ update env message model =
 
                         Just (Just _) ->
                             ( fetchDevice env model.id, Just Nothing )
+
+                pollCommand =
+                    case List.head model.pendingMessageJobs of
+                        Just handle ->
+                            Job.loadPendingJob env (LoadedJobHandle handle) handle
+
+                        Nothing ->
+                            Cmd.none
             in
-            ( { model | currentTime = Just time, pendingRefresh = pendingRefresh }, command )
+            ( { model | currentTime = Just time, pendingRefresh = pendingRefresh }
+            , Cmd.batch [ refreshCommand, pollCommand ]
+            )
+
+        LoadedJobHandle handle (Ok job) ->
+            let
+                jobResult =
+                    Job.asResult job
+            in
+            case jobResult of
+                Job.Pending ->
+                    ( model, Cmd.none )
+
+                -- TODO(job-polling): this clears out the job being polled whenever it reaches a terminal
+                --                    state. eventually we will want to handle failures much better.
+                _ ->
+                    ( { model | pendingMessageJobs = [] }, Cmd.none )
+
+        LoadedJobHandle handle (Err _) ->
+            ( { model | pendingMessageJobs = [] }, Cmd.none )
 
         UpdateInput newInput ->
             ( { model | activeInput = ( newInput, Tuple.second model.activeInput ) }, Cmd.none )
@@ -376,15 +455,7 @@ update env message model =
         Loaded _ ->
             let
                 emptiedInput =
-                    case Tuple.first model.activeInput of
-                        DeviceName _ ->
-                            DeviceName ""
-
-                        Message _ ->
-                            Message ""
-
-                        Link _ ->
-                            Link ""
+                    Tuple.first model.activeInput |> resetInput
             in
             ( { model | activeInput = ( emptiedInput, Nothing ) }, Cmd.none )
 
@@ -393,11 +464,26 @@ update env message model =
             , postMessage env model.id (LightPayload state)
             )
 
-        QueuedMessageJob (Ok jobId) ->
-            ( { model | pendingMessageJobs = jobId :: model.pendingMessageJobs }, Cmd.none )
+        --
+        QueuedMessageJob (Ok jobHandle) ->
+            let
+                jobList =
+                    jobHandle :: model.pendingMessageJobs
 
-        QueuedMessageJob (Err _) ->
-            ( model, Cmd.none )
+                activeInput =
+                    Tuple.first model.activeInput |> resetInput
+            in
+            ( { model | pendingMessageJobs = jobList, activeInput = ( activeInput, Nothing ) }, Cmd.none )
+
+        QueuedMessageJob (Err e) ->
+            let
+                activeInput =
+                    Tuple.first model.activeInput |> resetInput
+
+                alert =
+                    Just (Alert.Warning "Unable to queue")
+            in
+            ( { model | alert = alert, activeInput = ( activeInput, Nothing ) }, Cmd.none )
 
         AttemptMessage ->
             let
@@ -426,6 +512,16 @@ getNow =
     Task.perform LoadedTime Time.now
 
 
+viewAlert : Model -> Html.Html Message
+viewAlert model =
+    case model.alert of
+        Just a ->
+            Html.div [ ATT.class "mb-4" ] [ Alert.view a ]
+
+        Nothing ->
+            Html.div [] []
+
+
 default : Environment.Environment -> String -> ( Model, Cmd Message )
 default env id =
     ( { id = id
@@ -435,6 +531,7 @@ default env id =
       , pendingRefresh = Nothing
       , currentTime = Nothing
       , settingsMenu = Dropdown.empty
+      , alert = Nothing
       }
     , Cmd.batch [ fetchDevice env id, getNow ]
     )

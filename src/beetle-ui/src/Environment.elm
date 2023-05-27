@@ -13,6 +13,7 @@ module Environment exposing
     , getLocalizedContent
     , getSession
     , isLoaded
+    , normalizeApplicationUrl
     , normalizeUrlPath
     , statusFooter
     , update
@@ -178,9 +179,28 @@ statusFooter env =
             Html.div [] [ Html.text "Connecting..." ]
 
 
+trimLeftMatches : String -> String -> String
+trimLeftMatches predicate input =
+    if String.startsWith predicate input then
+        String.dropLeft (String.length predicate) input
+
+    else
+        input
+
+
+normalizeApplicationUrl : Environment -> Url.Url -> Url.Url
+normalizeApplicationUrl env url =
+    { url | path = trimLeftMatches env.configuration.root url.path }
+
+
+
+--  TODO(routing): `normalizeUrlPath` is being used by handrolled routing. Once that is swapped over to
+--                 the functionality provided by Elm, this can be cleaned up.
+
+
 normalizeUrlPath : Environment -> Url.Url -> String
 normalizeUrlPath env url =
-    String.dropLeft (String.length env.configuration.root) url.path
+    trimLeftMatches env.configuration.root url.path
 
 
 buildRoutePath : Environment -> String -> String

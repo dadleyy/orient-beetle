@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::io;
 
 /// The ownership model defines types + functions associated with managing a devices ownership.
@@ -12,6 +12,10 @@ mod diagnostics;
 
 /// Defines the rename device job.
 mod rename;
+
+/// Defines rules for what can be done to devices.
+mod access;
+pub use access::{user_access, AccessLevel};
 
 /// Just a place to put the types generally associated with background work.
 pub mod jobs;
@@ -103,12 +107,12 @@ impl Worker {
           .map(Some)?
       }
 
-      Some(mut inner) => {
+      Some(mut redis_connection) => {
         log::trace!("active redis connection, checking pool");
 
         // Attempt to fill our id pool if necessary.
         let amount = pool::fill_pool(
-          &mut inner,
+          &mut redis_connection,
           self.config.registration_pool_minimum.unwrap_or(DEFAULT_POOL_MINIMUM),
         )
         .await?;
@@ -121,7 +125,7 @@ impl Worker {
         // as active in our diagnostic collection.
         for i in 0..self.config.active_device_chunk_size {
           log::trace!("checking active device queue");
-          let amount = diagnostics::mark_active(self, &mut inner).await?;
+          let amount = diagnostics::mark_active(self, &mut redis_connection).await?;
 
           if amount == 0 {
             log::info!("no remaining active devices heard from after {i}");
@@ -129,11 +133,11 @@ impl Worker {
           }
         }
 
-        if let Err(error) = work_jobs(self, &mut inner).await {
+        if let Err(error) = work_jobs(self, &mut redis_connection).await {
           log::error!("registar job worker failed - {error}");
         }
 
-        Some(inner)
+        Some(redis_connection)
       }
     };
 
@@ -142,11 +146,11 @@ impl Worker {
 }
 
 /// Attempts to pop and execute the next job available for us.
-async fn work_jobs(worker: &mut Worker, mut inner: &mut crate::redis::RedisConnection) -> io::Result<()> {
+async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis::RedisConnection) -> io::Result<()> {
   // Attempt to get the next job.
   log::info!("attempting to pop next actual job");
   let next_job = match kramer::execute(
-    &mut inner,
+    &mut redis_connection,
     kramer::Command::Lists::<&str, &str>(kramer::ListCommand::Pop(
       kramer::Side::Left,
       crate::constants::REGISTRAR_JOB_QUEUE,
@@ -174,6 +178,28 @@ async fn work_jobs(worker: &mut Worker, mut inner: &mut crate::redis::RedisConne
 
   if let Some(job_container) = next_job {
     let result = match &job_container.job {
+      RegistrarJobKind::Renders(jobs::RegistrarRenderKinds::RegistrationScannable(device_id)) => {
+        log::info!("sending initial scannable link to device '{device_id}'");
+        let mut initial_url = http_types::Url::parse(&worker.config.initial_scannable_addr).map_err(|error| {
+          log::warn!("unable to create initial url for device - {error}");
+          io::Error::new(io::ErrorKind::Other, format!("{error}"))
+        })?;
+
+        // scope our mutable borrow/mutation so it is dropped before we take ownship when we
+        // `to_string` it onto our layout.
+        {
+          let mut query = initial_url.query_pairs_mut();
+          query.append_pair("device_target_id", device_id);
+        }
+
+        let mut queue = crate::rendering::queue::Queue::new(redis_connection);
+        let layout = crate::rendering::RenderVariant::scannable(initial_url.to_string());
+        let job_result = queue
+          .queue(&device_id, &crate::rendering::QueuedRenderAuthority::Registrar, layout)
+          .await;
+
+        job_result.map(|_| crate::job_result::JobResult::Success)
+      }
       RegistrarJobKind::Rename(request) => {
         log::info!("device rename request being processed - {request:?}");
         let job_result = rename::rename(worker, request).await;
@@ -199,7 +225,7 @@ async fn work_jobs(worker: &mut Worker, mut inner: &mut crate::redis::RedisConne
       io::Error::new(io::ErrorKind::Other, format!("job-result-serialization - {error}"))
     })?;
     kramer::execute(
-      &mut inner,
+      &mut redis_connection,
       kramer::Command::Hashes(kramer::HashCommand::Set(
         crate::constants::REGISTRAR_JOB_RESULTS,
         kramer::Arity::One((&job_container.id, serialized_result)),
@@ -210,78 +236,4 @@ async fn work_jobs(worker: &mut Worker, mut inner: &mut crate::redis::RedisConne
   }
 
   Ok(())
-}
-
-/// The access level a user has to a given device.
-#[derive(Serialize, Debug)]
-pub enum AccessLevel {
-  /// The user can do anything.
-  All,
-}
-
-/// Returns the access level that a given user has for a given device.
-pub async fn user_access(
-  mongo: &mongodb::Client,
-  config: &crate::config::MongoConfiguration,
-  user_id: &String,
-  device_id: &String,
-) -> io::Result<Option<AccessLevel>> {
-  let authority_collection = mongo
-    .database(&config.database)
-    .collection(&config.collections.device_authorities);
-
-  // Now we want to find the authority record associated with this device. If there isn't one
-  // already, one will be created with a default, exclusing model for the current user.
-  let initial_auth = Some(crate::types::DeviceAuthorityModel::Exclusive(user_id.clone()));
-  let serialized_auth = bson::to_bson(&initial_auth).map_err(|error| {
-    log::warn!("unable to prepare initial auth - {error}");
-    io::Error::new(io::ErrorKind::Other, "authority-serialization")
-  })?;
-
-  let authority_record: Option<crate::types::DeviceAuthorityRecord> = authority_collection
-    .find_one_and_update(
-      bson::doc! { "device_id": &device_id },
-      bson::doc! { "$setOnInsert": { "authority_model": serialized_auth } },
-      Some(
-        mongodb::options::FindOneAndUpdateOptions::builder()
-          .upsert(true)
-          .return_document(mongodb::options::ReturnDocument::After)
-          .build(),
-      ),
-    )
-    .await
-    .map_err(|error| {
-      log::warn!("unable to find authority record for device - {error}");
-      io::Error::new(io::ErrorKind::Other, "failed-update")
-    })?;
-
-  // With the preexisting model, or our newly created, exclusive one, just the verification as user
-  // against the current user.
-  log::debug!("current authority record - {authority_record:?}");
-
-  match authority_record.as_ref().and_then(|rec| rec.authority_model.as_ref()) {
-    Some(crate::types::DeviceAuthorityModel::Shared(owner, guests)) => {
-      let mut found = false;
-      for guest in guests {
-        if guest == user_id {
-          found = true;
-          break;
-        }
-      }
-
-      if owner != user_id && !found {
-        return Ok(None);
-      }
-    }
-    Some(crate::types::DeviceAuthorityModel::Exclusive(owner)) => {
-      if owner != user_id {
-        return Ok(None);
-      }
-    }
-    other => {
-      log::info!("authority model '{other:?}' checks out, adding '{}'", user_id);
-    }
-  }
-
-  Ok(Some(AccessLevel::All))
 }

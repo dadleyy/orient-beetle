@@ -32,6 +32,9 @@ enum QueuePayloadKind {
   /// Attempts to rename the device.
   Rename(String),
 
+  /// Attempts to queue a message that will force redisplay of registration.
+  Registration,
+
   /// Predefined.
   Away,
 
@@ -80,8 +83,11 @@ pub struct DeviceInfoPayload {
   /// The amount of messages sent to this device. A `None` represents some unknown state.
   sent_message_count: Option<u32>,
 
-  /// How man messages are currently pending.
+  /// How many messages are currently pending.
   current_queue_count: i64,
+
+  /// The nickname set (if any).
+  nickname: Option<String>,
 
   /// A list of the most recent messages that have been sent to the device.
   sent_messages: Vec<crate::rendering::queue::QueuedRender<String>>,
@@ -124,6 +130,13 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
   log::info!("user {user:?} creating message for device - {:?}", queue_payload.kind);
 
   let layout = match &queue_payload.kind {
+    QueuePayloadKind::Registration => {
+      let job = crate::registrar::RegistrarJob::registration_scannable(queue_payload.device_id.clone());
+      let id = worker.queue_job(job).await?;
+
+      return tide::Body::from_json(&RegistrationResponse { id })
+        .map(|body| tide::Response::builder(200).body(body).build());
+    }
     QueuePayloadKind::Rename(new_name) => {
       let job = crate::registrar::RegistrarJob::rename_device(queue_payload.device_id.clone(), new_name.clone());
       let id = worker.queue_job(job).await?;
@@ -263,6 +276,7 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
     first_seen: device_diagnostic.first_seen,
     sent_message_count: device_diagnostic.sent_message_count,
     current_queue_count: current_queue_len,
+    nickname: device_diagnostic.nickname.as_ref().cloned(),
     sent_messages: device_diagnostic.sent_messages.unwrap_or_default(),
   };
 

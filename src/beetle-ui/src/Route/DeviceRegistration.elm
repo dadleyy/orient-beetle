@@ -64,18 +64,6 @@ withInitialId id =
     { default | newDevice = id }
 
 
-loadPendingJob : Environment.Environment -> String -> Cmd Message
-loadPendingJob env jobId =
-    let
-        url =
-            Environment.apiRoute env "jobs" ++ "?id=" ++ jobId
-    in
-    Http.get
-        { url = url
-        , expect = Http.expectJson LoadedJob Job.decoder
-        }
-
-
 finishPollAttempt : JobPollingState -> JobPollingState
 finishPollAttempt state =
     case state of
@@ -97,7 +85,7 @@ update env message model =
                             ( Just WaitingForId, Cmd.none )
 
                         Just (PollingId id) ->
-                            ( Just (PolledId id), loadPendingJob env id )
+                            ( Just (PolledId id), Job.loadPendingJob env LoadedJob { id = id } )
 
                         Just (PolledId id) ->
                             ( Just (PolledId id), Cmd.none )
