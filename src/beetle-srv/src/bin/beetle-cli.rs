@@ -25,6 +25,9 @@ enum CommandLineCommand {
   /// active.
   CleanDisconnects,
 
+  /// Removes all collections.
+  DropCollections,
+
   /// Creates the ACL entries that will be used by devices for requesting their unique identifiers.
   Provision(cli::ProvisionCommand),
 
@@ -63,6 +66,28 @@ struct CommandLineOptions {
 /// The main async cli runtime.
 async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io::Result<()> {
   match command {
+    CommandLineCommand::DropCollections => {
+      let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
+      mongo
+        .database(&config.mongo.database)
+        .collection::<beetle::types::User>(&config.mongo.collections.users)
+        .drop(None)
+        .await
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+      mongo
+        .database(&config.mongo.database)
+        .collection::<beetle::types::DeviceAuthorityRecord>(&config.mongo.collections.device_authorities)
+        .drop(None)
+        .await
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+      mongo
+        .database(&config.mongo.database)
+        .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics)
+        .drop(None)
+        .await
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+      Ok(())
+    }
     CommandLineCommand::InvalidateAcls => cli::invalidate_acls(&config).await,
     CommandLineCommand::CleanDisconnects => cli::clean_disconnects(&config).await,
     CommandLineCommand::Provision(command) => cli::provision(&config, command).await,

@@ -6,10 +6,7 @@ struct Worker {
   config: (crate::registrar::Configuration, mongodb::options::ClientOptions),
 
   /// Connection pools.
-  connections: (
-    Option<mongodb::Client>,
-    Option<async_tls::client::TlsStream<async_std::net::TcpStream>>,
-  ),
+  connections: (Option<mongodb::Client>, Option<crate::redis::RedisConnection>),
 }
 
 impl Worker {

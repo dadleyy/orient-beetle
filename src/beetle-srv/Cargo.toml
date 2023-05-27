@@ -44,5 +44,8 @@ image = { version = "^0.24" }
 rusttype = { version = "^0.9" }
 qrencode = { version = "^0.14" }
 
+[features]
+redis-insecure = []
+
 [patch.crates-io]
 kramer = { git = "https://github.com/sizethree/kramer.git", branch = "async-read" }

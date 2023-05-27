@@ -10,9 +10,12 @@ mod pool;
 /// This module defines functionality associated with managing the acl pool.
 mod diagnostics;
 
+/// Defines the rename device job.
+mod rename;
+
 /// Just a place to put the types generally associated with background work.
 pub mod jobs;
-pub use jobs::{DeviceRenameRequest, RegistrarJob, RegistrarJobKind};
+pub use jobs::{RegistrarJob, RegistrarJobKind};
 
 /// If no value is provided in the api, this value will be used as the minimum amount of entries in
 /// our pool that we need. If the current amount is less than this, we will generate ids for and
@@ -173,11 +176,12 @@ async fn work_jobs(worker: &mut Worker, mut inner: &mut crate::redis::RedisConne
     let result = match &job_container.job {
       RegistrarJobKind::Rename(request) => {
         log::info!("device rename request being processed - {request:?}");
-        Ok(crate::job_result::JobResult::Success)
+        let job_result = rename::rename(worker, request).await;
+        job_result.map(|_| crate::job_result::JobResult::Success)
       }
       RegistrarJobKind::Ownership(o) => {
         log::info!("registrar found next ownership claims job - {o:?}");
-        let job_result = register_device(worker, o).await;
+        let job_result = ownership::register_device(worker, o).await;
         log::info!("registration result - {job_result:?}");
         job_result.map(|_| crate::job_result::JobResult::Success)
       }
@@ -280,105 +284,4 @@ pub async fn user_access(
   }
 
   Ok(Some(AccessLevel::All))
-}
-
-/// Executes the ownership request for the worker. This involves an upsert on our device authority
-/// collection, and then checking if the created or existing record allows the user to add the
-/// device to their list of available devices.
-async fn register_device(worker: &mut Worker, job: &ownership::DeviceOwnershipRequest) -> io::Result<()> {
-  let (ref mut mongo, config) = &mut worker.mongo;
-
-  let device_collection = mongo
-    .database(&config.database)
-    .collection(&config.collections.device_diagnostics);
-
-  let users = mongo.database(&config.database).collection(&config.collections.users);
-
-  // Find the user requesting this device.
-  let mut user: crate::types::User = users
-    .find_one(bson::doc! { "oid": &job.user_id }, None)
-    .await
-    .map_err(|error| {
-      log::warn!("unable to find device - {error}");
-      io::Error::new(io::ErrorKind::Other, "failed-update")
-    })?
-    .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "device not found"))?;
-
-  // Find the device for this request. By now, the device should've sent _at least_ one ping to the
-  // server after receiving its identifier.
-  let found_device: crate::types::DeviceDiagnostic = device_collection
-    .find_one(bson::doc! { "id": &job.device_id }, None)
-    .await
-    .map_err(|error| {
-      log::warn!("unable to find device - {error}");
-      io::Error::new(io::ErrorKind::Other, "failed-update")
-    })?
-    .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "device not found"))?;
-
-  if user_access(mongo, config, &user.oid, &found_device.id).await?.is_none() {
-    log::warn!("user has no access to the device; rejecting registration");
-    return Err(io::Error::new(io::ErrorKind::Other, "no-access"));
-  }
-
-  let query = bson::doc! { "oid": job.user_id.clone() };
-
-  // Update or create our new devices hash for this user.
-  let devices = user
-    .devices
-    .take()
-    .map(|mut existing_devices| {
-      existing_devices.insert(job.device_id.clone(), 1);
-      existing_devices
-    })
-    .or_else(|| {
-      let mut start = std::collections::HashMap::with_capacity(1);
-      start.insert(job.device_id.clone(), 0);
-      Some(start)
-    });
-
-  let updated = crate::types::User { devices, ..user };
-  let options = mongodb::options::FindOneAndUpdateOptions::builder()
-    .upsert(true)
-    .return_document(mongodb::options::ReturnDocument::After)
-    .build();
-
-  users
-    .find_one_and_update(
-      query,
-      bson::doc! { "$set": bson::to_bson(&updated).map_err(|error| {
-        log::warn!("unable to serialize user update - {error}");
-        io::Error::new(io::ErrorKind::Other, "bad-serialize")
-      })? },
-      options,
-    )
-    .await
-    .map_err(|error| {
-      log::warn!("unable to create new user - {:?}", error);
-      io::Error::new(io::ErrorKind::Other, "failed-update")
-    })?;
-
-  // Wrap up by updating the diagnostic itself so we can keep track of the original owner.
-  let updated_reg = crate::types::DeviceDiagnosticRegistration::Owned(crate::types::DeviceDiagnosticOwnership {
-    original_owner: job.user_id.clone(),
-  });
-  let serialized_registration = bson::to_bson(&updated_reg).map_err(|error| {
-    log::warn!("unable to serialize registration_state: {error}");
-    io::Error::new(io::ErrorKind::Other, format!("{error}"))
-  })?;
-
-  if let Err(error) = device_collection
-    .find_one_and_update(
-      bson::doc! { "id": found_device.id },
-      bson::doc! { "$set": { "registration_state": serialized_registration } },
-      mongodb::options::FindOneAndUpdateOptions::builder()
-        .upsert(true)
-        .return_document(mongodb::options::ReturnDocument::After)
-        .build(),
-    )
-    .await
-  {
-    log::warn!("unable to update device registration state - {error}");
-  }
-
-  Ok(())
 }

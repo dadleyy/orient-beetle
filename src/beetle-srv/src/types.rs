@@ -3,6 +3,14 @@ use serde::{Deserialize, Serialize};
 /// TODO: this is currently a dumping ground of non-interesting struct definitions
 /// for things sent over the wire or persisted in mongo.
 
+/// The "snapshot in time" of device information we want stored on our user documents themselves.
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct UserDeviceSnapshot {
+  /// The nickname of the device.
+  pub nickname: Option<String>,
+}
+
 /// Our user record. Stores minimal information; Auth0 is responsible for holding onto all
 /// personally identifiable information.
 #[derive(Deserialize, Serialize, Debug, Default)]
@@ -15,7 +23,7 @@ pub struct User {
   pub picture: String,
 
   /// A list of device ids this user has access to.
-  pub devices: Option<std::collections::HashMap<String, u8>>,
+  pub devices: Option<std::collections::HashMap<String, UserDeviceSnapshot>>,
 }
 
 /// Mongo + serde + chrono don't work perfectly together; for now these are serialized into a user
@@ -86,6 +94,9 @@ pub struct DeviceDiagnostic {
   #[serde(with = "chrono::serde::ts_milliseconds_option")]
   pub last_seen: Option<chrono::DateTime<chrono::Utc>>,
 
+  /// This device nickname.
+  pub nickname: Option<String>,
+
   /// An accumulated total of messages that have been added to this device's queue.
   pub sent_message_count: Option<u32>,
 
@@ -94,6 +105,15 @@ pub struct DeviceDiagnostic {
 
   /// The state of this device's registration.
   pub registration_state: Option<DeviceDiagnosticRegistration>,
+}
+
+impl DeviceDiagnostic {
+  /// Creates a snapshot for persistence on user records themselves.
+  pub fn snapshot(&self) -> UserDeviceSnapshot {
+    UserDeviceSnapshot {
+      nickname: self.nickname.as_ref().cloned(),
+    }
+  }
 }
 
 impl std::fmt::Display for DeviceDiagnostic {

@@ -1,16 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::ownership;
-
-/// A request to rename a device.
-#[derive(Deserialize, Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct DeviceRenameRequest {
-  /// the device.
-  pub device_id: String,
-  /// the name.
-  pub new_name: String,
-}
+use super::rename::DeviceRenameRequest;
 
 /// The individual kinds of jobs.
 #[derive(Deserialize, Debug, Clone, Serialize)]

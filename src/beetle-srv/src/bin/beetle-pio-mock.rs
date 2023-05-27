@@ -124,7 +124,7 @@ fn save_image(args: &CommandLineArguments, image_buffer: Vec<u8>) -> io::Result<
 async fn get_device_id(
   args: &CommandLineArguments,
   config: &beetle::registrar::Configuration,
-  mut connection: &mut async_tls::client::TlsStream<async_std::net::TcpStream>,
+  mut connection: &mut beetle::redis::RedisConnection,
 ) -> io::Result<String> {
   let mut id_storage_path = std::path::PathBuf::from(&args.storage);
   id_storage_path.push(".device_id");
@@ -224,7 +224,14 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
     io::Error::new(io::ErrorKind::Other, "bad-config")
   })?;
 
-  let mut connection = beetle::redis::connect(&config.redis).await?;
+  log::info!("mock starting with config - '{config:?}'");
+
+  let mut connection = beetle::redis::connect(&config.redis).await.map_err(|error| {
+    io::Error::new(
+      io::ErrorKind::Other,
+      format!("failed redis connection '{:?}' - {error}", config.redis),
+    )
+  })?;
 
   let mock_device_id = get_device_id(&args, &config, &mut connection).await?;
 

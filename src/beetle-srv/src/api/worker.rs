@@ -252,9 +252,7 @@ impl Worker {
 
   /// Attempts to aquire a lock, filling the contents with either a new connection, or just
   /// re-using the existing one.
-  async fn get_redis_lock(
-    &self,
-  ) -> Result<async_std::sync::MutexGuard<'_, Option<async_tls::client::TlsStream<async_std::net::TcpStream>>>> {
+  async fn get_redis_lock(&self) -> Result<async_std::sync::MutexGuard<'_, Option<crate::redis::RedisConnection>>> {
     let mut lock_result = self.redis_pool.lock().await;
 
     match lock_result.take() {
