@@ -34,6 +34,9 @@ enum CommandLineCommand {
   /// Creates request for an image render and queues it.
   SendImage(cli::SendImageCommand),
 
+  /// Creates request for an layout render and queues it.
+  SendLayout(cli::SendLayoutCommand),
+
   /// Creates request for a qr code render and queues it.
   SendScannable(cli::SendScannableCommand),
 
@@ -114,6 +117,7 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
     }
     CommandLineCommand::PrintItems(cmd) => cli::print_queue_size(&config, cmd).await,
     CommandLineCommand::SendImage(cmd) => cli::send_image(&config, cmd).await,
+    CommandLineCommand::SendLayout(cmd) => cli::send_layout(&config, cmd).await,
     CommandLineCommand::SendScannable(cmd) => cli::send_scannable(&config, cmd).await,
     CommandLineCommand::ResetRegistration(cmd) => {
       log::info!("resetting device '{}' to force qr code", cmd.id);

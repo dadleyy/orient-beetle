@@ -1,0 +1,27 @@
+{
+  "beetle:kind": "split",
+  "beetle:content": {
+    "left": {
+      "beetle:kind": "messages",
+      "beetle:content": [{
+        "size": 20,
+        "message": "10am - 11:30am",
+        "font": { "beetle:kind": "roboto" }
+      }, {
+        "size": 20,
+        "message": "two",
+        "font": { "beetle:kind": "roboto" }
+      }, {
+        "size": 20,
+        "message": "three",
+        "font": { "beetle:kind": "deja_vu" }
+      }]
+    },
+    "right": {
+      "beetle:kind": "scannable",
+      "beetle:content": {
+        "contents": "https://google.com"
+      }
+    }
+  }
+}

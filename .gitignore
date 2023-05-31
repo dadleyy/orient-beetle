@@ -4,3 +4,4 @@ orient-beetle-ci.key
 .env
 env.toml
 .storage
+*.png

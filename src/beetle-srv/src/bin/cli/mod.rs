@@ -44,4 +44,6 @@ pub use acls::{invalidate_acls, provision, ProvisionCommand};
 
 /// Commands associated with device messaging.
 mod messages;
-pub use messages::{print_queue_size, send_image, send_scannable, SendImageCommand, SendScannableCommand};
+pub use messages::{
+  print_queue_size, send_image, send_layout, send_scannable, SendImageCommand, SendLayoutCommand, SendScannableCommand,
+};
