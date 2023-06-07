@@ -3,6 +3,20 @@ use serde::{Deserialize, Serialize};
 use super::ownership;
 use super::rename::DeviceRenameRequest;
 
+/// The enumerated result set of all background jobs.
+#[derive(Deserialize, Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
+pub enum JobResult {
+  /// The job is currently pending.
+  Pending,
+
+  /// A success without any more info.
+  Success,
+
+  /// A failure with a reason.
+  Failure(String),
+}
+
 /// Rendering jobs specific to the registrar. Eventually this might be expanded to wrap _all_
 /// rendering jobs that currently go directly to the queue.
 #[derive(Deserialize, Debug, Clone, Serialize)]
@@ -27,6 +41,9 @@ pub enum RegistrarJobKind {
 
   /// Render jobs specific to the registrar.
   Renders(RegistrarRenderKinds),
+
+  /// Processes a new access token for a given user.
+  UserAccessTokenRefresh,
 }
 
 /// The job container exposed by this module.

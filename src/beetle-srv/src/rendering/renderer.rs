@@ -146,8 +146,8 @@ impl Worker {
         let serialized_result = serde_json::to_string(
           &errors
             .get(0)
-            .map(|err| crate::job_result::JobResult::Failure(err.to_string()))
-            .unwrap_or_else(|| crate::job_result::JobResult::Success),
+            .map(|err| crate::registrar::jobs::JobResult::Failure(err.to_string()))
+            .unwrap_or_else(|| crate::registrar::jobs::JobResult::Success),
         )
         .map_err(|error| {
           log::warn!("unable to complete serialization of render result - {error}");

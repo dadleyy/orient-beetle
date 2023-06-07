@@ -15,6 +15,20 @@ pub struct RedisConfiguration {
   pub auth: Option<String>,
 }
 
+/// Google api client credential + endpoint configuration vauoles.
+#[derive(Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct GoogleConfiguration {
+  /// The scopes.
+  pub scopes: Vec<String>,
+  /// The client id.
+  pub client_id: String,
+  /// The client secret.
+  pub client_secret: String,
+  /// The redirect uri.
+  pub redirect_uri: String,
+}
+
 /// Auth0 api client credential + endpoint configuration vauoles.
 #[derive(Deserialize, Clone, Default)]
 #[serde(rename_all = "snake_case")]

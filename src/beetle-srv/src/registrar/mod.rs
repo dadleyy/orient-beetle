@@ -13,7 +13,7 @@ use serde::Deserialize;
 use std::io;
 
 /// The ownership model defines types + functions associated with managing a devices ownership.
-pub mod ownership;
+pub(crate) mod ownership;
 
 /// This module defines functionality associated with managing the acl pool.
 mod pool;
@@ -29,7 +29,7 @@ mod access;
 pub use access::{user_access, AccessLevel};
 
 /// Just a place to put the types generally associated with background work.
-pub mod jobs;
+pub(crate) mod jobs;
 pub use jobs::{RegistrarJob, RegistrarJobKind};
 
 /// If no value is provided in the api, this value will be used as the minimum amount of entries in
@@ -189,6 +189,11 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
 
   if let Some(job_container) = next_job {
     let result = match &job_container.job {
+      RegistrarJobKind::UserAccessTokenRefresh => {
+        log::info!("received user info token, validating and persisting");
+        Ok(jobs::JobResult::Success)
+      }
+
       RegistrarJobKind::Renders(jobs::RegistrarRenderKinds::RegistrationScannable(device_id)) => {
         log::info!("sending initial scannable link to device '{device_id}'");
         let mut initial_url = http_types::Url::parse(&worker.config.initial_scannable_addr).map_err(|error| {
@@ -209,22 +214,22 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
           .queue(&device_id, &crate::rendering::QueuedRenderAuthority::Registrar, layout)
           .await;
 
-        job_result.map(|_| crate::job_result::JobResult::Success)
+        job_result.map(|_| jobs::JobResult::Success)
       }
       RegistrarJobKind::Rename(request) => {
         log::info!("device rename request being processed - {request:?}");
         let job_result = rename::rename(worker, request).await;
-        job_result.map(|_| crate::job_result::JobResult::Success)
+        job_result.map(|_| jobs::JobResult::Success)
       }
       RegistrarJobKind::OwnershipChange(request) => {
         let job_result = ownership::process_change(worker, request).await;
-        job_result.map(|_| crate::job_result::JobResult::Success)
+        job_result.map(|_| jobs::JobResult::Success)
       }
       RegistrarJobKind::Ownership(ownership_request) => {
         log::debug!("registrar found next ownership claims job - '{ownership_request:?}'");
         let job_result = ownership::register_device(worker, ownership_request).await;
         log::debug!("registration result - {job_result:?}");
-        job_result.map(|_| crate::job_result::JobResult::Success)
+        job_result.map(|_| jobs::JobResult::Success)
       }
     };
 
@@ -232,7 +237,7 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
       Ok(c) => serde_json::to_string(&c),
       Err(c) => {
         log::warn!("job failure - {c:?}, recording!");
-        serde_json::to_string(&crate::job_result::JobResult::Failure(c.to_string()))
+        serde_json::to_string(&jobs::JobResult::Failure(c.to_string()))
       }
     }
     .map_err(|error| {

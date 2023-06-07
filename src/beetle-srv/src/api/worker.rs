@@ -7,10 +7,15 @@ use std::io::{Error, ErrorKind, Result};
 pub struct Worker {
   /// The original web configuration.
   pub(super) web_configuration: super::WebConfiguration,
+
   /// The original redis configuration.
   pub(super) redis_configuration: crate::config::RedisConfiguration,
+
   /// The original auth0 configuration.
   pub(super) auth0_configuration: crate::config::Auth0Configuration,
+
+  /// The original google configuration.
+  pub(super) google_configuration: crate::config::GoogleConfiguration,
 
   /// Our shared mongo client + configuration.
   mongo: (mongodb::Client, crate::config::MongoConfiguration),
@@ -37,6 +42,7 @@ impl Worker {
 
     Ok(Self {
       web_configuration: config.web,
+      google_configuration: config.google,
       redis_configuration: config.redis,
       auth0_configuration: config.auth0,
       mongo: (mongo, config.mongo),
@@ -49,7 +55,7 @@ impl Worker {
     let serialized = serde_json::to_string(&job)
       .map_err(|err| Error::new(ErrorKind::Other, format!("unable to serialize job - {err}")))?;
 
-    let pending_json = serde_json::to_string(&crate::job_result::JobResult::Pending).map_err(|error| {
+    let pending_json = serde_json::to_string(&crate::registrar::jobs::JobResult::Pending).map_err(|error| {
       log::warn!("unable to serialize pending job state - {error}");
       Error::new(ErrorKind::Other, "job-serialize")
     })?;
@@ -109,7 +115,7 @@ impl Worker {
 
     let id = id.ok_or_else(|| Error::new(ErrorKind::Other, "unable to queue within reasonable amount of attempts"))?;
 
-    let pending_json = serde_json::to_string(&crate::job_result::JobResult::Pending).map_err(|error| {
+    let pending_json = serde_json::to_string(&crate::registrar::jobs::JobResult::Pending).map_err(|error| {
       log::warn!("unable to serialize pending job state - {error}");
       Error::new(ErrorKind::Other, "job-serialize")
     })?;

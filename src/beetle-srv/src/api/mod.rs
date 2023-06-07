@@ -43,6 +43,8 @@ pub struct Configuration {
   pub(self) auth0: crate::config::Auth0Configuration,
   /// General mongo configuration.
   pub(self) mongo: crate::config::MongoConfiguration,
+  /// General mongo configuration.
+  pub(self) google: crate::config::GoogleConfiguration,
 }
 
 /// The json schema of our response sent from the heartbeat api.
@@ -84,6 +86,9 @@ async fn missing(_request: tide::Request<worker::Worker>) -> tide::Result {
 /// Returns a `tide::Server` that has been associated with our api routes.
 pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   let mut app = tide::with_state(worker);
+
+  app.at("/auth/g/redirect").get(auth::google::redirect);
+  app.at("/auth/g/complete").get(auth::google::complete);
 
   app.at("/auth/redirect").get(auth::redirect);
   app.at("/auth/complete").get(auth::complete);

@@ -1,4 +1,9 @@
+//! Note: currently considering migrating away from auth0 to google entirely.
+
 use serde::{Deserialize, Serialize};
+
+/// Google apis.
+pub mod google;
 
 /// The flags that will be used to set our cookie when not using https.
 #[cfg(debug_assertions)]
@@ -129,7 +134,7 @@ pub async fn complete(request: tide::Request<super::worker::Worker>) -> tide::Re
     .await
     .ok_or_else(|| tide::Error::from_str(404, "bad-token"))?;
 
-  log::debug!("loaded user info for '{}'", info.sub);
+  log::info!("loaded user info for '{info:?}'");
 
   // Attempt to upsert this user into our db.
   let query = bson::doc! { "oid": info.sub.clone() };

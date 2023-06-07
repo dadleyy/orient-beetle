@@ -43,6 +43,8 @@ imageproc = { version = "^0.23" }
 image = { version = "^0.24" }
 rusttype = { version = "^0.9" }
 qrencode = { version = "^0.14" }
+anyhow = "1.0.71"
+url = "2.3.1"
 
 [features]
 redis-insecure = []
