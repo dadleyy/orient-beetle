@@ -2,6 +2,7 @@ module Route.Device exposing (Message(..), Model, default, subscriptions, update
 
 import Alert
 import Button
+import DeviceAuthority as DA
 import Dropdown
 import Environment
 import Html
@@ -34,20 +35,9 @@ type SettingsMenuMessage
     | MakePrivate
 
 
-type alias DeviceAuthorityModel =
-    { kind : String
-    }
-
-
-type alias DeviceAuthorityResponse =
-    { device_id : String
-    , authorityModel : DeviceAuthorityModel
-    }
-
-
 type Message
     = Loaded (Result Http.Error ())
-    | LoadedDeviceAuthority (Result Http.Error DeviceAuthorityResponse)
+    | LoadedDeviceAuthority (Result Http.Error DA.DeviceAuthorityResponse)
     | LoadedDeviceInfo (Result Http.Error DeviceInfoResponse)
     | QueuedMessageJob (Result Http.Error Job.JobHandle)
     | Tick Time.Posix
@@ -80,6 +70,7 @@ type alias Model =
     , activeInput : ( InputKinds, Maybe (Maybe (Result Http.Error String)) )
     , alert : Maybe Alert.Alert
     , loadedDevice : Maybe (Result Http.Error DeviceInfoResponse)
+    , loadedAuthority : Maybe (Result Http.Error DA.DeviceAuthorityResponse)
     , pendingRefresh : Maybe (Maybe (Result Http.Error DeviceInfoResponse))
     , pendingMessageJobs : List Job.JobHandle
     , currentTime : Maybe Time.Posix
@@ -192,20 +183,6 @@ view model env =
             else
                 Button.PrimaryIcon Icon.Send AttemptMessage
 
-        lightButtons =
-            case isBusy model of
-                True ->
-                    [ Button.view (Button.DisabledIcon Icon.Sun)
-                    , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.DisabledIcon Icon.Moon) ]
-                    ]
-
-                False ->
-                    [ Button.view (Button.SecondaryIcon Icon.Sun (ToggleLights True))
-                    , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.SecondaryIcon Icon.Moon (ToggleLights False)) ]
-                    ]
-
         settingsMenu =
             [ ( StartRename, Html.div [] [ Html.text "Rename Device" ] )
             , ( QueueWelcomeScannable, Html.div [] [ Html.text "Send Registration Scannable" ] )
@@ -226,28 +203,64 @@ view model env =
             , Html.div [ ATT.class "ml-2" ] [ Button.view sendButton ]
             , Html.div [ ATT.class "hidden lg:flex ml-8 items-center" ] inputToggles
             ]
-        , case model.loadedDevice of
-            Nothing ->
-                Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text "Loading ..." ]
-
-            Just (Err error) ->
-                let
-                    failureString =
-                        case error of
-                            Http.BadStatus _ ->
-                                "Unknown Device"
-
-                            _ ->
-                                "Failed"
-                in
-                Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text failureString ]
-
-            Just (Ok info) ->
-                Html.div []
-                    [ Html.div [ ATT.class "flex items-center mt-2 justify-center" ] lightButtons
-                    , deviceInfoTable model info
-                    ]
+        , bottom model env
         ]
+
+
+bottom : Model -> Environment.Environment -> Html.Html Message
+bottom model env =
+    let
+        lightButtons =
+            case isBusy model of
+                True ->
+                    [ Button.view (Button.DisabledIcon Icon.Sun)
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.DisabledIcon Icon.Moon) ]
+                    ]
+
+                False ->
+                    [ Button.view (Button.SecondaryIcon Icon.Sun (ToggleLights True))
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.SecondaryIcon Icon.Moon (ToggleLights False)) ]
+                    ]
+    in
+    case model.loadedDevice of
+        Nothing ->
+            Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text "Loading ..." ]
+
+        Just (Err error) ->
+            let
+                failureString =
+                    case error of
+                        Http.BadStatus _ ->
+                            "Unknown Device"
+
+                        _ ->
+                            "Failed"
+            in
+            Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text failureString ]
+
+        Just (Ok info) ->
+            Html.div []
+                [ Html.div [ ATT.class "flex items-center mt-2 justify-center" ] lightButtons
+                , Html.div [ ATT.class "flex items-start mt-4 pt-4 border-t border-solid border-neutral-400" ]
+                    [ Html.div [ ATT.class "flex-1 mr-2 pr-2" ] [ deviceInfoTable model info ]
+                    , Html.div [ ATT.class "flex-1 ml-2 pl-2" ] [ deviceAuhtorityInfo model ]
+                    ]
+                ]
+
+
+deviceAuhtorityInfo : Model -> Html.Html Message
+deviceAuhtorityInfo model =
+    case model.loadedAuthority of
+        Just (Ok auth) ->
+            Html.div [] [ Html.text auth.authorityModel.kind ]
+
+        Just (Err _) ->
+            Html.div [] [ Html.text "unable to load authority model" ]
+
+        Nothing ->
+            Html.div [] [ Html.text "loading authority model..." ]
 
 
 modelInfoHeader : Model -> Html.Html Message
@@ -408,27 +421,6 @@ fetchDevice env id =
         }
 
 
-authorityModelDecoder : D.Decoder DeviceAuthorityModel
-authorityModelDecoder =
-    D.map DeviceAuthorityModel
-        (D.field "beetle:kind" D.string)
-
-
-authorityDecoder : D.Decoder DeviceAuthorityResponse
-authorityDecoder =
-    D.map2 DeviceAuthorityResponse
-        (D.field "device_id" D.string)
-        (D.field "authority_model" authorityModelDecoder)
-
-
-fetchDeviceAuthority : Environment.Environment -> String -> Cmd Message
-fetchDeviceAuthority env id =
-    Http.get
-        { url = Environment.apiRoute env ("device-authority?id=" ++ id)
-        , expect = Http.expectJson LoadedDeviceAuthority authorityDecoder
-        }
-
-
 setActiveInputText : String -> InputKinds -> InputKinds
 setActiveInputText newValue kind =
     case kind of
@@ -485,11 +477,8 @@ update env message model =
             , Cmd.batch [ refreshCommand, pollCommand ]
             )
 
-        LoadedDeviceAuthority (Ok auth) ->
-            ( model, Cmd.none )
-
-        LoadedDeviceAuthority (Err auth) ->
-            ( model, Cmd.none )
+        LoadedDeviceAuthority authorityResult ->
+            ( { model | loadedAuthority = Just authorityResult }, Cmd.none )
 
         LoadedJobHandle handle (Ok job) ->
             let
@@ -503,7 +492,7 @@ update env message model =
                 -- TODO(job-polling): this clears out the job being polled whenever it reaches a terminal
                 --                    state. eventually we will want to handle failures much better.
                 _ ->
-                    ( { model | pendingMessageJobs = [] }, Cmd.none )
+                    ( { model | pendingMessageJobs = [] }, DA.fetchDeviceAuthority env model.id LoadedDeviceAuthority )
 
         LoadedJobHandle handle (Err _) ->
             ( { model | pendingMessageJobs = [] }, Cmd.none )
@@ -602,11 +591,12 @@ default env id =
     ( { id = id
       , activeInput = ( Message "", Nothing )
       , loadedDevice = Nothing
+      , loadedAuthority = Nothing
       , pendingMessageJobs = []
       , pendingRefresh = Nothing
       , currentTime = Nothing
       , settingsMenu = Dropdown.empty
       , alert = Nothing
       }
-    , Cmd.batch [ fetchDevice env id, getNow, fetchDeviceAuthority env id ]
+    , Cmd.batch [ fetchDevice env id, getNow, DA.fetchDeviceAuthority env id LoadedDeviceAuthority ]
     )
