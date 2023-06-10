@@ -107,7 +107,7 @@ resetInput : InputKinds -> InputKinds
 resetInput kind =
     case kind of
         DeviceName _ ->
-            DeviceName ""
+            Message ""
 
         Message _ ->
             Message ""
