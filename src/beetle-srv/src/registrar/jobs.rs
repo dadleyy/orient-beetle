@@ -99,16 +99,17 @@ impl RegistrarJob {
   }
 
   /// Builds a request for toggling ownership record model type.
-  pub fn set_public_availability<S>(device_id: S, private: bool) -> Self
+  pub fn set_public_availability<S>(device_id: S, transition: ownership::PublicAvailabilityChange) -> Self
   where
     S: std::convert::AsRef<str>,
   {
     let id = uuid::Uuid::new_v4().to_string();
     let device_id = device_id.as_ref().to_string();
+
     Self {
       id,
       job: RegistrarJobKind::OwnershipChange(ownership::DeviceOwnershipChangeRequest::SetPublicAvailability(
-        device_id, private,
+        device_id, transition,
       )),
     }
   }

@@ -277,17 +277,22 @@ deviceInfoTable model info =
         sentMessageCount =
             Maybe.withDefault 0 info.sentMessageCount |> String.fromInt
 
-        lastSeenText =
+        ( lastSeenText, firstSeenText ) =
             case model.currentTime of
                 Just time ->
                     let
-                        theDiff =
+                        lastDiff =
                             TimeDiff.diff time (Time.millisToPosix info.lastSeen)
+
+                        firstDiff =
+                            TimeDiff.diff time (Time.millisToPosix info.firstSeen)
                     in
-                    Html.text (TimeDiff.toString theDiff)
+                    ( Html.text (TimeDiff.toString lastDiff), Html.text (TimeDiff.toString firstDiff) )
 
                 Nothing ->
-                    Html.text (TimeDiff.formatDeviceTime info.lastSeen ++ "UTC")
+                    ( Html.text (TimeDiff.formatDeviceTime info.lastSeen ++ "UTC")
+                    , Html.text (TimeDiff.formatDeviceTime info.firstSeen ++ "UTC")
+                    )
     in
     Html.table [ ATT.class "w-full mt-2" ]
         [ Html.thead [] []
@@ -302,11 +307,11 @@ deviceInfoTable model info =
                 ]
             , Html.tr []
                 [ Html.td [] [ Html.text "Last Seen" ]
-                , Html.td [] [ lastSeenText ]
+                , Html.td [ ATT.title (TimeDiff.formatDeviceTime info.lastSeen) ] [ lastSeenText ]
                 ]
             , Html.tr []
                 [ Html.td [] [ Html.text "First Seen" ]
-                , Html.td [] [ Html.text (TimeDiff.formatDeviceTime info.firstSeen ++ "UTC") ]
+                , Html.td [] [ firstSeenText ]
                 ]
             ]
         ]

@@ -139,7 +139,12 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
 
   let layout = match &queue_payload.kind {
     kind @ QueuePayloadKind::MakePublic | kind @ QueuePayloadKind::MakePrivate => {
-      let privacy = matches!(kind, QueuePayloadKind::MakePublic);
+      let privacy = match kind {
+        QueuePayloadKind::MakePublic => crate::registrar::ownership::PublicAvailabilityChange::ToPublic,
+        QueuePayloadKind::MakePrivate => crate::registrar::ownership::PublicAvailabilityChange::ToPrivate,
+        _ => return Ok(tide::Error::from_str(422, "bad transition").into()),
+      };
+
       let job = crate::registrar::RegistrarJob::set_public_availability(queue_payload.device_id.clone(), privacy);
       let id = worker.queue_job(job).await?;
 

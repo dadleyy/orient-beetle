@@ -1,13 +1,23 @@
 use serde::{Deserialize, Serialize};
 use std::io;
 
+/// Preferring this explicit enum to booleans.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicAvailabilityChange {
+  #[allow(clippy::missing_docs_in_private_items)]
+  ToPublic,
+  #[allow(clippy::missing_docs_in_private_items)]
+  ToPrivate,
+}
+
 /// The type jobs dealing with changing the authority record model.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum DeviceOwnershipChangeRequest {
   /// Will attempt to toggle the ownership model between public and private. When the value is
   /// truthy, we will be public.
-  SetPublicAvailability(String, bool),
+  SetPublicAvailability(String, PublicAvailabilityChange),
 }
 
 /// The typejob that will attempt to set the device authority record as owned.
@@ -41,14 +51,19 @@ pub(super) async fn process_change(worker: &mut super::Worker, job: &DeviceOwner
         })?
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "not-found"))?;
 
+      // Attempt to determine the next state based on the requested
       let new_state = match (&model.authority_model, state) {
-        (Some(crate::types::DeviceAuthorityModel::Exclusive(owner)), true) => {
+        (Some(crate::types::DeviceAuthorityModel::Exclusive(owner)), PublicAvailabilityChange::ToPublic) => {
           log::info!("moving from private, exclusive to public");
           crate::types::DeviceAuthorityModel::Public(owner.clone(), vec![])
         }
-        (Some(crate::types::DeviceAuthorityModel::Public(owner, members)), false) => {
+        (Some(crate::types::DeviceAuthorityModel::Public(owner, members)), PublicAvailabilityChange::ToPrivate) => {
           log::info!("moving from public to shared");
           crate::types::DeviceAuthorityModel::Shared(owner.clone(), members.clone())
+        }
+        (Some(crate::types::DeviceAuthorityModel::Shared(owner, _)), PublicAvailabilityChange::ToPrivate) => {
+          log::info!("moving from shared to exclusive");
+          crate::types::DeviceAuthorityModel::Exclusive(owner.clone())
         }
         other => {
           log::warn!("toggling public availability means nothing in combination with '{other:?}'");
