@@ -191,7 +191,10 @@ pub async fn logout(request: tide::Request<super::worker::Worker>) -> tide::Resu
 
   log::debug!("redirecting user with logout cookie");
 
-  let cookie = format!("{}=; {}", &worker.web_configuration.session_cookie, COOKIE_CLEAR_FLAGS);
+  let cookie = format!(
+    "{}=; {}; Domain={}",
+    &worker.web_configuration.session_cookie, COOKIE_CLEAR_FLAGS, &worker.web_configuration.cookie_domain,
+  );
   let response = tide::Response::builder(302)
     .header("Set-Cookie", cookie)
     .header("Location", &worker.web_configuration.ui_redirect)

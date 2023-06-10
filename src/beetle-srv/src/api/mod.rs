@@ -24,6 +24,8 @@ pub use worker::Worker;
 /// Web configuration.
 #[derive(Deserialize, Clone)]
 pub struct WebConfiguration {
+  /// The domain to associated cookies with.
+  cookie_domain: String,
   /// Where to send folks after the Oauth handshake has completed.
   ui_redirect: String,
   /// A secret to use when creating JWT tokens for our cookie.

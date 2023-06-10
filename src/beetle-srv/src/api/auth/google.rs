@@ -51,7 +51,7 @@ pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Resul
   log::debug!("loaded token - {parsed:?}");
 
   let handle = crate::vendor::google::TokenHandle {
-    created: std::time::Instant::now(),
+    created: chrono::Utc::now(),
     token: parsed,
   };
   let userinfo = crate::vendor::google::fetch_user(&handle).await?;
@@ -69,7 +69,7 @@ pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Resul
     ..Default::default()
   };
 
-  log::debug!("loaded user info - '{userinfo:?}'");
+  log::debug!("loaded user info - '{}'", state.oid);
 
   let users = worker.users_collection()?;
   let user = users
@@ -89,7 +89,31 @@ pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Resul
     })?
     .ok_or_else(|| tide::Error::from_str(404, "missing-user"))?;
 
-  log::debug!("loaded user from database - '{user:?}'");
+  log::debug!("loaded user from database - '{}'", user.oid);
+  let jwt = crate::api::claims::Claims::for_user(&user.oid).encode(&worker.web_configuration.session_secret)?;
 
-  Ok(tide::Redirect::new(&worker.web_configuration.ui_redirect).into())
+  if let Err(error) = worker
+    .queue_job(crate::registrar::RegistrarJob::access_token_refresh(handle, user.oid))
+    .await
+  {
+    log::warn!("unable to queued refresh token request - {error}");
+  }
+
+  // Create a session and redirect them to the ui.
+  let cookie = format!(
+    "{}={}; {}; Domain={}",
+    &worker.web_configuration.session_cookie,
+    jwt,
+    super::COOKIE_SET_FLAGS,
+    &worker.web_configuration.cookie_domain,
+  );
+
+  log::info!("sending cookie through redirect - '{cookie}'");
+
+  let response = tide::Response::builder(302)
+    .header("Set-Cookie", cookie)
+    .header("Location", &worker.web_configuration.ui_redirect)
+    .build();
+
+  Ok(response)
 }

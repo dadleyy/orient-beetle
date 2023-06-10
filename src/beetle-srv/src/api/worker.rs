@@ -207,11 +207,15 @@ impl Worker {
   pub(super) async fn request_authority(&self, request: &tide::Request<Self>) -> Result<Option<crate::types::User>> {
     let oid = request
       .cookie(&self.web_configuration.session_cookie)
-      .and_then(|cook| super::claims::Claims::decode(cook.value(), &self.web_configuration.session_secret).ok())
+      .and_then(|cook| {
+        log::trace!("found cookie - '{cook:?}'");
+        super::claims::Claims::decode(cook.value(), &self.web_configuration.session_secret).ok()
+      })
       .map(|claims| claims.oid)
       .unwrap_or_default();
 
     if oid.is_empty() {
+      log::trace!("no user id found in cookies");
       return Ok(None);
     }
 

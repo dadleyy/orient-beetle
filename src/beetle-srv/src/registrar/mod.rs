@@ -18,6 +18,9 @@ pub(crate) mod ownership;
 /// This module defines functionality associated with managing the acl pool.
 mod pool;
 
+/// Jobs associated with users.
+mod users;
+
 /// This module defines functionality associated with managing the acl pool.
 mod diagnostics;
 
@@ -189,11 +192,15 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
 
   if let Some(job_container) = next_job {
     let result = match &job_container.job {
-      RegistrarJobKind::UserAccessTokenRefresh => {
-        log::info!("received user info token, validating and persisting");
-        Ok(jobs::JobResult::Success)
+      RegistrarJobKind::UserAccessTokenRefresh { handle, user_id } => {
+        users::process_access_token(worker, handle, user_id)
+          .await
+          .map(|_| jobs::JobResult::Success)
       }
 
+      // Process requests-for-render-request jobs. This is a bit odd since we already have the
+      // renderer jobs too, but is helpful for providing easier ergonomics into sending device
+      // registration qr codes.
       RegistrarJobKind::Renders(jobs::RegistrarRenderKinds::RegistrationScannable(device_id)) => {
         log::info!("sending initial scannable link to device '{device_id}'");
         let mut initial_url = http_types::Url::parse(&worker.config.initial_scannable_addr).map_err(|error| {
@@ -216,15 +223,21 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
 
         job_result.map(|_| jobs::JobResult::Success)
       }
+
+      // Process device rename requests.
       RegistrarJobKind::Rename(request) => {
         log::info!("device rename request being processed - {request:?}");
         let job_result = rename::rename(worker, request).await;
         job_result.map(|_| jobs::JobResult::Success)
       }
+
+      // Process device ownership change requests.
       RegistrarJobKind::OwnershipChange(request) => {
         let job_result = ownership::process_change(worker, request).await;
         job_result.map(|_| jobs::JobResult::Success)
       }
+
+      // Process device ownership claiming requests.
       RegistrarJobKind::Ownership(ownership_request) => {
         log::debug!("registrar found next ownership claims job - '{ownership_request:?}'");
         let job_result = ownership::register_device(worker, ownership_request).await;

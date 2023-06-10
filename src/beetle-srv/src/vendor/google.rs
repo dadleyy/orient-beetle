@@ -91,7 +91,7 @@ pub struct CalendarListEntry {
 }
 
 /// The schema of google's successful code -> token exchange.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct TokenResponse {
   #[allow(clippy::missing_docs_in_private_items)]
   pub access_token: String,
@@ -130,11 +130,11 @@ pub struct TokenRequest {
 }
 
 /// Our type that wraps a token with a timestamp that holds when we received it.
-#[derive(Debug)]
+#[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct TokenHandle {
   /// The time we received this token.
   #[allow(unused)]
-  pub(crate) created: std::time::Instant,
+  pub(crate) created: chrono::DateTime<chrono::Utc>,
   /// The underlying token.
   pub(crate) token: TokenResponse,
 }
@@ -266,6 +266,7 @@ async fn fetch_events(handle: &TokenHandle, calendar: &CalendarListEntry) -> any
 pub async fn fetch_user(handle: &TokenHandle) -> anyhow::Result<Userinfo> {
   let url = url::Url::parse("https://www.googleapis.com/oauth2/v1/userinfo").with_context(|| "invalid url")?;
   log::debug!("fetching profile '{url}'");
+
   let mut res = surf::get(&url)
     .header("Authorization", format!("Bearer {}", handle.token.access_token))
     .await
@@ -278,7 +279,7 @@ pub async fn fetch_user(handle: &TokenHandle) -> anyhow::Result<Userinfo> {
     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
     .with_context(|| "body read failed")?;
 
-  log::debug!("profile - '{userinfo:?}'");
+  log::debug!("profile - '{}'", userinfo.id);
 
   Ok(userinfo)
 }

@@ -43,7 +43,12 @@ pub enum RegistrarJobKind {
   Renders(RegistrarRenderKinds),
 
   /// Processes a new access token for a given user.
-  UserAccessTokenRefresh,
+  UserAccessTokenRefresh {
+    /// The handle wrapping an access token.
+    handle: crate::vendor::google::TokenHandle,
+    /// The id of our user associated with this access token.
+    user_id: String,
+  },
 }
 
 /// The job container exposed by this module.
@@ -58,6 +63,15 @@ pub struct RegistrarJob {
 }
 
 impl RegistrarJob {
+  /// Will attempt to store an access token for a user.
+  pub fn access_token_refresh(handle: crate::vendor::google::TokenHandle, user_id: String) -> Self {
+    let id = uuid::Uuid::new_v4().to_string();
+    Self {
+      id,
+      job: RegistrarJobKind::UserAccessTokenRefresh { handle, user_id },
+    }
+  }
+
   /// Builds a request for toggling ownership record model type.
   pub fn set_public_availability<S>(device_id: S, private: bool) -> Self
   where
