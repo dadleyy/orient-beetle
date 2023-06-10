@@ -16,7 +16,9 @@ RELEASE_INDEX=$(subst debug,release,$(INDEX_HTML))
 
 DEBUG_FAVICON=$(subst ./static,target/debug,$(wildcard ./static/favicon/*.png))
 
-.PHONY: all clean fmt debug_font release_font debug_favicon release_favicon
+.PHONY: all clean fmt debug_font release_font debug_favicon release_favicon bundle
+
+bundle: fmt all
 
 all: $(MAIN_JS) $(BOOT_JS) $(INDEX_HTML) $(MAIN_CSS) debug_font debug_favicon
 

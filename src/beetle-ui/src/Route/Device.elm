@@ -19,11 +19,11 @@ import TimeDiff
 
 type alias DeviceInfoResponse =
     { id : String
-    , last_seen : Int
+    , lastSeen : Int
     , nickname : Maybe String
-    , first_seen : Int
-    , sent_message_count : Maybe Int
-    , current_queue_count : Int
+    , firstSeen : Int
+    , sentMessageCount : Maybe Int
+    , currentQueueCount : Int
     }
 
 
@@ -34,8 +34,20 @@ type SettingsMenuMessage
     | MakePrivate
 
 
+type alias DeviceAuthorityModel =
+    { kind : String
+    }
+
+
+type alias DeviceAuthorityResponse =
+    { device_id : String
+    , authorityModel : DeviceAuthorityModel
+    }
+
+
 type Message
     = Loaded (Result Http.Error ())
+    | LoadedDeviceAuthority (Result Http.Error DeviceAuthorityResponse)
     | LoadedDeviceInfo (Result Http.Error DeviceInfoResponse)
     | QueuedMessageJob (Result Http.Error Job.JobHandle)
     | Tick Time.Posix
@@ -263,19 +275,19 @@ deviceInfoTable : Model -> DeviceInfoResponse -> Html.Html Message
 deviceInfoTable model info =
     let
         sentMessageCount =
-            Maybe.withDefault 0 info.sent_message_count |> String.fromInt
+            Maybe.withDefault 0 info.sentMessageCount |> String.fromInt
 
         lastSeenText =
             case model.currentTime of
                 Just time ->
                     let
                         theDiff =
-                            TimeDiff.diff time (Time.millisToPosix info.last_seen)
+                            TimeDiff.diff time (Time.millisToPosix info.lastSeen)
                     in
                     Html.text (TimeDiff.toString theDiff)
 
                 Nothing ->
-                    Html.text (TimeDiff.formatDeviceTime info.last_seen ++ "UTC")
+                    Html.text (TimeDiff.formatDeviceTime info.lastSeen ++ "UTC")
     in
     Html.table [ ATT.class "w-full mt-2" ]
         [ Html.thead [] []
@@ -286,7 +298,7 @@ deviceInfoTable model info =
                 ]
             , Html.tr []
                 [ Html.td [] [ Html.text "Current Queue" ]
-                , Html.td [] [ Html.text (String.fromInt info.current_queue_count) ]
+                , Html.td [] [ Html.text (String.fromInt info.currentQueueCount) ]
                 ]
             , Html.tr []
                 [ Html.td [] [ Html.text "Last Seen" ]
@@ -294,7 +306,7 @@ deviceInfoTable model info =
                 ]
             , Html.tr []
                 [ Html.td [] [ Html.text "First Seen" ]
-                , Html.td [] [ Html.text (TimeDiff.formatDeviceTime info.first_seen ++ "UTC") ]
+                , Html.td [] [ Html.text (TimeDiff.formatDeviceTime info.firstSeen ++ "UTC") ]
                 ]
             ]
         ]
@@ -391,11 +403,24 @@ fetchDevice env id =
         }
 
 
+authorityModelDecoder : D.Decoder DeviceAuthorityModel
+authorityModelDecoder =
+    D.map DeviceAuthorityModel
+        (D.field "beetle:kind" D.string)
+
+
+authorityDecoder : D.Decoder DeviceAuthorityResponse
+authorityDecoder =
+    D.map2 DeviceAuthorityResponse
+        (D.field "device_id" D.string)
+        (D.field "authority_model" authorityModelDecoder)
+
+
 fetchDeviceAuthority : Environment.Environment -> String -> Cmd Message
 fetchDeviceAuthority env id =
     Http.get
         { url = Environment.apiRoute env ("device-authority?id=" ++ id)
-        , expect = Http.expectWhatever Loaded
+        , expect = Http.expectJson LoadedDeviceAuthority authorityDecoder
         }
 
 
@@ -454,6 +479,12 @@ update env message model =
             ( { model | currentTime = Just time, pendingRefresh = pendingRefresh }
             , Cmd.batch [ refreshCommand, pollCommand ]
             )
+
+        LoadedDeviceAuthority (Ok auth) ->
+            ( model, Cmd.none )
+
+        LoadedDeviceAuthority (Err auth) ->
+            ( model, Cmd.none )
 
         LoadedJobHandle handle (Ok job) ->
             let
