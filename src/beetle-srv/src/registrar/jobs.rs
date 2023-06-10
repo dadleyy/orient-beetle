@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::io;
 
 use super::ownership;
 use super::rename::DeviceRenameRequest;
@@ -51,6 +52,18 @@ pub enum RegistrarJobKind {
   },
 }
 
+/// The job container exposed by this module. Wrapping an underyling job inside of this allows to
+/// encrypt all jobs in case they contain sensitive information.
+#[derive(Deserialize, Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct RegistrarJobEncrypted {
+  /// The exp field used by jwt.
+  pub(super) exp: u32,
+
+  /// The inner job type.
+  pub(super) job: RegistrarJob,
+}
+
 /// The job container exposed by this module.
 #[derive(Deserialize, Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -63,6 +76,19 @@ pub struct RegistrarJob {
 }
 
 impl RegistrarJob {
+  /// Serializes and encrypts a job.
+  pub fn encrypt(self, config: &crate::config::RegistrarConfiguration) -> io::Result<String> {
+    let header = &jsonwebtoken::Header::default();
+    let secret = jsonwebtoken::EncodingKey::from_secret(config.vendor_api_secret.as_bytes());
+    let exp = chrono::Utc::now()
+      .checked_add_signed(chrono::Duration::minutes(1440))
+      .unwrap_or_else(chrono::Utc::now)
+      .timestamp() as u32;
+
+    jsonwebtoken::encode(header, &RegistrarJobEncrypted { exp, job: self }, &secret)
+      .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("unable to encrypt job - {error}")))
+  }
+
   /// Will attempt to store an access token for a user.
   pub fn access_token_refresh(handle: crate::vendor::google::TokenHandle, user_id: String) -> Self {
     let id = uuid::Uuid::new_v4().to_string();

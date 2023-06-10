@@ -47,6 +47,8 @@ anyhow = "1.0.71"
 url = "2.3.1"
 
 [features]
+# Enabling this feature will allow developers to use a "naked" tcp stream for redis connections, instead of
+# the default, which is to use `async_tls`.
 redis-insecure = []
 
 [patch.crates-io]

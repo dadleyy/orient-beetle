@@ -22,7 +22,8 @@ pub struct DeviceOwnershipRequest {
 
 /// This is the real worker for this "ownership" kind of job.
 pub(super) async fn process_change(worker: &mut super::Worker, job: &DeviceOwnershipChangeRequest) -> io::Result<()> {
-  let (ref mut mongo, config) = &mut worker.mongo;
+  let super::worker::WorkerMongo { client: mongo, config } = &worker.mongo;
+
   let models = mongo
     .database(&config.database)
     .collection::<crate::types::DeviceAuthorityRecord>(&config.collections.device_authorities);
@@ -87,7 +88,7 @@ pub(super) async fn process_change(worker: &mut super::Worker, job: &DeviceOwner
 /// collection, and then checking if the created or existing record allows the user to add the
 /// device to their list of available devices.
 pub(super) async fn register_device(worker: &mut super::Worker, job: &DeviceOwnershipRequest) -> io::Result<()> {
-  let (ref mut mongo, config) = &mut worker.mongo;
+  let super::worker::WorkerMongo { client: mongo, config } = &worker.mongo;
   log::info!("processing device registration for '{job:?}'");
 
   let device_collection = mongo

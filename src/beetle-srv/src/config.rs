@@ -16,7 +16,7 @@ pub struct RedisConfiguration {
 }
 
 /// Google api client credential + endpoint configuration vauoles.
-#[derive(Deserialize, Clone, Default)]
+#[derive(Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "snake_case")]
 pub struct GoogleConfiguration {
   /// The scopes.
@@ -71,4 +71,27 @@ pub struct MongoConfiguration {
   pub database: String,
   /// Configures the collection names inside our database.
   pub collections: MongoCollectionsConfiguration,
+}
+
+/// The configuration specific to maintaining a registration of available ids.
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct RegistrarConfiguration {
+  // TODO: the cli's registar configuration uses these fields, and we may as well.
+  /// The auth username that will be given on burn-in to devices.
+  pub id_consumer_username: Option<String>,
+  /// The auth password that will be given on burn-in to devices.
+  pub id_consumer_password: Option<String>,
+
+  /// The minimum amount of ids to maintain. If lower than this, we will refill.
+  pub registration_pool_minimum: Option<u8>,
+
+  /// The max amount of devices to update during a iteration of checking device activity.
+  pub active_device_chunk_size: u8,
+
+  /// Where to send devices on their initial connection
+  pub initial_scannable_addr: String,
+
+  /// The secret used to encrypt vendor api access tokens.
+  pub vendor_api_secret: String,
 }

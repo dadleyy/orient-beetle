@@ -26,7 +26,7 @@ jobs:
       - name: "(srv-test) test"
         run: cargo test
       - name: "(srv-test) doc"
-        run: cargo doc
+        run: cargo doc --document-private-items
       - name: "(srv-test) bundle: prepare"
         run: mkdir -p beetle-srv-docs
       - name: "(srv-test) bundle: copy"
@@ -354,7 +354,7 @@ jobs:
         with:
           name: "beetle-pio-${{ steps.vars.outputs.SHORT_SHA }}.tar.gz"
 
-      - name: "awscli: prepare"
+      - name: "(aws) upload all artifacts"
         run: |
           mkdir -p _awscli-download
           pushd _awscli-download
@@ -391,9 +391,6 @@ jobs:
             s3://${{ secrets.AWS_BUCKET_NAME }}/orient-beetle/${{ steps.vars.outputs.SHORT_SHA }}/$ui_artifact
 
           popd
-
-      - name: printall
-        run: ls -lah
 
       - name: release
         uses: softprops/action-gh-release@v1

@@ -80,7 +80,7 @@ namespace lighting {
           _pixels.begin();
         }
 
-        _pixels.setBrightness(50);
+        _pixels.setBrightness(100);
         _pixels.clear();
 
         for(uint8_t i = 0; i < XIAO_NEOPIXEL_COUNT; i++) {

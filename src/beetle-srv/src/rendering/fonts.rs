@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-/// DejaVu Sans @ https://dejavu-fonts.github.io/
+/// DejaVu Sans @ `<https://dejavu-fonts.github.io/>`
 const DEJAVU_SANS: &[u8] = include_bytes!("../../DejaVuSans.ttf");
 
-/// Roboto Sans @ https://fonts.google.com/specimen/Roboto
+/// Roboto Sans @ `<https://fonts.google.com/specimen/Roboto>`
 const ROBOTO_SANS: &[u8] = include_bytes!("../../Roboto-Regular.ttf");
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]

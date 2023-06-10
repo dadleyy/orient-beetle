@@ -47,6 +47,8 @@ pub struct Configuration {
   pub(self) mongo: crate::config::MongoConfiguration,
   /// General mongo configuration.
   pub(self) google: crate::config::GoogleConfiguration,
+  /// General mongo configuration.
+  pub(self) registrar: crate::config::RegistrarConfiguration,
 }
 
 /// The json schema of our response sent from the heartbeat api.

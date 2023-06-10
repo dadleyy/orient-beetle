@@ -14,7 +14,7 @@ pub struct DeviceRenameRequest {
 /// This method processes a device rename request by updating the device diagnostic itself, as well
 /// as the device maps for all users that have added the device.
 pub async fn rename(worker: &mut super::Worker, request: &DeviceRenameRequest) -> io::Result<()> {
-  let (ref mut mongo, config) = &mut worker.mongo;
+  let super::worker::WorkerMongo { client: mongo, config } = &worker.mongo;
 
   let device_collection = mongo
     .database(&config.database)
