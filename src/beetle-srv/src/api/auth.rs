@@ -14,7 +14,12 @@ const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly
 const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly; Secure";
 
 /// The flags of our `Set-Cookie` header used to clear the cookie.
+#[cfg(debug_assertions)]
 const COOKIE_CLEAR_FLAGS: &str = "Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; SameSite=Strict; HttpOnly";
+
+/// The flags of our `Set-Cookie` header used to clear the cookie.
+#[cfg(not(debug_assertions))]
+const COOKIE_CLEAR_FLAGS: &str = "Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; SameSite=Strict; HttpOnly; Secure";
 
 /// The schema of the Auth0 code -> token exchange api.
 #[derive(Debug, Deserialize)]
