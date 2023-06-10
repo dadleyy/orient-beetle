@@ -206,6 +206,17 @@ impl Worker {
     result
   }
 
+  /// This is an associated, helper function for routes to require that a request has a valid user
+  /// associated with it. The `Err` will be returned if there is none or an "actual" problem
+  /// happened while fetching.
+  pub(super) async fn require_authority(request: &tide::Request<Self>) -> Result<crate::types::User> {
+    request
+      .state()
+      .request_authority(request)
+      .await?
+      .ok_or_else(|| Error::new(ErrorKind::Other, "no-user"))
+  }
+
   /// Given a request, this method will attempt to determine what kind of authority we are
   /// processing with.
   ///

@@ -154,7 +154,10 @@ header model =
                 , Html.div [ A.class "ml-auto flex items-center" ]
                     [ Html.div [ A.class "mr-2" ]
                         [ Html.a
-                            [ A.href model.env.configuration.logoutUrl ]
+                            [ A.href model.env.configuration.logoutUrl
+                            , A.rel "noopener"
+                            , A.target "_self"
+                            ]
                             [ Html.text "logout" ]
                         ]
                     , Html.div [ A.class "truncate ml-auto" ]

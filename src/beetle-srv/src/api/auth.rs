@@ -15,11 +15,11 @@ const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly
 
 /// The flags of our `Set-Cookie` header used to clear the cookie.
 #[cfg(debug_assertions)]
-const COOKIE_CLEAR_FLAGS: &str = "Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; SameSite=Strict; HttpOnly";
-
+const COOKIE_CLEAR_FLAGS: &str = "Max-Age: 0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; SameSite=Strict; HttpOnly";
 /// The flags of our `Set-Cookie` header used to clear the cookie.
 #[cfg(not(debug_assertions))]
-const COOKIE_CLEAR_FLAGS: &str = "Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; SameSite=Strict; HttpOnly; Secure";
+const COOKIE_CLEAR_FLAGS: &str =
+  "Max-Age: 0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; SameSite=Strict; HttpOnly; Secure";
 
 /// The schema of the Auth0 code -> token exchange api.
 #[derive(Debug, Deserialize)]
@@ -197,7 +197,7 @@ pub async fn logout(request: tide::Request<super::worker::Worker>) -> tide::Resu
   log::debug!("redirecting user with logout cookie");
 
   let cookie = format!(
-    "{}=; {}; Domain={}",
+    "{}=''; {}; Domain={}",
     &worker.web_configuration.session_cookie, COOKIE_CLEAR_FLAGS, &worker.web_configuration.cookie_domain,
   );
   let response = tide::Response::builder(302)

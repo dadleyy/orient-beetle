@@ -6,8 +6,11 @@ mod auth;
 /// The api for claiming access to devices.
 mod claims;
 
-/// The device api routes modules.
+/// The device api routes module.
 mod devices;
+
+/// The schedule api routes module.
+mod schedules;
 
 /// The main worker module.
 mod worker;
@@ -106,6 +109,9 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/device-message").post(devices::message);
   app.at("/device-queue").post(devices::queue);
   app.at("/jobs").get(jobs::find);
+
+  app.at("/device-schedules").post(schedules::update);
+  app.at("/device-schedules").get(schedules::find);
 
   app.at("/status").get(heartbeat);
   app.at("/*").all(missing);
