@@ -121,7 +121,11 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
       let device_id = queue_payload.device_id.clone();
       let user_id = user.oid.clone();
       let id = worker
-        .queue_job_kind(crate::registrar::RegistrarJobKind::ToggleDefaultSchedule { device_id, user_id })
+        .queue_job_kind(crate::registrar::RegistrarJobKind::ToggleDefaultSchedule {
+          device_id,
+          user_id,
+          should_enable: *desired_state,
+        })
         .await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());

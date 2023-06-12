@@ -30,10 +30,10 @@ view : Icon -> Html.Html a
 view icon =
     case icon of
         CalendarOn ->
-            Html.i [ A.class "icon-calendar-times-o" ] []
+            Html.i [ A.class "icon-calendar-check-o" ] []
 
         CalendarOff ->
-            Html.i [ A.class "icon-calendar-check-o" ] []
+            Html.i [ A.class "icon-calendar-times-o" ] []
 
         UserSecret ->
             Html.i [ A.class "icon-user-secret" ] []

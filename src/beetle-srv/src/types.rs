@@ -22,6 +22,12 @@ pub struct User {
   /// An avatar for this user to render.
   pub picture: String,
 
+  /// The name of this user, per original oauth source.
+  pub name: Option<String>,
+
+  /// The user-preferred nickname.
+  pub nickname: Option<String>,
+
   /// A list of device ids this user has access to.
   pub devices: Option<std::collections::HashMap<String, UserDeviceSnapshot>>,
 }
@@ -80,6 +86,28 @@ pub enum DeviceDiagnosticRegistration {
 
   /// The state where some user has claimed a device.
   Owned(DeviceDiagnosticOwnership),
+}
+
+/// The different kinds of things that can happen on a schedule for a device.
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
+pub enum DeviceScheduleKind {
+  /// The most basic kind of schedule.
+  UserEventsBasic(String),
+}
+
+/// A schedule of things to render for a specific device.
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct DeviceSchedule {
+  /// The id of a device for this schedule.
+  pub device_id: String,
+
+  /// The timestamp of the last executed attempt.
+  pub last_executed: Option<u64>,
+
+  /// The underlying schedule implementation.
+  pub kind: Option<DeviceScheduleKind>,
 }
 
 /// This type is serialized into our mongoDB instance for every device and updated periodically

@@ -63,31 +63,38 @@ pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Resul
     .return_document(mongodb::options::ReturnDocument::After)
     .build();
 
+  // TODO: this got a little bit messy when names were introduced: we're attempting to upsert a
+  // user if it doesnt exist, but _always_ updating the `name` that came back from google user
+  // info.
   let state = crate::types::User {
     oid: normalized_id.clone(),
     picture: userinfo.picture.clone(),
+    name: Some(userinfo.name.clone()),
     ..Default::default()
   };
 
-  log::debug!("loaded user info - '{}'", state.oid);
+  log::debug!("loaded user info - '{}' ({:?})", state.oid, state.name);
+
+  let upsert_doc = bson::to_bson(&state).map_err(|error| {
+    log::warn!("unable to serialize new user - {:?}", error);
+    tide::Error::from_str(500, "user-failure")
+  })?;
 
   let users = worker.users_collection()?;
   let user = users
-    .find_one_and_update(
-      query,
-      bson::doc! { "$setOnInsert": bson::to_bson(&state).map_err(|error| {
-          log::warn!("unable to serialize new user - {:?}", error);
-          tide::Error::from_str(500, "user-failure")
-        })?,
-      },
-      options,
-    )
+    .find_one_and_update(query.clone(), bson::doc! { "$setOnInsert": upsert_doc }, options)
     .await
     .map_err(|error| {
       log::warn!("unable to create new user - {:?}", error);
       tide::Error::from_str(500, "user-failure")
     })?
     .ok_or_else(|| tide::Error::from_str(404, "missing-user"))?;
+
+  // TODO(name-migration): remove this after some time has passed for stabilization. We weren't
+  // originally recording names until we started rendering events with user names.
+  users
+    .update_one(query, bson::doc! { "$set": { "name": state.name } }, None)
+    .await?;
 
   log::debug!("loaded user from database - '{}'", user.oid);
   let jwt = crate::api::claims::Claims::for_user(&user.oid).encode(&worker.web_configuration.session_secret)?;

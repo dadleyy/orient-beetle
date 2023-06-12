@@ -40,9 +40,14 @@ pub enum RegistrarJobKind {
   /// Renaming devices can be expensive; it is a job.
   Rename(DeviceRenameRequest),
 
+  /// An immediate attempt to run the schedule for a device.
+  RunDeviceSchedule(String),
+
   /// A job that will simply turn on or off the default schedule for a device, given a user whose
   /// calendar would be used.
   ToggleDefaultSchedule {
+    /// Whether or not to enable or disable.
+    should_enable: bool,
     /// The id of a device in question.
     device_id: String,
     /// The id of a user who is claiming the default schedule.

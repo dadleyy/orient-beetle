@@ -197,12 +197,27 @@ pub fn parse_event(event: &EventListEntry) -> anyhow::Result<ParsedEvent> {
 }
 
 /// Will attempt to find the primary calendar associated with an access token for a given user.
-async fn fetch_primary(handle: &TokenHandle) -> anyhow::Result<Option<CalendarListEntry>> {
+pub async fn fetch_primary(handle: &TokenHandle) -> anyhow::Result<Option<CalendarListEntry>> {
   let mut res = surf::get("https://www.googleapis.com/calendar/v3/users/me/calendarList")
     .header("Authorization", format!("Bearer {}", handle.token.access_token))
     .await
     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
     .with_context(|| "cannot fetch")?;
+
+  if res.status() != 200 {
+    let body = res
+      .body_string()
+      .await
+      .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))
+      .with_context(|| "unable to read failed google response body")?;
+
+    log::warn!("bad primary calendar response from google - '{body}'");
+
+    return Err(anyhow::Error::msg(format!(
+      "bad status from primary calendar fetch attempt - '{}'",
+      res.status()
+    )));
+  }
 
   let list = res
     .body_json::<CalendarList>()
@@ -219,7 +234,7 @@ async fn fetch_primary(handle: &TokenHandle) -> anyhow::Result<Option<CalendarLi
 }
 
 /// Fetches calendar events associated with a token handle and calendar.
-async fn fetch_events(handle: &TokenHandle, calendar: &CalendarListEntry) -> anyhow::Result<Vec<EventListEntry>> {
+pub async fn fetch_events(handle: &TokenHandle, calendar: &CalendarListEntry) -> anyhow::Result<Vec<EventListEntry>> {
   log::debug!("fetching calendar '{}'", calendar.id);
   let mut uri = url::Url::parse(
     format!(
@@ -265,7 +280,7 @@ async fn fetch_events(handle: &TokenHandle, calendar: &CalendarListEntry) -> any
 /// Fetches user information from the google oauth api.
 pub async fn fetch_user(handle: &TokenHandle) -> anyhow::Result<Userinfo> {
   let url = url::Url::parse("https://www.googleapis.com/oauth2/v1/userinfo").with_context(|| "invalid url")?;
-  log::debug!("fetching profile '{url}'");
+  log::trace!("fetching profile '{url}'");
 
   let mut res = surf::get(&url)
     .header("Authorization", format!("Bearer {}", handle.token.access_token))
@@ -279,7 +294,7 @@ pub async fn fetch_user(handle: &TokenHandle) -> anyhow::Result<Userinfo> {
     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
     .with_context(|| "body read failed")?;
 
-  log::debug!("profile - '{}'", userinfo.id);
+  log::trace!("profile - '{}'", userinfo.id);
 
   Ok(userinfo)
 }

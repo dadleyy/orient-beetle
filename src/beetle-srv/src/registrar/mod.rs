@@ -24,6 +24,9 @@ mod users;
 /// Things that happen on a schedule.
 mod schedule;
 
+/// Functionality associated with manipulating device schedules.
+mod device_schedule;
+
 /// This module defines functionality associated with managing the acl pool.
 mod diagnostics;
 

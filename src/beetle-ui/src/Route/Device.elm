@@ -227,7 +227,7 @@ bottom model env =
                     , Html.div [ ATT.class "ml-2" ]
                         [ Button.view (Button.SecondaryIcon Icon.Moon (ToggleLights False)) ]
                     , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.SecondaryIcon Icon.CalendarOn (ToggleSchedule False)) ]
+                        [ Button.view (Button.SecondaryIcon Icon.CalendarOn (ToggleSchedule True)) ]
                     , Html.div [ ATT.class "ml-2" ]
                         [ Button.view (Button.SecondaryIcon Icon.CalendarOff (ToggleSchedule False)) ]
                     ]

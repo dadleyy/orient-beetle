@@ -10,10 +10,10 @@
 //! - Figure out a better way to perform "scheduled" work; right now that functionality has been
 //!   dumped into the `schedule` module adjacent to this.
 
-use std::io;
-
 use super::{diagnostics, jobs, ownership, pool, rename, users, RegistrarJobKind};
 use crate::config::RegistrarConfiguration;
+use serde::Serialize;
+use std::io;
 
 /// If no value is provided in the api, this value will be used as the minimum amount of entries in
 /// our pool that we need. If the current amount is less than this, we will generate ids for and
@@ -63,6 +63,30 @@ pub(super) struct WorkerHandle<'a> {
 }
 
 impl<'a> WorkerHandle<'a> {
+  /// Pushes a render layout onto the queue for a device.
+  pub(super) async fn render<I, S>(&mut self, device_id: I, layout: crate::rendering::RenderLayout<S>) -> io::Result<()>
+  where
+    I: AsRef<str>,
+    S: Serialize,
+  {
+    crate::rendering::queue::Queue::new(self.redis)
+      .queue(
+        device_id,
+        &crate::rendering::QueuedRenderAuthority::Registrar,
+        crate::rendering::RenderVariant::layout(layout),
+      )
+      .await?;
+
+    Ok(())
+  }
+
+  /// Actually creates the id we will be adding to our queue.
+  pub(super) async fn enqueue_kind(&mut self, job: super::RegistrarJobKind) -> io::Result<()> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let job = super::RegistrarJob { id, job };
+    self.enqueue(job).await
+  }
+
   /// This function can be used by job processing functionality to "percolate" additional jobs
   /// back onto the queue. Such is the case for scheduled access token refreshes.
   pub(super) async fn enqueue(&mut self, job: super::RegistrarJob) -> io::Result<()> {
@@ -267,10 +291,25 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
         job_result.map(|_| jobs::JobResult::Success)
       }
 
-      RegistrarJobKind::ToggleDefaultSchedule { user_id, device_id } => {
-        log::info!("toggling default device schedule for device '{device_id}' to user '{user_id}'");
+      RegistrarJobKind::RunDeviceSchedule(device_id) => {
+        log::info!("immediately executing device schedule for '{device_id}'");
 
-        Ok(jobs::JobResult::Success)
+        super::device_schedule::execute(worker.handle(redis_connection), &device_id)
+          .await
+          .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))
+          .map(|_| jobs::JobResult::Success)
+      }
+
+      RegistrarJobKind::ToggleDefaultSchedule {
+        user_id,
+        device_id,
+        should_enable,
+      } => {
+        log::info!("toggling default device schedule for device '{device_id}' to user '{user_id}' ({should_enable})");
+
+        super::device_schedule::toggle(worker.handle(redis_connection), device_id, user_id, *should_enable)
+          .await
+          .map(|_| jobs::JobResult::Success)
       }
 
       // Process device rename requests.
@@ -298,14 +337,15 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
     let serialized_result = match result {
       Ok(c) => serde_json::to_string(&c),
       Err(c) => {
-        log::warn!("job failure - {c:?}, recording!");
+        log::error!("job failure - {c:?}, recording!");
         serde_json::to_string(&jobs::JobResult::Failure(c.to_string()))
       }
     }
     .map_err(|error| {
-      log::warn!("Unable to serialize job result - {error}");
+      log::error!("Unable to serialize job result - {error}");
       io::Error::new(io::ErrorKind::Other, format!("job-result-serialization - {error}"))
     })?;
+
     kramer::execute(
       &mut redis_connection,
       kramer::Command::Hashes(kramer::HashCommand::Set(

@@ -3,6 +3,7 @@ use std::io;
 
 /// Defines all of the binary-included fonts available.
 mod fonts;
+pub use fonts::FontSelection;
 
 /// Defines layout constants like padding and margins.
 mod constants;
