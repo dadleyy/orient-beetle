@@ -40,6 +40,15 @@ pub enum RegistrarJobKind {
   /// Renaming devices can be expensive; it is a job.
   Rename(DeviceRenameRequest),
 
+  /// A job that will simply turn on or off the default schedule for a device, given a user whose
+  /// calendar would be used.
+  ToggleDefaultSchedule {
+    /// The id of a device in question.
+    device_id: String,
+    /// The id of a user who is claiming the default schedule.
+    user_id: String,
+  },
+
   /// Render jobs specific to the registrar.
   Renders(RegistrarRenderKinds),
 
@@ -72,7 +81,7 @@ pub struct RegistrarJob {
   pub(crate) id: String,
 
   /// The inner job type.
-  pub(super) job: RegistrarJobKind,
+  pub(crate) job: RegistrarJobKind,
 }
 
 impl RegistrarJob {

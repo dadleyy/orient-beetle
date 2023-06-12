@@ -107,10 +107,13 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/device-info").get(devices::info);
   app.at("/device-authority").get(devices::authority);
   app.at("/device-message").post(devices::message);
-  app.at("/device-queue").post(devices::queue);
-  app.at("/jobs").get(jobs::find);
 
-  app.at("/device-schedules").post(schedules::update);
+  // Note: this api route has become the catch-all entrypoint for an interface into manipulating
+  // devices. It is how we schedule lighting, messaging and calendar based modifications to
+  // devices.
+  app.at("/device-queue").post(jobs::queue);
+
+  app.at("/jobs").get(jobs::find);
   app.at("/device-schedules").get(schedules::find);
 
   app.at("/status").get(heartbeat);

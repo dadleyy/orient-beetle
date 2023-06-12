@@ -1,7 +1,13 @@
-module DeviceAuthority exposing (DeviceAuthorityModel, DeviceAuthorityResponse, fetchDeviceAuthority)
+module DeviceAuthority exposing
+    ( DeviceAuthorityModel
+    , DeviceAuthorityResponse
+    , fetchDeviceAuthority
+    , icon
+    )
 
 import Environment
 import Http
+import Icon
 import Json.Decode as D
 
 
@@ -35,3 +41,16 @@ fetchDeviceAuthority env id messageKind =
         { url = Environment.apiRoute env ("device-authority?id=" ++ id)
         , expect = Http.expectJson messageKind authorityDecoder
         }
+
+
+icon : DeviceAuthorityModel -> Icon.Icon
+icon model =
+    case model.kind of
+        "exclusive" ->
+            Icon.UserSecret
+
+        "shared" ->
+            Icon.User
+
+        _ ->
+            Icon.Unlock

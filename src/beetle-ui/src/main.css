@@ -113,6 +113,16 @@ table.info-table {
   min-width: 25vw;
 }
 
+.alert-warning {
+  @apply p-2;
+  @apply border;
+  @apply border-solid;
+  @apply border-amber-500;
+  @apply text-amber-300;
+  @apply bg-amber-800;
+  @apply rounded;
+}
+
 .dropdown-item:hover {
   @apply bg-neutral-950;
   @apply text-green-400;

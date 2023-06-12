@@ -5,7 +5,7 @@ use std::io;
 use super::users::EncodedUserAccessToken;
 
 /// The amount of time to buffer between a token expriting and we refresh it.
-const EXPIRATION_BUFFER: u64 = 3590;
+const EXPIRATION_BUFFER: u64 = 1000;
 
 /// This type represents the partial schema from our users collection that we are concerned with
 /// here.

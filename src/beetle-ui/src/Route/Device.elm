@@ -3,6 +3,7 @@ module Route.Device exposing (Message(..), Model, default, subscriptions, update
 import Alert
 import Button
 import DeviceAuthority as DA
+import DeviceSchedule as DS
 import Dropdown
 import Environment
 import Html
@@ -45,6 +46,8 @@ type Message
     | AttemptMessage
     | SetMessage String
     | ToggleLights Bool
+    | ToggleSchedule Bool
+    | ClearAlert
     | UpdateInput InputKinds
     | SettingsMenuUpdate Dropdown.Dropdown (Maybe SettingsMenuMessage)
     | LoadedTime Time.Posix
@@ -60,6 +63,7 @@ type QueuePayloadKinds
     = MessagePayload String
     | LinkPayload String
     | LightPayload Bool
+    | SchedulePayload Bool
     | DeviceRenamePayload String
     | WelcomeMessage
     | PublicAccessChange Bool
@@ -222,6 +226,10 @@ bottom model env =
                     [ Button.view (Button.SecondaryIcon Icon.Sun (ToggleLights True))
                     , Html.div [ ATT.class "ml-2" ]
                         [ Button.view (Button.SecondaryIcon Icon.Moon (ToggleLights False)) ]
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.SecondaryIcon Icon.CalendarOn (ToggleSchedule False)) ]
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.SecondaryIcon Icon.CalendarOff (ToggleSchedule False)) ]
                     ]
     in
     case model.loadedDevice of
@@ -243,9 +251,11 @@ bottom model env =
         Just (Ok info) ->
             Html.div []
                 [ Html.div [ ATT.class "flex items-center mt-2 justify-center" ] lightButtons
-                , Html.div [ ATT.class "flex items-start mt-4 pt-4 border-t border-solid border-neutral-400" ]
-                    [ Html.div [ ATT.class "flex-1 mr-2 pr-2" ] [ deviceInfoTable model info ]
-                    , Html.div [ ATT.class "flex-1 ml-2 pl-2" ] [ deviceAuhtorityInfo model ]
+                , Html.div [ ATT.class "sm:flex sm:items-start mt-4 pt-4 border-t border-solid border-neutral-500" ]
+                    [ Html.div [ ATT.class "flex-1 pb-4 sm:pb-0 sm:mr-2 sm:pr-2" ]
+                        [ deviceInfoTable model info ]
+                    , Html.div [ ATT.class "flex-1 border-t pt-4 sm:ml-2 sm:pl-2 sm:border-t-0 sm:pt-0 border-neutral-500" ]
+                        [ deviceAuhtorityInfo model ]
                     ]
                 ]
 
@@ -254,7 +264,10 @@ deviceAuhtorityInfo : Model -> Html.Html Message
 deviceAuhtorityInfo model =
     case model.loadedAuthority of
         Just (Ok auth) ->
-            Html.div [] [ Html.text auth.authorityModel.kind ]
+            Html.div [ ATT.class "flex items-center" ]
+                [ Html.div [ ATT.class "mr-2" ] [ Icon.view (DA.icon auth.authorityModel) ]
+                , Html.div [] [ Html.text auth.authorityModel.kind ]
+                ]
 
         Just (Err _) ->
             Html.div [] [ Html.text "unable to load authority model" ]
@@ -311,19 +324,19 @@ deviceInfoTable model info =
         [ Html.thead [] []
         , Html.tbody []
             [ Html.tr []
-                [ Html.td [] [ Html.text "Total Messages Sent" ]
+                [ Html.td [ ATT.class "whitespace-nowrap text-ellipsis" ] [ Html.text "Total Messages Sent" ]
                 , Html.td [] [ Html.text sentMessageCount ]
                 ]
             , Html.tr []
-                [ Html.td [] [ Html.text "Current Queue" ]
+                [ Html.td [ ATT.class "whitespace-nowrap text-ellipsis" ] [ Html.text "Current Queue" ]
                 , Html.td [] [ Html.text (String.fromInt info.currentQueueCount) ]
                 ]
             , Html.tr []
-                [ Html.td [] [ Html.text "Last Seen" ]
+                [ Html.td [ ATT.class "whitespace-nowrap text-ellipsis" ] [ Html.text "Last Seen" ]
                 , Html.td [ ATT.title (TimeDiff.formatDeviceTime info.lastSeen) ] [ lastSeenText ]
                 ]
             , Html.tr []
-                [ Html.td [] [ Html.text "First Seen" ]
+                [ Html.td [ ATT.class "whitespace-nowrap text-ellipsis" ] [ Html.text "First Seen" ]
                 , Html.td [] [ firstSeenText ]
                 ]
             ]
@@ -368,6 +381,9 @@ postMessage env id payloadKind =
 
                 LightPayload isOn ->
                     Http.jsonBody (encoder "lights" (Encode.bool isOn))
+
+                SchedulePayload isOn ->
+                    Http.jsonBody (encoder "schedule" (Encode.bool isOn))
 
                 LinkPayload str ->
                     Http.jsonBody (encoder "link" (Encode.string str))
@@ -437,6 +453,9 @@ setActiveInputText newValue kind =
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
+        ClearAlert ->
+            ( { model | alert = Nothing }, Cmd.none )
+
         SettingsMenuUpdate dropdown (Just StartRename) ->
             ( { model | settingsMenu = dropdown, activeInput = ( DeviceName "", Nothing ) }, Cmd.none )
 
@@ -523,6 +542,11 @@ update env message model =
             in
             ( { model | activeInput = ( emptiedInput, Nothing ) }, Cmd.none )
 
+        ToggleSchedule state ->
+            ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }
+            , postMessage env model.id (SchedulePayload state)
+            )
+
         ToggleLights state ->
             ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }
             , postMessage env model.id (LightPayload state)
@@ -580,7 +604,8 @@ viewAlert : Model -> Html.Html Message
 viewAlert model =
     case model.alert of
         Just a ->
-            Html.div [ ATT.class "mb-4" ] [ Alert.view a ]
+            Html.div [ ATT.class "mb-4 w-full" ]
+                [ Alert.view a ClearAlert ]
 
         Nothing ->
             Html.div [] []
@@ -598,5 +623,15 @@ default env id =
       , settingsMenu = Dropdown.empty
       , alert = Nothing
       }
-    , Cmd.batch [ fetchDevice env id, getNow, DA.fetchDeviceAuthority env id LoadedDeviceAuthority ]
+    , Cmd.batch
+        [ fetchDevice env id
+        , getNow
+        , DA.fetchDeviceAuthority env
+            id
+            LoadedDeviceAuthority
+        , DS.fetchDeviceSchedule
+            env
+            id
+            Loaded
+        ]
     )

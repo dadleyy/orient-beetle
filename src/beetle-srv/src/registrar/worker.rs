@@ -267,6 +267,12 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
         job_result.map(|_| jobs::JobResult::Success)
       }
 
+      RegistrarJobKind::ToggleDefaultSchedule { user_id, device_id } => {
+        log::info!("toggling default device schedule for device '{device_id}' to user '{user_id}'");
+
+        Ok(jobs::JobResult::Success)
+      }
+
       // Process device rename requests.
       RegistrarJobKind::Rename(request) => {
         log::info!("device rename request being processed - {request:?}");

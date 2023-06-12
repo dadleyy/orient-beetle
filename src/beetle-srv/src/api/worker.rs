@@ -54,6 +54,13 @@ impl Worker {
     })
   }
 
+  /// Creates an id and a job from the kind, returning the id.
+  pub(super) async fn queue_job_kind(&self, job: crate::registrar::RegistrarJobKind) -> Result<String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let job = crate::registrar::RegistrarJob { id, job };
+    self.queue_job(job).await
+  }
+
   /// Will attempt to queue various registrar jobs by serializing them and pushing the job onto our
   /// job queue redis list. During this process we will encrypt the actual job.
   pub(super) async fn queue_job(&self, job: crate::registrar::RegistrarJob) -> Result<String> {
