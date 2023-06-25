@@ -1,3 +1,8 @@
+//! Note: the actually rendering here - the process of generating a bitmap image to send to the
+//! device based on some data structure - could be way more advanced than it is currently. The
+//! `imageproc` crate is very nice for the time being, but it may not support the wild kinds of
+//! rendering that this would want to support in the future.
+
 use serde::{Deserialize, Serialize};
 use std::io;
 
@@ -45,8 +50,12 @@ pub enum SplitContents<S> {
 pub struct SplitLayout<S> {
   /// What gets rendered on the left.
   pub left: SplitContents<S>,
+
   /// What gets rendered on the right.
   pub right: SplitContents<S>,
+
+  /// A 0-100 value of how much space the _left_ split should take.
+  pub ratio: u8,
 }
 
 /// The render layout represents the various kinds of layouts that can be rendered into a
@@ -76,6 +85,13 @@ where
   pub fn rasterize(self, dimensions: (u32, u32)) -> io::Result<Vec<u8>> {
     let mut image = image::GrayImage::new(dimensions.0, dimensions.1);
 
+    if dimensions.0 > constants::MAX_WIDTH || dimensions.1 > constants::MAX_HEIGHT {
+      return Err(io::Error::new(
+        io::ErrorKind::Other,
+        "dimensions exceed reasonable resolution",
+      ));
+    }
+
     // Start with an entirely white background.
     imageproc::drawing::draw_filled_rect_mut(
       &mut image,
@@ -89,65 +105,74 @@ where
         image = scannable.grayscale(dimensions)?;
       }
 
-      Self::Split(SplitLayout { left, right }) => {
-        use constants::MESSAGE_LAYOUT_BOUNDING_CONSTANTS as BOUNDING;
-        let (start_x, mut start_y) = (BOUNDING.content_margin, BOUNDING.content_margin);
-        let mut rightmost_left = start_x;
+      Self::Split(SplitLayout { left, right, ratio }) => {
+        let left_max = match ratio {
+          25 => dimensions.0 / 4,
+          33 => dimensions.0 / 3,
+          50 => dimensions.0 / 2,
+          75 => dimensions.0 - (dimensions.0 / 4),
+          80 => dimensions.0 - (dimensions.0 / 5),
+          // TODO: support more breakpoints, or do actual math. This is just implemented this way
+          // for quick, strict support.
+          _ => dimensions.0 / 2,
+        };
 
         match left {
-          SplitContents::Scannable(s) => {
-            let code = s.grayscale((dimensions.0 / 2, dimensions.1))?;
-            rightmost_left = (dimensions.0 / 2) as i32;
-            image::GenericImage::copy_from(&mut image, &code, 0, 0)
-              .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("cannot copy scannable - {error}")))?;
-          }
           SplitContents::Messages(messages) => {
-            for stylized in messages {
-              let dimensions = stylized.draw((start_x, start_y), &mut image)?;
-
-              if dimensions.0 > rightmost_left {
-                rightmost_left = dimensions.0;
-              }
-
-              start_y += dimensions.1;
+            let mut top = 0;
+            for m in messages {
+              let bounds = components::StylizedMessageBounding {
+                left: 0,
+                top,
+                constraints: Some(components::StylizedMessageBoundingConstraints::MaxWidth(
+                  left_max as i32,
+                )),
+              };
+              let (_, h) = m.draw_within(&bounds, &mut image)?;
+              top += h;
             }
           }
+          _ => todo!(),
         }
 
-        // Add the starting position onto our rightmost left.
-        rightmost_left += start_x;
-        start_y = BOUNDING.content_margin;
-
         match right {
-          SplitContents::Scannable(s) => {
-            let code_width = dimensions.0 - (rightmost_left as u32);
-            let code_height = std::cmp::min(dimensions.1, code_width);
-            let code = s.grayscale((code_width, code_height))?;
-
-            image::GenericImage::copy_from(&mut image, &code, rightmost_left as u32, 0)
-              .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("cannot copy scannable - {error}")))?;
-          }
           SplitContents::Messages(messages) => {
-            for stylized in messages {
-              let dimensions = stylized.draw((rightmost_left, start_y), &mut image)?;
-              start_y += dimensions.1;
+            let mut top = 0;
+            for m in messages {
+              let bounds = components::StylizedMessageBounding {
+                left: left_max as i32,
+                top,
+                constraints: Some(components::StylizedMessageBoundingConstraints::MaxWidth(
+                  (dimensions.0 - left_max) as i32,
+                )),
+              };
+              let (_, h) = m.draw_within(&bounds, &mut image)?;
+              top += h;
             }
           }
+          _ => todo!(),
         }
       }
 
       // If we're just a stylized image, draw us.
       Self::StylizedMessage(message_layout) => {
-        use constants::MESSAGE_LAYOUT_BOUNDING_CONSTANTS as BOUNDING;
-        message_layout.draw((BOUNDING.content_margin, BOUNDING.content_margin), &mut image)?;
+        let bounding = components::StylizedMessageBounding {
+          left: 10,
+          top: 10,
+          constraints: None,
+        };
+        message_layout.draw_within(&bounding, &mut image)?;
       }
 
       // If we're not a stylized image, use defaults and draw.
       #[allow(deprecated)]
       Self::Message(RenderMessageLayout { message }) => {
         return Self::StylizedMessage(components::StylizedMessage {
+          padding: None,
+          border: None,
+          margin: None,
           message,
-          font: fonts::FontSelection::DejaVu,
+          font: Some(fonts::FontSelection::DejaVu),
           size: None,
         })
         .rasterize(dimensions)

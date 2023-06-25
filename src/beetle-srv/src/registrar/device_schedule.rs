@@ -180,30 +180,30 @@ where
 
         let mut left = vec![crate::rendering::components::StylizedMessage {
           message: first_event.summary.clone(),
-          font: crate::rendering::FontSelection::Roboto,
           size: Some(20.0f32),
+          ..Default::default()
         }];
 
         if let Some(start) = first_event.start.date_time.as_ref() {
           left.push(crate::rendering::components::StylizedMessage {
             message: start.clone(),
-            font: crate::rendering::FontSelection::Roboto,
             size: Some(10.0f32),
+            ..Default::default()
           });
         }
 
         if let Some(end) = first_event.end.date_time.as_ref() {
           left.push(crate::rendering::components::StylizedMessage {
             message: end.clone(),
-            font: crate::rendering::FontSelection::Roboto,
             size: Some(10.0f32),
+            ..Default::default()
           });
         }
 
         let right = crate::rendering::components::StylizedMessage {
           message: partial_user.name.unwrap_or_else(|| "unknown".to_string()),
-          font: crate::rendering::FontSelection::Roboto,
           size: Some(20.0f32),
+          ..Default::default()
         };
 
         worker
@@ -212,6 +212,7 @@ where
             crate::rendering::RenderLayout::Split(crate::rendering::SplitLayout {
               left: crate::rendering::SplitContents::Messages(left),
               right: crate::rendering::SplitContents::Messages(vec![right]),
+              ratio: 60,
             }),
           )
           .await?;

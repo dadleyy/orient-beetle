@@ -1,0 +1,66 @@
+{
+  "beetle:kind": "split",
+  "beetle:content": {
+    "ratio": 75,
+    "left": {
+      "beetle:kind": "messages",
+      "beetle:content": [
+        {
+          "message": "10:30AM - 11:00AM",
+          "margin": { "bottom": 0, "top": 10, "left": 10 },
+          "padding": { "left": 5, "top": 5, "bottom": 5 },
+          "border": { "left": 2 },
+          "size": 20
+        },
+        {
+          "message": "This is some kind of really long event",
+          "margin": { "bottom": 10, "top": 5, "left": 10 },
+          "padding": { "left": 5, "top": 5, "bottom": 5 },
+          "border": { "left": 2 },
+          "size": 30
+        },
+
+        {
+          "message": "1:00PM - 2:00PM",
+          "margin": { "bottom": 0, "top": 5, "left": 10 },
+          "padding": { "left": 5, "top": 5, "bottom": 5 },
+          "border": { "left": 2 },
+          "size": 20
+        },
+        {
+          "message": "Second event",
+          "margin": { "bottom": 10, "top": 5, "left": 10 },
+          "padding": { "left": 5, "top": 5, "bottom": 5 },
+          "border": { "left": 2 },
+          "size": 30
+        },
+
+        {
+          "message": "1:00PM - 2:00PM",
+          "margin": { "bottom": 0, "top": 5, "left": 10 },
+          "padding": { "left": 5, "top": 5, "bottom": 5 },
+          "border": { "left": 2 },
+          "size": 20
+        },
+        {
+          "message": "Third event for all",
+          "margin": { "bottom": 10, "top": 5, "left": 10 },
+          "padding": { "left": 5, "top": 5, "bottom": 5 },
+          "border": { "left": 2 },
+          "size": 30
+        }
+      ]
+    },
+    "right": {
+      "beetle:kind": "messages",
+      "beetle:content": [
+        {
+          "message": "-Danny",
+          "font": { "beetle:kind": "roboto" },
+          "margin": { "left": 10, "top": 200 },
+          "size": 30
+        }
+      ]
+    }
+  }
+}
