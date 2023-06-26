@@ -83,6 +83,8 @@ pub(super) async fn check_schedule(mut worker: super::worker::WorkerHandle<'_>) 
       )
     })?;
 
+  let mut expired_user_ids = vec![];
+
   while let Some(handle_result) = async_std::stream::StreamExt::next(&mut cursor).await {
     let mut current_handle = match handle_result {
       Err(error) => {
@@ -115,16 +117,20 @@ pub(super) async fn check_schedule(mut worker: super::worker::WorkerHandle<'_>) 
       let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
       let mut replaced_tokens = false;
 
-      if let Ok(current_token) = jsonwebtoken::decode::<EncodedUserAccessToken>(
+      match jsonwebtoken::decode::<EncodedUserAccessToken>(
         &current_handle.latest_token.token.access_token,
         &key,
         &validation,
-      )
-      .map_err(|error| {
-        log::warn!("unable to decode peristed access token - {error}");
-      }) {
-        log::trace!("decoded original access token - '{}'", current_token.claims.token);
-        current_handle.latest_token.token.access_token = current_token.claims.token;
+      ) {
+        Err(error) => {
+          log::warn!("unable to decode acccess token - {error}, scheduling cleanup");
+          expired_user_ids.push(current_handle.oid);
+          continue;
+        }
+        Ok(current_token) => {
+          log::trace!("decoded original access token - '{}'", current_token.claims.token);
+          current_handle.latest_token.token.access_token = current_token.claims.token;
+        }
       }
 
       if let Some(refresh) = &current_handle
@@ -175,6 +181,23 @@ pub(super) async fn check_schedule(mut worker: super::worker::WorkerHandle<'_>) 
           }
         }
       }
+    }
+  }
+
+  // If any tokens were unable to be decoded, update the user records, removing them. This will
+  // race against any users that are currently logging in, assuming there are multiple registrar
+  // workers running.
+  if !expired_user_ids.is_empty() {
+    log::warn!("cleaning up {} user access tokens", expired_user_ids.len());
+    if let Err(error) = collection
+      .update_many(
+        bson::doc! { "oid": { "$in": expired_user_ids } },
+        bson::doc! { "$unset": { "latest_token": "" } },
+        None,
+      )
+      .await
+    {
+      log::error!("unable to cleanup failed tokens - '{error}'");
     }
   }
 

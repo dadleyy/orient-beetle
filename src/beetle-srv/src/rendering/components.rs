@@ -5,7 +5,7 @@ use std::io;
 use super::fonts;
 
 /// A bounding box where everything is optional.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub struct OptionalBoundingBox {
   /// The optional left of this box.

@@ -263,7 +263,7 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
     // TODO: this does not seem very structurally sound; the goal is to read from the redis
     // connection, attempting to parse our pop messages as a payload of image data.
     'response_read: loop {
-      let mut frame_buffer = [0u8; 1024 * 8];
+      let mut frame_buffer = [0u8; 1024 * 50];
 
       match async_std::io::timeout(
         std::time::Duration::from_secs(6),

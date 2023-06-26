@@ -7,15 +7,6 @@ struct LookupQuery {
   id: String,
 }
 
-/// The api used to send messages to a device.
-#[derive(Debug, Deserialize)]
-struct MessagePayload {
-  /// The id of the device.
-  device_id: String,
-  /// The contents of the message.
-  message: String,
-}
-
 /// The schema of our api to registration of a device.
 #[derive(Debug, Deserialize)]
 struct RegistrationPayload {
@@ -55,57 +46,6 @@ pub struct DeviceInfoPayload {
 
   /// A list of the most recent messages that have been sent to the device.
   sent_messages: Vec<crate::rendering::queue::QueuedRender<String>>,
-}
-
-/// Parses the payload from our message api. This should live in the request handler.
-async fn parse_message(request: &mut tide::Request<super::worker::Worker>) -> tide::Result<MessagePayload> {
-  request.body_json::<MessagePayload>().await
-}
-
-/// Route: message
-///
-/// Sends a message to the device.
-pub async fn message(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
-  let body = parse_message(&mut request).await.map_err(|error| {
-    log::warn!("bad device message payload - {error}");
-    tide::Error::from_str(422, "bad-request")
-  })?;
-
-  let worker = request.state();
-
-  let user = worker
-    .request_authority(&request)
-    .await?
-    .ok_or_else(|| {
-      log::warn!("no user found");
-      tide::Error::from_str(404, "missing-user")
-    })
-    .map_err(|error| {
-      log::warn!("unable to determine request authority - {error}");
-      error
-    })?;
-
-  if worker.user_access(&user.oid, &body.device_id).await?.is_none() {
-    log::warn!("'{}' has no access to device '{}'", user.oid, body.device_id);
-    return Err(tide::Error::from_str(400, "not-found"));
-  }
-
-  log::debug!("user {:?} creating message for device - {body:?}", user);
-
-  let request_id = worker
-    .queue_render(
-      &body.device_id,
-      &user.oid,
-      crate::rendering::RenderVariant::message(&body.message),
-    )
-    .await
-    .map_err(|error| {
-      log::warn!("unable to queue render for device '{}' -> '{error}'", body.device_id);
-      error
-    })?;
-
-  tide::Body::from_json(&RegistrationResponse { id: request_id })
-    .map(|body| tide::Response::builder(200).body(body).build())
 }
 
 /// Route: authority

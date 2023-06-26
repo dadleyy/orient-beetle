@@ -163,10 +163,16 @@ pub async fn send_image(config: &super::CommandLineConfig, command: SendImageCom
   }
 
   #[allow(deprecated)]
-  let formatted_buffer = beetle::rendering::RenderLayout::Message(beetle::rendering::RenderMessageLayout {
-    message: &command.message,
-  })
-  .rasterize((400, 300))?;
+  let formatted_buffer =
+    beetle::rendering::RenderLayout::StylizedMessage(beetle::rendering::components::StylizedMessage {
+      message: &command.message,
+      border: None,
+      margin: None,
+      padding: None,
+      font: None,
+      size: None,
+    })
+    .rasterize((400, 300))?;
 
   if let Some(path) = &command.local_path {
     println!("writing image to {path}");

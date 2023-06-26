@@ -1,3 +1,6 @@
+//! This module holds all of the api-specific functionality, including the routes and the
+//! payloads/responses they are concerned with.
+
 use serde::{Deserialize, Serialize};
 
 /// The api for authenticating.
@@ -106,7 +109,6 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/devices/unregister").post(devices::unregister);
   app.at("/device-info").get(devices::info);
   app.at("/device-authority").get(devices::authority);
-  app.at("/device-message").post(devices::message);
 
   // Note: this api route has become the catch-all entrypoint for an interface into manipulating
   // devices. It is how we schedule lighting, messaging and calendar based modifications to

@@ -10,14 +10,23 @@
 
 namespace states {
 
-constexpr const uint32_t MAX_MESSAGE_SIZE = 2828 * 3;
+// The size of our allocated memory per message.
+constexpr const uint32_t MAX_MESSAGE_SIZE = 1024 * 20;
 
+// The size of our allocated memory for the device id.
+constexpr const uint16_t MAX_ID_SIZE = 40;
+
+// The amount of messages to maintain at any given point of time.
+constexpr const uint8_t MESSAGE_COUNT = 2;
+
+// Forward declarations used for `friend` related things.
 struct State;
 struct Unknown;
 struct Configuring;
 struct Connecting;
 struct Connected;
 struct Working;
+
 using StateT = std::variant<Unknown, Configuring, Connecting, Connected, Working>;
 
 // Reserve a state to deal with displaying to the user some fatal looking screen.
@@ -88,10 +97,6 @@ struct Message final {
 
 struct Working final {
   public:
-    constexpr static const uint16_t WORKING_BUFFER_SIZE = 10;
-    constexpr static const uint16_t MAX_ID_SIZE = 40;
-    static constexpr const uint8_t MESSAGE_COUNT = 2;
-
     explicit Working(uint16_t);
     ~Working();
     Working(Working&&);
@@ -100,15 +105,15 @@ struct Working final {
     Working(const Working&) = delete;
     Working& operator=(const Working&) = delete;
 
-    std::array<Message, MESSAGE_COUNT>::const_iterator begin(void) const;
-    std::array<Message, MESSAGE_COUNT>::const_iterator end(void) const;
+    std::array<Message, states::MESSAGE_COUNT>::const_iterator begin(void) const;
+    std::array<Message, states::MESSAGE_COUNT>::const_iterator end(void) const;
     Message& next(void);
 
     char * id_content;
     uint16_t id_size;
 
   private:
-    std::array<Message, MESSAGE_COUNT> messages;
+    std::array<Message, states::MESSAGE_COUNT> messages;
     mutable bool _has_new;
 
     friend State;

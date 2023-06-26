@@ -25,14 +25,6 @@ pub use queue::QueuedRenderAuthority;
 /// things.
 pub mod renderer;
 
-/// Wraps a string.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct RenderMessageLayout<S> {
-  /// The text to draw.
-  pub message: S,
-}
-
 /// The types of things that a split can contain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
@@ -63,11 +55,8 @@ pub struct SplitLayout<S> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum RenderLayout<S> {
-  /// The simplest form of render layout - a single message.
-  #[deprecated(note = "will hopefully be removed as layouts are migrated to formal definitions.")]
-  Message(RenderMessageLayout<S>),
-
-  /// Added complexity - font selection.
+  /// A single styleized message. Will be rendered in the middle of the display being rasterized
+  /// to.
   StylizedMessage(components::StylizedMessage<S>),
 
   /// A layout that has content on the left, and content on the right.
@@ -110,6 +99,7 @@ where
           25 => dimensions.0 / 4,
           33 => dimensions.0 / 3,
           50 => dimensions.0 / 2,
+          66 => dimensions.0 - (dimensions.0 / 3),
           75 => dimensions.0 - (dimensions.0 / 4),
           80 => dimensions.0 - (dimensions.0 / 5),
           // TODO: support more breakpoints, or do actual math. This is just implemented this way
@@ -163,20 +153,6 @@ where
         };
         message_layout.draw_within(&bounding, &mut image)?;
       }
-
-      // If we're not a stylized image, use defaults and draw.
-      #[allow(deprecated)]
-      Self::Message(RenderMessageLayout { message }) => {
-        return Self::StylizedMessage(components::StylizedMessage {
-          padding: None,
-          border: None,
-          margin: None,
-          message,
-          font: Some(fonts::FontSelection::DejaVu),
-          size: None,
-        })
-        .rasterize(dimensions)
-      }
     }
 
     // Create our output buffer and write the image into it.
@@ -211,11 +187,19 @@ pub struct RenderLayoutContainer<S> {
 }
 
 /// Wraps the lighting and display of the device.
+///
+/// Note that the fact that both lighting and actual display control is handled by this single type
+/// seems like it could be particularly confusing for folks from the outside, and it is likely that
+/// renaming this and/or separating them makes the most sense.
+///
+/// Since both lighting and display are ultimately serialized onto the same device "rendering"
+/// queue, they live like this for now.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum RenderVariant<S> {
   /// Requests a layout be rendered to the screen.
   Layout(RenderLayoutContainer<RenderLayout<S>>),
+
   /// Requests some change in the lighting.
   Lighting(RenderLayoutContainer<LightingLayout>),
 }
@@ -254,7 +238,14 @@ impl<S> RenderVariant<S> {
   /// Helper type constructor
   pub fn message(message: S) -> Self {
     #[allow(deprecated)]
-    let layout = RenderLayout::Message(RenderMessageLayout { message });
+    let layout = RenderLayout::StylizedMessage(components::StylizedMessage {
+      border: None,
+      margin: None,
+      padding: None,
+      font: Some(fonts::FontSelection::Barlow),
+      message,
+      size: None,
+    });
     let created = Some(chrono::Utc::now());
     Self::Layout(RenderLayoutContainer { layout, created })
   }

@@ -55,11 +55,82 @@ enum QueuePayloadKind {
   /// Will update the ownership record model to be private.
   MakePrivate,
 
-  /// Predefined.
-  Away,
-
   /// Clears screen.
   Clear,
+}
+
+/// Builds the message layout that is rendered for requests to the job api.
+fn message_layout<'a, 'b>(user: &'a crate::types::User, message: &'b str) -> crate::rendering::RenderVariant<String>
+where
+  'a: 'b,
+{
+  let left_message = crate::rendering::components::StylizedMessage {
+    message: message.to_owned(),
+    border: None,
+    font: None,
+    padding: None,
+    margin: None,
+    size: Some(36.0f32),
+  };
+
+  let timestamp_line = crate::rendering::components::StylizedMessage {
+    message: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+
+    border: Some(crate::rendering::components::OptionalBoundingBox {
+      left: Some(2),
+      ..Default::default()
+    }),
+    font: None,
+    padding: Some(crate::rendering::components::OptionalBoundingBox {
+      left: Some(10),
+      top: Some(10),
+      bottom: Some(10),
+      ..Default::default()
+    }),
+    margin: Some(crate::rendering::components::OptionalBoundingBox {
+      top: Some(5),
+      ..Default::default()
+    }),
+    size: Some(24.0f32),
+  };
+
+  let from_line = crate::rendering::components::StylizedMessage {
+    message: user
+      .nickname
+      .as_ref()
+      .or(user.name.as_ref())
+      .map(|v| v.as_str())
+      .unwrap_or("unknown")
+      .to_string(),
+    border: Some(crate::rendering::components::OptionalBoundingBox {
+      left: Some(2),
+      ..Default::default()
+    }),
+    font: None,
+    padding: Some(crate::rendering::components::OptionalBoundingBox {
+      left: Some(10),
+      top: Some(10),
+      bottom: Some(10),
+      ..Default::default()
+    }),
+    margin: Some(crate::rendering::components::OptionalBoundingBox {
+      top: Some(200),
+      ..Default::default()
+    }),
+    size: Some(24.0f32),
+  };
+
+  let layout = crate::rendering::RenderLayout::Split(crate::rendering::SplitLayout {
+    left: crate::rendering::SplitContents::Messages(vec![left_message]),
+    right: crate::rendering::SplitContents::Messages(vec![from_line, timestamp_line]),
+    ratio: 66,
+  });
+  let container = crate::rendering::RenderLayoutContainer {
+    layout,
+    created: Some(chrono::Utc::now()),
+  };
+
+  crate::rendering::RenderVariant::Layout(container)
 }
 
 /// Route: message
@@ -97,7 +168,8 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
     queue_payload.kind
   );
 
-  let layout = match &queue_payload.kind {
+  let device_id = queue_payload.device_id.clone();
+  let layout = match queue_payload.kind {
     kind @ QueuePayloadKind::MakePublic | kind @ QueuePayloadKind::MakePrivate => {
       let privacy = match kind {
         QueuePayloadKind::MakePublic => crate::registrar::ownership::PublicAvailabilityChange::ToPublic,
@@ -105,47 +177,45 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
         _ => return Ok(tide::Error::from_str(422, "bad transition").into()),
       };
 
-      let job = crate::registrar::RegistrarJob::set_public_availability(queue_payload.device_id.clone(), privacy);
+      let job = crate::registrar::RegistrarJob::set_public_availability(device_id, privacy);
       let id = worker.queue_job(job).await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
     QueuePayloadKind::Registration => {
-      let job = crate::registrar::RegistrarJob::registration_scannable(queue_payload.device_id.clone());
+      let job = crate::registrar::RegistrarJob::registration_scannable(device_id);
       let id = worker.queue_job(job).await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
     QueuePayloadKind::Schedule(desired_state) => {
       log::info!("toggling device schedule '{desired_state:?}' for user '{}'", user.oid);
-      let device_id = queue_payload.device_id.clone();
       let user_id = user.oid.clone();
       let id = worker
         .queue_job_kind(crate::registrar::RegistrarJobKind::ToggleDefaultSchedule {
           device_id,
           user_id,
-          should_enable: *desired_state,
+          should_enable: desired_state,
         })
         .await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
     QueuePayloadKind::Rename(new_name) => {
-      let job = crate::registrar::RegistrarJob::rename_device(queue_payload.device_id.clone(), new_name.clone());
+      let job = crate::registrar::RegistrarJob::rename_device(device_id, new_name.clone());
       let id = worker.queue_job(job).await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
-    QueuePayloadKind::Away => crate::rendering::RenderVariant::message("Busy"),
     QueuePayloadKind::Lights(true) => crate::rendering::RenderVariant::on(),
     QueuePayloadKind::Lights(false) => crate::rendering::RenderVariant::off(),
-    QueuePayloadKind::Clear => crate::rendering::RenderVariant::message(""),
-    QueuePayloadKind::Link(m) => crate::rendering::RenderVariant::scannable(m.as_str()),
-    QueuePayloadKind::Message(m) => crate::rendering::RenderVariant::message(m.as_str()),
+    QueuePayloadKind::Clear => crate::rendering::RenderVariant::message("".to_string()),
+    QueuePayloadKind::Link(scannable_link) => crate::rendering::RenderVariant::scannable(scannable_link),
+    QueuePayloadKind::Message(message) => message_layout(&user, &message),
   };
 
   let request_id = worker
-    .queue_render(&queue_payload.device_id, &user.oid, layout)
+    .queue_render(&device_id, &user.oid, layout)
     .await
     .map_err(|error| {
       log::warn!(

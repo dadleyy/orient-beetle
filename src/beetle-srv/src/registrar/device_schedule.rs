@@ -1,6 +1,9 @@
-use std::io;
+//! This module contains the job handler responsible for adding layouts to device rendering queue
+//! associated with scheduled things.
 
+use crate::vendor::google;
 use serde::Deserialize;
+use std::io;
 
 /// TODO: this type is a mirror of the schema defined in our `schedule` module, it is likely we can
 /// bundle this up in the worker through some api for fetching an access token by user ID.
@@ -175,48 +178,87 @@ where
         partial_user.name
       );
 
-      if let Some(first_event) = events.get(0) {
-        log::info!("rendering event '{first_event:?}'");
+      let mut left = vec![];
 
-        let mut left = vec![crate::rendering::components::StylizedMessage {
-          message: first_event.summary.clone(),
-          size: Some(20.0f32),
-          ..Default::default()
-        }];
+      for event in events
+        .iter()
+        .filter_map(|raw_event| crate::vendor::google::parse_event(raw_event).ok())
+        .take(2)
+      {
+        log::info!("rendering event '{event:?}'");
 
-        if let Some(start) = first_event.start.date_time.as_ref() {
-          left.push(crate::rendering::components::StylizedMessage {
-            message: start.clone(),
-            size: Some(10.0f32),
+        left.push(crate::rendering::components::StylizedMessage {
+          message: event.summary.clone(),
+          size: Some(32.0f32),
+
+          border: Some(crate::rendering::components::OptionalBoundingBox {
+            left: Some(2),
             ..Default::default()
-          });
-        }
-
-        if let Some(end) = first_event.end.date_time.as_ref() {
-          left.push(crate::rendering::components::StylizedMessage {
-            message: end.clone(),
-            size: Some(10.0f32),
+          }),
+          margin: Some(crate::rendering::components::OptionalBoundingBox {
+            top: Some(10),
+            left: Some(10),
             ..Default::default()
-          });
-        }
+          }),
+          padding: Some(crate::rendering::components::OptionalBoundingBox {
+            left: Some(10),
+            ..Default::default()
+          }),
 
-        let right = crate::rendering::components::StylizedMessage {
-          message: partial_user.name.unwrap_or_else(|| "unknown".to_string()),
-          size: Some(20.0f32),
           ..Default::default()
-        };
+        });
 
-        worker
-          .render(
-            device_id.as_ref().to_string(),
-            crate::rendering::RenderLayout::Split(crate::rendering::SplitLayout {
-              left: crate::rendering::SplitContents::Messages(left),
-              right: crate::rendering::SplitContents::Messages(vec![right]),
-              ratio: 60,
-            }),
-          )
-          .await?;
+        match (event.start, event.end) {
+          (google::ParsedEventTimeMarker::DateTime(s), google::ParsedEventTimeMarker::DateTime(e)) => {
+            let formatted_start = s.format("%H:%M").to_string();
+            let formatted_end = e.format("%H:%M").to_string();
+
+            left.push(crate::rendering::components::StylizedMessage {
+              message: format!("{formatted_start} - {formatted_end}"),
+              size: Some(24.0f32),
+
+              border: Some(crate::rendering::components::OptionalBoundingBox {
+                left: Some(2),
+                ..Default::default()
+              }),
+              margin: Some(crate::rendering::components::OptionalBoundingBox {
+                left: Some(10),
+                ..Default::default()
+              }),
+              padding: Some(crate::rendering::components::OptionalBoundingBox {
+                left: Some(10),
+                ..Default::default()
+              }),
+
+              ..Default::default()
+            });
+          }
+          (s, e) => {
+            log::warn!("event start/end combination not implemented yet - {s:?} {e:?}");
+          }
+        }
       }
+
+      let right = crate::rendering::components::StylizedMessage {
+        message: partial_user.name.unwrap_or_else(|| "unknown".to_string()),
+        size: Some(20.0f32),
+        margin: Some(crate::rendering::components::OptionalBoundingBox {
+          top: Some(200),
+          ..Default::default()
+        }),
+        ..Default::default()
+      };
+
+      worker
+        .render(
+          device_id.as_ref().to_string(),
+          crate::rendering::RenderLayout::Split(crate::rendering::SplitLayout {
+            left: crate::rendering::SplitContents::Messages(left),
+            right: crate::rendering::SplitContents::Messages(vec![right]),
+            ratio: 66,
+          }),
+        )
+        .await?;
     }
   }
 
