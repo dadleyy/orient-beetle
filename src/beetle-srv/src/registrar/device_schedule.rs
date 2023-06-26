@@ -5,6 +5,18 @@ use crate::vendor::google;
 use serde::Deserialize;
 use std::io;
 
+/// The most amount of events to display at once when rendering things from a google calendar.
+const MAX_DISPLAYED_EVENTS: usize = 4;
+
+/// The size of font to use when rendering event summaries.
+const EVENT_SUMMARY_SIZE: f32 = 34.0f32;
+
+/// The size of font to use when rendering event timestamps.
+const EVENT_TIME_SIZE: f32 = 28.0f32;
+
+/// The size of font to use when rendering the calendar "signature".
+const CALENDAR_NAME_SIZE: f32 = 28.0f32;
+
 /// TODO: this type is a mirror of the schema defined in our `schedule` module, it is likely we can
 /// bundle this up in the worker through some api for fetching an access token by user ID.
 #[derive(Deserialize, Debug)]
@@ -183,13 +195,13 @@ where
       for event in events
         .iter()
         .filter_map(|raw_event| crate::vendor::google::parse_event(raw_event).ok())
-        .take(2)
+        .take(MAX_DISPLAYED_EVENTS)
       {
         log::info!("rendering event '{event:?}'");
 
         left.push(crate::rendering::components::StylizedMessage {
           message: event.summary.clone(),
-          size: Some(34.0f32),
+          size: Some(EVENT_SUMMARY_SIZE),
 
           border: Some(crate::rendering::components::OptionalBoundingBox {
             left: Some(2),
@@ -215,7 +227,7 @@ where
 
             left.push(crate::rendering::components::StylizedMessage {
               message: format!("{formatted_start} - {formatted_end}"),
-              size: Some(28.0f32),
+              size: Some(EVENT_TIME_SIZE),
 
               border: Some(crate::rendering::components::OptionalBoundingBox {
                 left: Some(2),
@@ -241,9 +253,9 @@ where
 
       let right = crate::rendering::components::StylizedMessage {
         message: partial_user.name.unwrap_or_else(|| "unknown".to_string()),
-        size: Some(20.0f32),
+        size: Some(CALENDAR_NAME_SIZE),
         margin: Some(crate::rendering::components::OptionalBoundingBox {
-          top: Some(200),
+          top: Some(220),
           ..Default::default()
         }),
         ..Default::default()
