@@ -53,6 +53,16 @@ pub enum DeviceAuthorityModel {
   Public(String, Vec<String>),
 }
 
+/// The schema of our records that are stored in `device_histories` collection.
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct DeviceHistoryRecord {
+  /// The id of a device.
+  pub(crate) device_id: String,
+  /// This list of all renders for this device.
+  pub(crate) render_history: Option<Vec<crate::rendering::queue::QueuedRender<String>>>,
+}
+
 /// The schema of our records that are stored in `device_authorities` collection.
 #[derive(Deserialize, Serialize, Debug, Default)]
 #[serde(rename_all = "snake_case")]
@@ -131,9 +141,6 @@ pub struct DeviceDiagnostic {
 
   /// An accumulated total of messages that have been added to this device's queue.
   pub sent_message_count: Option<u32>,
-
-  /// A list of the most recent messages that have been sent to the device.
-  pub sent_messages: Option<Vec<crate::rendering::queue::QueuedRender<String>>>,
 
   /// The state of this device's registration.
   pub registration_state: Option<DeviceDiagnosticRegistration>,

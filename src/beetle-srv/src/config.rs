@@ -61,6 +61,8 @@ pub struct MongoCollectionsConfiguration {
   pub device_diagnostics: String,
   /// Storage for scheduled device rendering.
   pub device_schedules: String,
+  /// Storage for the history of messages sent to devices.
+  pub device_histories: String,
 }
 
 /// The mongodb configuration.

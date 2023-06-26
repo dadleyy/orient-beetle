@@ -129,7 +129,11 @@ pub async fn info(request: tide::Request<super::worker::Worker>) -> tide::Result
     sent_message_count: device_diagnostic.sent_message_count,
     current_queue_count: current_queue_len,
     nickname: device_diagnostic.nickname.as_ref().cloned(),
-    sent_messages: device_diagnostic.sent_messages.unwrap_or_default(),
+
+    // This is pending work to migrate the message history from on the diagnostic record itself to
+    // somewhere else. This is important to minimize the exposure of breaking changes in the schema
+    // of device diagnostics.
+    sent_messages: vec![],
   };
 
   log::trace!("user '{}' fetched device '{}'", user.oid, info.id);

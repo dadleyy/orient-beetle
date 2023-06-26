@@ -50,6 +50,8 @@ impl Worker {
     if let Some(mut c) = self.connections.1.take() {
       log::debug!("popping latest queued items");
 
+      // Attempt to pop a rendering request off our queue, waiting a maximum amount of time. This
+      // should be moved into configuration.
       let cmd = kramer::Command::<&str, &str>::Lists(kramer::ListCommand::Pop(
         kramer::Side::Left,
         crate::constants::RENDERING_QUEUE,
@@ -102,39 +104,26 @@ impl Worker {
 
         // Actually attempt to rasterize the layout into bytes and send it along to the device via
         // the device redis queue.
-        let errors = match self.send_layout(&mut c, &queue_id, queued_render.layout.clone()).await {
-          Ok(_) => vec![],
-          Err(error) => vec![format!("{error}")],
+        let queue_error = match self.send_layout(&mut c, &queue_id, queued_render.layout.clone()).await {
+          Ok(_) => None,
+          Err(error) => Some(format!("{error:?}")),
         };
 
-        // Update the device diagnostic record with our new list of `sent_messages`, and any erros
-        // that happened during the layout send.
-        let mongo = self
-          .connections
-          .0
-          .as_mut()
-          .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no mongo connection".to_string()))?;
-
-        let devices = mongo
-          .database(&self.config.0.mongo.database)
-          .collection::<crate::types::DeviceDiagnostic>(&self.config.0.mongo.collections.device_diagnostics);
+        let histories = self.histories_collection()?;
 
         let message_doc = bson::to_bson(&queued_render).map_err(|error| {
           log::warn!("unable to encode message as bson! - {error}");
           io::Error::new(io::ErrorKind::Other, "serialization error".to_string())
         })?;
 
-        if let Err(error) = devices
-          .update_one(
-            bson::doc! { "id": &queued_render.device_id },
-            bson::doc! {
-                "$inc": { "sent_message_count": 1 },
-                "$push": {
-                    "sent_messages": message_doc,
-                    "render_failures": { "$each": &errors },
-                },
-            },
-            None,
+        if let Err(error) = histories
+          .find_one_and_update(
+            bson::doc! { "device_id": &queued_render.device_id },
+            bson::doc! { "$push": { "render_history": message_doc } },
+            mongodb::options::FindOneAndUpdateOptions::builder()
+              .upsert(true)
+              .return_document(mongodb::options::ReturnDocument::After)
+              .build(),
           )
           .await
         {
@@ -144,9 +133,8 @@ impl Worker {
         // Lastly, update our job results hash with an entry for this render attempt. This is how
         // clients know the render has been processed in the background.
         let serialized_result = serde_json::to_string(
-          &errors
-            .get(0)
-            .map(|err| crate::registrar::jobs::JobResult::Failure(err.to_string()))
+          &queue_error
+            .map(crate::registrar::jobs::JobResult::Failure)
             .unwrap_or_else(|| crate::registrar::jobs::JobResult::Success),
         )
         .map_err(|error| {
@@ -173,6 +161,21 @@ impl Worker {
     }
 
     Ok(())
+  }
+
+  /// Returns a handle to device history collection.
+  fn histories_collection(&mut self) -> io::Result<mongodb::Collection<crate::types::DeviceHistoryRecord>> {
+    let mongo = self
+      .connections
+      .0
+      .as_mut()
+      .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no mongo connection".to_string()))?;
+
+    Ok(
+      mongo
+        .database(&self.config.0.mongo.database)
+        .collection::<crate::types::DeviceHistoryRecord>(&self.config.0.mongo.collections.device_histories),
+    )
   }
 
   /// While the `tick` method is responsible for dealing with redis connections _and_ checking for
