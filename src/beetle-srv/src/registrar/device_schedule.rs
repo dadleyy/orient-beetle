@@ -189,7 +189,7 @@ where
 
         left.push(crate::rendering::components::StylizedMessage {
           message: event.summary.clone(),
-          size: Some(32.0f32),
+          size: Some(34.0f32),
 
           border: Some(crate::rendering::components::OptionalBoundingBox {
             left: Some(2),
@@ -215,7 +215,7 @@ where
 
             left.push(crate::rendering::components::StylizedMessage {
               message: format!("{formatted_start} - {formatted_end}"),
-              size: Some(24.0f32),
+              size: Some(28.0f32),
 
               border: Some(crate::rendering::components::OptionalBoundingBox {
                 left: Some(2),

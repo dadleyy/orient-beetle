@@ -6,48 +6,48 @@
       "beetle:kind": "messages",
       "beetle:content": [
         {
-          "message": "10:30AM - 11:00AM",
+          "message": "This is some kind of really long event",
           "margin": { "bottom": 0, "top": 10, "left": 10 },
           "padding": { "left": 5, "top": 5, "bottom": 5 },
           "border": { "left": 2 },
-          "size": 20
+          "size": 34
         },
         {
-          "message": "This is some kind of really long event",
-          "margin": { "bottom": 10, "top": 5, "left": 10 },
+          "message": "10:30AM - 11:00AM",
+          "margin": { "bottom": 10, "top": 0, "left": 10 },
           "padding": { "left": 5, "top": 5, "bottom": 5 },
           "border": { "left": 2 },
-          "size": 30
+          "size": 28
         },
 
-        {
-          "message": "1:00PM - 2:00PM",
-          "margin": { "bottom": 0, "top": 5, "left": 10 },
-          "padding": { "left": 5, "top": 5, "bottom": 5 },
-          "border": { "left": 2 },
-          "size": 20
-        },
         {
           "message": "Second event",
-          "margin": { "bottom": 10, "top": 5, "left": 10 },
+          "margin": { "bottom": 0, "top": 10, "left": 10 },
           "padding": { "left": 5, "top": 5, "bottom": 5 },
           "border": { "left": 2 },
-          "size": 30
+          "size": 34
+        },
+        {
+          "message": "1:00PM - 2:00PM",
+          "margin": { "bottom": 10, "top": 0, "left": 10 },
+          "padding": { "left": 5, "top": 5, "bottom": 5 },
+          "border": { "left": 2 },
+          "size": 28
         },
 
         {
-          "message": "1:00PM - 2:00PM",
-          "margin": { "bottom": 0, "top": 5, "left": 10 },
+          "message": "Third event for all",
+          "margin": { "bottom": 0, "top": 10, "left": 10 },
           "padding": { "left": 5, "top": 5, "bottom": 5 },
           "border": { "left": 2 },
-          "size": 20
+          "size": 34
         },
         {
-          "message": "Third event for all",
-          "margin": { "bottom": 10, "top": 5, "left": 10 },
+          "message": "1:00PM - 2:00PM",
+          "margin": { "bottom": 10, "top": 0, "left": 10 },
           "padding": { "left": 5, "top": 5, "bottom": 5 },
           "border": { "left": 2 },
-          "size": 30
+          "size": 28
         }
       ]
     },

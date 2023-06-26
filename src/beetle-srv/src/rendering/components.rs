@@ -48,7 +48,7 @@ where
   fn default() -> Self {
     Self {
       message: S::default(),
-      font: Some(fonts::FontSelection::Barlow),
+      font: Some(fonts::FontSelection::DejaVu),
       size: None,
       margin: None,
       padding: None,

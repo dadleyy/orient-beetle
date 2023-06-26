@@ -5,7 +5,7 @@ use std::io;
 const TEKO: &[u8] = include_bytes!("../../Teko-Regular.ttf");
 
 /// Teko @ `<https://fonts.google.com/specimen/Barlow?preview.text=2:00PM%20-%204:00PM&preview.layout=row&preview.text_type=custom>`
-const BARLOW: &[u8] = include_bytes!("../../Barlow-Regular.ttf");
+const BARLOW: &[u8] = include_bytes!("../../Barlow-Bold.ttf");
 
 /// DejaVu Sans @ `<https://dejavu-fonts.github.io/>`
 const DEJAVU_SANS: &[u8] = include_bytes!("../../DejaVuSans.ttf");
@@ -18,13 +18,13 @@ const ROBOTO_SANS: &[u8] = include_bytes!("../../Roboto-Regular.ttf");
 /// Enumerates the fonts available to us.
 pub enum FontSelection {
   /// See constant.
-  #[default]
   Roboto,
 
   /// See constant.
   Teko,
 
   /// See constant.
+  #[default]
   Barlow,
 
   /// See constant.

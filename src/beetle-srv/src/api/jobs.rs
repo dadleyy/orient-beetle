@@ -66,21 +66,16 @@ where
 {
   let left_message = crate::rendering::components::StylizedMessage {
     message: message.to_owned(),
-    border: None,
-    font: None,
-    padding: None,
-    margin: None,
     size: Some(36.0f32),
+    ..Default::default()
   };
 
   let timestamp_line = crate::rendering::components::StylizedMessage {
-    message: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-
+    message: chrono::Utc::now().format("%H:%M").to_string(),
     border: Some(crate::rendering::components::OptionalBoundingBox {
       left: Some(2),
       ..Default::default()
     }),
-    font: None,
     padding: Some(crate::rendering::components::OptionalBoundingBox {
       left: Some(10),
       top: Some(10),
@@ -91,7 +86,8 @@ where
       top: Some(5),
       ..Default::default()
     }),
-    size: Some(24.0f32),
+    size: Some(28.0f32),
+    ..Default::default()
   };
 
   let from_line = crate::rendering::components::StylizedMessage {
@@ -106,7 +102,6 @@ where
       left: Some(2),
       ..Default::default()
     }),
-    font: None,
     padding: Some(crate::rendering::components::OptionalBoundingBox {
       left: Some(10),
       top: Some(10),
@@ -117,7 +112,8 @@ where
       top: Some(200),
       ..Default::default()
     }),
-    size: Some(24.0f32),
+    size: Some(28.0f32),
+    ..Default::default()
   };
 
   let layout = crate::rendering::RenderLayout::Split(crate::rendering::SplitLayout {
@@ -125,6 +121,7 @@ where
     right: crate::rendering::SplitContents::Messages(vec![from_line, timestamp_line]),
     ratio: 66,
   });
+
   let container = crate::rendering::RenderLayoutContainer {
     layout,
     created: Some(chrono::Utc::now()),
