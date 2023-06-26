@@ -46,9 +46,10 @@ where
   S: Default,
 {
   fn default() -> Self {
+    let font = fonts::FontSelection::default();
     Self {
       message: S::default(),
-      font: Some(fonts::FontSelection::DejaVu),
+      font: Some(font),
       size: None,
       margin: None,
       padding: None,
