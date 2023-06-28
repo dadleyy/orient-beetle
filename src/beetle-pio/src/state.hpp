@@ -17,7 +17,7 @@ constexpr const uint32_t MAX_MESSAGE_SIZE = 1024 * 20;
 constexpr const uint16_t MAX_ID_SIZE = 40;
 
 // The amount of messages to maintain at any given point of time.
-constexpr const uint8_t MESSAGE_COUNT = 2;
+constexpr const uint8_t MESSAGE_COUNT = 1;
 
 // Forward declarations used for `friend` related things.
 struct State;
