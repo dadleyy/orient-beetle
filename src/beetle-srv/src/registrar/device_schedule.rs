@@ -1,7 +1,7 @@
 //! This module contains the job handler responsible for adding layouts to device rendering queue
 //! associated with scheduled things.
 
-use crate::vendor::google;
+use crate::{schema, vendor::google};
 use serde::Deserialize;
 use std::io;
 
@@ -43,7 +43,7 @@ where
     .mongo
     .client
     .database(&worker.mongo.config.database)
-    .collection::<crate::types::DeviceSchedule>(&worker.mongo.config.collections.device_schedules);
+    .collection::<schema::DeviceSchedule>(&worker.mongo.config.collections.device_schedules);
 
   let mut schedule = collection
     .find_one_and_update(
@@ -68,7 +68,7 @@ where
 
   schedule.kind = match (should_enable, schedule.kind.take()) {
     (true, Some(kind)) => Some(kind),
-    (true, None) => Some(crate::types::DeviceScheduleKind::UserEventsBasic(
+    (true, None) => Some(schema::DeviceScheduleKind::UserEventsBasic(
       user_id.as_ref().to_string(),
     )),
     (false, _) => None,
@@ -110,7 +110,7 @@ where
   S: AsRef<str>,
 {
   let db = worker.mongo.client.database(&worker.mongo.config.database);
-  let collection = db.collection::<crate::types::DeviceSchedule>(&worker.mongo.config.collections.device_schedules);
+  let collection = db.collection::<schema::DeviceSchedule>(&worker.mongo.config.collections.device_schedules);
 
   let schedule = collection
     .find_one(bson::doc! { "device_id": device_id.as_ref() }, None)
@@ -132,7 +132,7 @@ where
     None => {
       log::info!("nothing to do for device '{}' schedule", device_id.as_ref());
     }
-    Some(crate::types::DeviceScheduleKind::UserEventsBasic(user_id)) => {
+    Some(schema::DeviceScheduleKind::UserEventsBasic(user_id)) => {
       log::info!(
         "querying events for device '{}' and user '{}'",
         device_id.as_ref(),

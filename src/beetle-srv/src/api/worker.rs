@@ -1,3 +1,4 @@
+use crate::schema;
 use async_std::sync::{Arc, Mutex};
 use serde::Serialize;
 use std::io::{Error, ErrorKind, Result};
@@ -10,9 +11,6 @@ pub struct Worker {
 
   /// The original redis configuration.
   pub(super) redis_configuration: crate::config::RedisConfiguration,
-
-  /// The original auth0 configuration.
-  pub(super) auth0_configuration: crate::config::Auth0Configuration,
 
   /// The original google configuration.
   pub(super) google_configuration: crate::config::GoogleConfiguration,
@@ -48,7 +46,6 @@ impl Worker {
       google_configuration: config.google,
       redis_configuration: config.redis,
       registrar_configuration: config.registrar,
-      auth0_configuration: config.auth0,
       mongo: (mongo, config.mongo),
       redis_pool,
     })
@@ -216,7 +213,7 @@ impl Worker {
   /// This is an associated, helper function for routes to require that a request has a valid user
   /// associated with it. The `Err` will be returned if there is none or an "actual" problem
   /// happened while fetching.
-  pub(super) async fn require_authority(request: &tide::Request<Self>) -> Result<crate::types::User> {
+  pub(super) async fn require_authority(request: &tide::Request<Self>) -> Result<schema::User> {
     request
       .state()
       .request_authority(request)
@@ -229,7 +226,7 @@ impl Worker {
   ///
   /// TODO: back this with redis for a more secure + controllable session store. For now
   /// we are ultimately relying on the json web token secret to prevent spoofing.
-  pub(super) async fn request_authority(&self, request: &tide::Request<Self>) -> Result<Option<crate::types::User>> {
+  pub(super) async fn request_authority(&self, request: &tide::Request<Self>) -> Result<Option<schema::User>> {
     let oid = request
       .cookie(&self.web_configuration.session_cookie)
       .and_then(|cook| {
@@ -255,7 +252,7 @@ impl Worker {
   }
 
   /// Wraps the mongodb client and returns our collection.
-  pub(super) fn device_diagnostic_collection(&self) -> Result<mongodb::Collection<crate::types::DeviceDiagnostic>> {
+  pub(super) fn device_diagnostic_collection(&self) -> Result<mongodb::Collection<schema::DeviceDiagnostic>> {
     Ok(
       self
         .mongo
@@ -266,7 +263,7 @@ impl Worker {
   }
 
   /// Wraps the mongodb client and returns our collection.
-  pub(super) fn users_collection(&self) -> Result<mongodb::Collection<crate::types::User>> {
+  pub(super) fn users_collection(&self) -> Result<mongodb::Collection<schema::User>> {
     Ok(
       self
         .mongo
@@ -281,12 +278,7 @@ impl Worker {
     &self,
     user_id: &String,
     device_id: &String,
-  ) -> Result<
-    Option<(
-      crate::registrar::AccessLevel,
-      Option<crate::types::DeviceAuthorityRecord>,
-    )>,
-  > {
+  ) -> Result<Option<(crate::registrar::AccessLevel, Option<schema::DeviceAuthorityRecord>)>> {
     crate::registrar::user_access(&self.mongo.0, &self.mongo.1, user_id, device_id).await
   }
 

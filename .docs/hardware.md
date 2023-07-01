@@ -4,6 +4,24 @@
 | ---- | ---- | ---- | --- |
 | Xiao ESP32C3 | Seeed Studios | [~$5 (@ digikey.com)][xiao-digi] | [wiki][xiao-wiki] |
 | 4.2" E-Ink Display | Orient Displays | [~$35 (@ amazon.com)][xiao-display-amzn] | |
+| ws2812b led | | [~$20 (@ amazon.com)][led-amzn] (partial strip use) | |
+| lipo battery | | [4 pack ~$40 (@ amazon.com)][lip-amzn] (~$10 each) |
+| antenna | | [2 pack ~$9 (@ amazon.com)][antenna-amzn] (~$4.50 each) |
+
+> Note: the rev. 2 pcb "shield" schematic and board files can be found in the [`/hardware`](../hardware)
+> directory. These were created in Eagle.
+
+#### Xiao ESP32-C3 Soldering
+
+The xiao-esp32c3 does include a battery charge chip, but the connections are not exposed as pin
+through holes; they are surface pads on the bottom of the chip, marked by the `BAT` label:
+
+| :camera: |
+| --- |
+| ![image](https://user-images.githubusercontent.com/1545348/250297269-1ab3f9f1-d234-4c86-a933-49f4625fba99.png) |
+
+To use the lipo battery, JST cables like [these (amazon link)][jst-amzn] can be soldered to them,
+making sure to match the polarity correctly (typically, red to `+`, black to `-`).
 
 ---
 
@@ -45,3 +63,7 @@
 [xiao-digi]: https://www.digikey.com/en/products/detail/seeed-technology-co-ltd/113991054/16652880?s=N4IgTCBcDaIB4EsCGB7ABAUwM4AcDMYAxiALoC%2BQA
 [xiao-wiki]: https://www.seeedstudio.com/Seeed-XIAO-ESP32C3-p-5431.html
 [xiao-display-amzn]: https://www.amazon.com/dp/B074NR1SW2
+[led-amzn]: https://www.amazon.com/gp/product/B088BPGMXB
+[lip-amzn]: https://www.amazon.com/gp/product/B095YB8CJK
+[antenna-amzn]: https://www.amazon.com/gp/product/B01KBU61S8
+[jst-amzn]: https://www.amazon.com/dp/B07FP2FCYC

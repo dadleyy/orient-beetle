@@ -3,6 +3,7 @@
 //! This command line tool is meant to be a quick-and-dirty quality of life improvement over
 //! working through the webserver + ui.
 
+use beetle::schema;
 use clap::Parser;
 use serde::Deserialize;
 use std::io;
@@ -77,19 +78,19 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
       let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
       mongo
         .database(&config.mongo.database)
-        .collection::<beetle::types::User>(&config.mongo.collections.users)
+        .collection::<schema::User>(&config.mongo.collections.users)
         .drop(None)
         .await
         .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
       mongo
         .database(&config.mongo.database)
-        .collection::<beetle::types::DeviceAuthorityRecord>(&config.mongo.collections.device_authorities)
+        .collection::<schema::DeviceAuthorityRecord>(&config.mongo.collections.device_authorities)
         .drop(None)
         .await
         .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
       mongo
         .database(&config.mongo.database)
-        .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics)
+        .collection::<schema::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics)
         .drop(None)
         .await
         .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
@@ -124,8 +125,8 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
       let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
       let collection = mongo
         .database(&config.mongo.database)
-        .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
-      let updated_reg = beetle::types::DeviceDiagnosticRegistration::Initial;
+        .collection::<schema::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
+      let updated_reg = schema::DeviceDiagnosticRegistration::Initial;
       let serialized_registration = bson::to_bson(&updated_reg).map_err(|error| {
         log::warn!("unable to serialize registration_state: {error}");
         io::Error::new(io::ErrorKind::Other, format!("{error}"))

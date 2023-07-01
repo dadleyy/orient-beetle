@@ -1,3 +1,6 @@
+//! Defines routes for job lookup as well as queing.
+
+use crate::schema;
 use serde::{Deserialize, Serialize};
 
 /// The payload for looking up a device by id.
@@ -60,7 +63,7 @@ enum QueuePayloadKind {
 }
 
 /// Builds the message layout that is rendered for requests to the job api.
-fn message_layout<'a, 'b>(user: &'a crate::types::User, message: &'b str) -> crate::rendering::RenderVariant<String>
+fn message_layout<'a, 'b>(user: &'a schema::User, message: &'b str) -> crate::rendering::RenderVariant<String>
 where
   'a: 'b,
 {
@@ -179,12 +182,15 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
+
+    // Attempt to queue the large, scannable QR code for registering this define.
     QueuePayloadKind::Registration => {
       let job = crate::registrar::RegistrarJob::registration_scannable(device_id);
       let id = worker.queue_job(job).await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
+
     QueuePayloadKind::Schedule(desired_state) => {
       log::info!("toggling device schedule '{desired_state:?}' for user '{}'", user.oid);
       let user_id = user.oid.clone();

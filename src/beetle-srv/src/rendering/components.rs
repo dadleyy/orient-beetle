@@ -1,3 +1,5 @@
+//! Contains the ui components that can be rendered by our layouts.
+
 use qrencode as qrcode;
 use serde::{Deserialize, Serialize};
 use std::io;

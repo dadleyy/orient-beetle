@@ -1,3 +1,4 @@
+use crate::schema;
 use std::io;
 
 /// The internal struct used by our entrypoint each iteration of the interval.
@@ -164,7 +165,7 @@ impl Worker {
   }
 
   /// Returns a handle to device history collection.
-  fn histories_collection(&mut self) -> io::Result<mongodb::Collection<crate::types::DeviceHistoryRecord>> {
+  fn histories_collection(&mut self) -> io::Result<mongodb::Collection<schema::DeviceHistoryRecord>> {
     let mongo = self
       .connections
       .0
@@ -174,7 +175,7 @@ impl Worker {
     Ok(
       mongo
         .database(&self.config.0.mongo.database)
-        .collection::<crate::types::DeviceHistoryRecord>(&self.config.0.mongo.collections.device_histories),
+        .collection::<schema::DeviceHistoryRecord>(&self.config.0.mongo.collections.device_histories),
     )
   }
 

@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
+//! TODO: this is currently a dumping ground of non-interesting struct definitions
+//! for things sent over the wire or persisted in mongo.
 
-/// TODO: this is currently a dumping ground of non-interesting struct definitions
-/// for things sent over the wire or persisted in mongo.
+use serde::{Deserialize, Serialize};
 
 /// The "snapshot in time" of device information we want stored on our user documents themselves.
 #[derive(Deserialize, Serialize, Debug, Default)]
@@ -35,7 +35,7 @@ pub struct User {
 /// Mongo + serde + chrono don't work perfectly together; for now these are serialized into a user
 /// readable string.
 fn format_datetime(datetime: &chrono::DateTime<chrono::Utc>) -> String {
-  format!("{}", datetime.format("%b %d, %Y %H:%M:%S"))
+  datetime.format("%b %d, %Y %H:%M:%S").to_string()
 }
 
 /// The various kinds of authority models supported for devices.
@@ -83,7 +83,10 @@ pub struct DeviceDiagnosticOwnership {
   pub original_owner: String,
 }
 
-/// This type represents the different states of "registration" a device may be in.
+/// This type represents the different states of "registration" a device may be in. This
+/// information is long-lived in the `device-diagnostics` collection. Note that the registration is
+/// not the same as the `AuthorityModel` associated with a device: the registration information is
+/// generally immutable.
 #[derive(Deserialize, Serialize, Debug, Default)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum DeviceDiagnosticRegistration {
@@ -153,6 +156,13 @@ impl DeviceDiagnostic {
       nickname: self.nickname.as_ref().cloned(),
     }
   }
+}
+
+/// This schema is the long-lived representation of what is being rendered to a device.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DeviceState {
+  /// The id of a device.
+  pub(crate) device_id: String,
 }
 
 impl std::fmt::Display for DeviceDiagnostic {

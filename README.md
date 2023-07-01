@@ -109,6 +109,8 @@ responsible for applying logic based on device connections. These applications g
 an `env.toml` file with the various secrets that will be used for redis, mongo, etc... An example 
 file can be seen at [`src/beetle-src/env.example.toml`](src/beetle-srv/env.example.toml)
 
+For more detailed instructions for hosting your own instance, refer to [`.docs/hosting.md`](./.docs/hosting.md).
+
 
 ### Creating Redis ACL for all devices
 

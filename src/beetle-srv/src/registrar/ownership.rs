@@ -1,3 +1,4 @@
+use crate::schema;
 use serde::{Deserialize, Serialize};
 use std::io;
 
@@ -36,7 +37,7 @@ pub(super) async fn process_change(worker: &mut super::Worker, job: &DeviceOwner
 
   let models = mongo
     .database(&config.database)
-    .collection::<crate::types::DeviceAuthorityRecord>(&config.collections.device_authorities);
+    .collection::<schema::DeviceAuthorityRecord>(&config.collections.device_authorities);
 
   match job {
     DeviceOwnershipChangeRequest::SetPublicAvailability(id, state) => {
@@ -53,17 +54,17 @@ pub(super) async fn process_change(worker: &mut super::Worker, job: &DeviceOwner
 
       // Attempt to determine the next state based on the requested
       let new_state = match (&model.authority_model, state) {
-        (Some(crate::types::DeviceAuthorityModel::Exclusive(owner)), PublicAvailabilityChange::ToPublic) => {
+        (Some(schema::DeviceAuthorityModel::Exclusive(owner)), PublicAvailabilityChange::ToPublic) => {
           log::info!("moving from private, exclusive to public");
-          crate::types::DeviceAuthorityModel::Public(owner.clone(), vec![])
+          schema::DeviceAuthorityModel::Public(owner.clone(), vec![])
         }
-        (Some(crate::types::DeviceAuthorityModel::Public(owner, members)), PublicAvailabilityChange::ToPrivate) => {
+        (Some(schema::DeviceAuthorityModel::Public(owner, members)), PublicAvailabilityChange::ToPrivate) => {
           log::info!("moving from public to shared");
-          crate::types::DeviceAuthorityModel::Shared(owner.clone(), members.clone())
+          schema::DeviceAuthorityModel::Shared(owner.clone(), members.clone())
         }
-        (Some(crate::types::DeviceAuthorityModel::Shared(owner, _)), PublicAvailabilityChange::ToPrivate) => {
+        (Some(schema::DeviceAuthorityModel::Shared(owner, _)), PublicAvailabilityChange::ToPrivate) => {
           log::info!("moving from shared to exclusive");
-          crate::types::DeviceAuthorityModel::Exclusive(owner.clone())
+          schema::DeviceAuthorityModel::Exclusive(owner.clone())
         }
         other => {
           log::warn!("toggling public availability means nothing in combination with '{other:?}'");
@@ -72,7 +73,7 @@ pub(super) async fn process_change(worker: &mut super::Worker, job: &DeviceOwner
       };
 
       log::info!("will attempt to toggle ownership record - '{model:?}' -> '{new_state:?}'");
-      let new_model = crate::types::DeviceAuthorityRecord {
+      let new_model = schema::DeviceAuthorityRecord {
         device_id: id.clone(),
         authority_model: Some(new_state),
       };
@@ -113,7 +114,7 @@ pub(super) async fn register_device(worker: &mut super::Worker, job: &DeviceOwne
   let users = mongo.database(&config.database).collection(&config.collections.users);
 
   // Find the user requesting this device.
-  let mut user: crate::types::User = users
+  let mut user: schema::User = users
     .find_one(bson::doc! { "oid": &job.user_id }, None)
     .await
     .map_err(|error| {
@@ -124,7 +125,7 @@ pub(super) async fn register_device(worker: &mut super::Worker, job: &DeviceOwne
 
   // Find the device for this request. By now, the device should've sent _at least_ one ping to the
   // server after receiving its identifier.
-  let found_device: crate::types::DeviceDiagnostic = device_collection
+  let found_device: schema::DeviceDiagnostic = device_collection
     .find_one(bson::doc! { "id": &job.device_id }, None)
     .await
     .map_err(|error| {
@@ -158,7 +159,7 @@ pub(super) async fn register_device(worker: &mut super::Worker, job: &DeviceOwne
 
   log::info!("new device map for user '{}' - '{devices:?}'", job.user_id);
 
-  let updated = crate::types::User { devices, ..user };
+  let updated = schema::User { devices, ..user };
   let options = mongodb::options::FindOneAndUpdateOptions::builder()
     .upsert(true)
     .return_document(mongodb::options::ReturnDocument::After)
@@ -179,21 +180,21 @@ pub(super) async fn register_device(worker: &mut super::Worker, job: &DeviceOwne
       io::Error::new(io::ErrorKind::Other, "failed-update")
     })?;
 
-  if let Some(crate::types::DeviceAuthorityRecord {
+  if let Some(schema::DeviceAuthorityRecord {
     device_id,
-    authority_model: Some(crate::types::DeviceAuthorityModel::Public(original, mut public_users)),
+    authority_model: Some(schema::DeviceAuthorityModel::Public(original, mut public_users)),
   }) = authority_model
   {
     log::info!("adding user to the public authority model tracking for device '{device_id}'");
     public_users.push(job.user_id.clone());
-    let new_model = crate::types::DeviceAuthorityRecord {
+    let new_model = schema::DeviceAuthorityRecord {
       device_id: device_id.clone(),
-      authority_model: Some(crate::types::DeviceAuthorityModel::Public(original, public_users)),
+      authority_model: Some(schema::DeviceAuthorityModel::Public(original, public_users)),
     };
 
     let models = mongo
       .database(&config.database)
-      .collection::<crate::types::DeviceAuthorityRecord>(&config.collections.device_authorities);
+      .collection::<schema::DeviceAuthorityRecord>(&config.collections.device_authorities);
 
     let updates = bson::to_document(&new_model).map_err(|error| {
       log::warn!("unable to serialize - {error}");
@@ -209,7 +210,7 @@ pub(super) async fn register_device(worker: &mut super::Worker, job: &DeviceOwne
   }
 
   // Wrap up by updating the diagnostic itself so we can keep track of the original owner.
-  let updated_reg = crate::types::DeviceDiagnosticRegistration::Owned(crate::types::DeviceDiagnosticOwnership {
+  let updated_reg = schema::DeviceDiagnosticRegistration::Owned(schema::DeviceDiagnosticOwnership {
     original_owner: job.user_id.clone(),
   });
   let serialized_registration = bson::to_bson(&updated_reg).map_err(|error| {
