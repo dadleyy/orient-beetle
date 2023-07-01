@@ -72,11 +72,16 @@ bool failed = false;
 bool prox_ready = false;
 
 void setup(void) {
+#ifdef XIAO
+  pinMode(XIAO_NEOPIXEL_PIN, OUTPUT);
+#endif
+
 #ifndef RELEASE
   Serial.begin(115200);
 #endif
 
   unsigned char i = 0;
+
 
   while (i < 12) {
 #ifdef XIAO

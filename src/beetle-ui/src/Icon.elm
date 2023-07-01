@@ -10,7 +10,12 @@ type Icon
     | Home
     | Trash
     | Cancel
+    | CalendarOn
+    | CalendarOff
     | Lightbulb
+    | UserSecret
+    | User
+    | Unlock
     | Pencil
     | Link
     | File
@@ -24,6 +29,21 @@ type Icon
 view : Icon -> Html.Html a
 view icon =
     case icon of
+        CalendarOn ->
+            Html.i [ A.class "icon-calendar-check-o" ] []
+
+        CalendarOff ->
+            Html.i [ A.class "icon-calendar-times-o" ] []
+
+        UserSecret ->
+            Html.i [ A.class "icon-user-secret" ] []
+
+        Unlock ->
+            Html.i [ A.class "icon-unlock" ] []
+
+        User ->
+            Html.i [ A.class "icon-user" ] []
+
         Cancel ->
             Html.i [ A.class "icon-close" ] []
 

@@ -14,11 +14,15 @@ RELEASE_MAIN_CSS=$(subst debug,release,$(MAIN_CSS))
 RELEASE_BOOT_JS=$(subst .js,.min.js,$(subst debug,release,$(BOOT_JS)))
 RELEASE_INDEX=$(subst debug,release,$(INDEX_HTML))
 
-.PHONY: all clean fmt debug_font release_font
+DEBUG_FAVICON=$(subst ./static,target/debug,$(wildcard ./static/favicon/*.png))
 
-all: $(MAIN_JS) $(BOOT_JS) $(INDEX_HTML) $(MAIN_CSS) debug_font
+.PHONY: all clean fmt debug_font release_font debug_favicon release_favicon bundle
 
-release: $(RELEASE_MAIN_JS) $(RELEASE_BOOT_JS) $(RELEASE_INDEX) $(RELEASE_MAIN_CSS) release_font
+bundle: fmt all
+
+all: $(MAIN_JS) $(BOOT_JS) $(INDEX_HTML) $(MAIN_CSS) debug_font debug_favicon
+
+release: $(RELEASE_MAIN_JS) $(RELEASE_BOOT_JS) $(RELEASE_INDEX) $(RELEASE_MAIN_CSS) release_font release_favicon
 
 fmt:
 	$(NPM) run lint:elm -- --yes
@@ -65,6 +69,30 @@ $(MAIN_CSS): ./src/main.css $(ELM_SOURCES) ./src/index.pug src/boot.ts
 # relies on sass compiling vanilla `.css` correctly.
 $(RELEASE_MAIN_CSS): ./src/main.css $(ELM_SOURCES)
 	$(NPM) run postcss -- $< --output $@
+
+release_favicon: \
+	target/release/favicon/favicon.ico \
+	target/release/favicon/favicon-32x32.png \
+	target/release/favicon/favicon-16x16.png \
+	target/release/favicon/apple-touch-icon.png \
+	target/release/favicon/android-chrome-512x512.png \
+	target/release/favicon/android-chrome-192x192.png
+
+target/debug/favicon/%: static/favicon/%
+	@mkdir -p target/debug/favicon
+	cp -v $< $@
+
+debug_favicon: \
+	target/debug/favicon/favicon.ico \
+	target/debug/favicon/favicon-32x32.png \
+	target/debug/favicon/favicon-16x16.png \
+	target/debug/favicon/apple-touch-icon.png \
+	target/debug/favicon/android-chrome-512x512.png \
+	target/debug/favicon/android-chrome-192x192.png
+
+target/release/favicon/%: static/favicon/%
+	@mkdir -p target/release/favicon
+	cp -v $< $@
 
 debug_font: \
 	target/debug/icon-font/style.css \

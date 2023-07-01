@@ -16,7 +16,7 @@ namespace lighting {
     public:
       Lighting():
         _override(false),
-        _pixels(XIAO_NEOPIXEL_COUNT, XIAO_NEOPIXEL_PIN, NEO_GRB + NEO_KHZ400) {}
+        _pixels(XIAO_NEOPIXEL_COUNT, XIAO_NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800) {}
       ~Lighting() = default;
 
       Lighting(const Lighting&) = delete;
@@ -80,7 +80,7 @@ namespace lighting {
           _pixels.begin();
         }
 
-        _pixels.setBrightness(50);
+        _pixels.setBrightness(100);
         _pixels.clear();
 
         for(uint8_t i = 0; i < XIAO_NEOPIXEL_COUNT; i++) {

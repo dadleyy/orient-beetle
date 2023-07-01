@@ -1,3 +1,6 @@
+//! This module holds all of the api-specific functionality, including the routes and the
+//! payloads/responses they are concerned with.
+
 use serde::{Deserialize, Serialize};
 
 /// The api for authenticating.
@@ -6,8 +9,11 @@ mod auth;
 /// The api for claiming access to devices.
 mod claims;
 
-/// The device api routes modules.
+/// The device api routes module.
 mod devices;
+
+/// The schedule api routes module.
+mod schedules;
 
 /// The main worker module.
 mod worker;
@@ -24,6 +30,8 @@ pub use worker::Worker;
 /// Web configuration.
 #[derive(Deserialize, Clone)]
 pub struct WebConfiguration {
+  /// The domain to associated cookies with.
+  cookie_domain: String,
   /// Where to send folks after the Oauth handshake has completed.
   ui_redirect: String,
   /// A secret to use when creating JWT tokens for our cookie.
@@ -43,6 +51,10 @@ pub struct Configuration {
   pub(self) auth0: crate::config::Auth0Configuration,
   /// General mongo configuration.
   pub(self) mongo: crate::config::MongoConfiguration,
+  /// General mongo configuration.
+  pub(self) google: crate::config::GoogleConfiguration,
+  /// General mongo configuration.
+  pub(self) registrar: crate::config::RegistrarConfiguration,
 }
 
 /// The json schema of our response sent from the heartbeat api.
@@ -85,6 +97,9 @@ async fn missing(_request: tide::Request<worker::Worker>) -> tide::Result {
 pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   let mut app = tide::with_state(worker);
 
+  app.at("/auth/g/redirect").get(auth::google::redirect);
+  app.at("/auth/g/complete").get(auth::google::complete);
+
   app.at("/auth/redirect").get(auth::redirect);
   app.at("/auth/complete").get(auth::complete);
   app.at("/auth/identify").get(auth::identify);
@@ -93,9 +108,15 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/devices/register").post(devices::register);
   app.at("/devices/unregister").post(devices::unregister);
   app.at("/device-info").get(devices::info);
-  app.at("/device-message").post(devices::message);
-  app.at("/device-queue").post(devices::queue);
+  app.at("/device-authority").get(devices::authority);
+
+  // Note: this api route has become the catch-all entrypoint for an interface into manipulating
+  // devices. It is how we schedule lighting, messaging and calendar based modifications to
+  // devices.
+  app.at("/device-queue").post(jobs::queue);
+
   app.at("/jobs").get(jobs::find);
+  app.at("/device-schedules").get(schedules::find);
 
   app.at("/status").get(heartbeat);
   app.at("/*").all(missing);

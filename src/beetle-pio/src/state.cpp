@@ -44,12 +44,12 @@ Message::~Message() {
 }
 
 Working::Working(uint16_t size):
-  id_content((char *) malloc(sizeof(char) * MAX_ID_SIZE)),
+  id_content((char *) malloc(sizeof(char) * states::MAX_ID_SIZE)),
   id_size(size),
   messages({}),
   _has_new(false) {
   log_d("creating working state");
-  memset(id_content, '\0', MAX_ID_SIZE);
+  memset(id_content, '\0', states::MAX_ID_SIZE);
 }
 
 Working::Working(Working&& other): messages(std::move(other.messages)) {
@@ -73,22 +73,22 @@ Working& Working::operator=(Working&& other) {
   return *this;
 }
 
-std::array<Message, Working::MESSAGE_COUNT>::const_iterator Working::end(void) const {
+std::array<Message, states::MESSAGE_COUNT>::const_iterator Working::end(void) const {
   return messages.cend();
 }
 
 // When requesting an iterator to our messages while in the `Working`, we will assume that subsequent
 // requests are no interested in anything they have read since the last iterator was requested.
-std::array<Message, Working::MESSAGE_COUNT>::const_iterator Working::begin(void) const {
+std::array<Message, states::MESSAGE_COUNT>::const_iterator Working::begin(void) const {
   return _has_new ? messages.cbegin() : messages.cend();
 }
 
 // Get a reference to the next available message.
 Message& Working::next(void) {
-  std::swap(messages[0], messages[Working::MESSAGE_COUNT-1]);
+  std::swap(messages[0], messages[states::MESSAGE_COUNT-1]);
   _has_new = true;
 
-  for (uint8_t i = Working::MESSAGE_COUNT - 1; i > 1; i--) {
+  for (uint8_t i = states::MESSAGE_COUNT - 1; i > 1; i--) {
     std::swap(messages[i], messages[i-1]);
   }
 

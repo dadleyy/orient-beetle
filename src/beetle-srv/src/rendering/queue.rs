@@ -55,8 +55,8 @@ where
     layout: super::RenderVariant<T>,
   ) -> io::Result<(String, i64)>
   where
-    S: AsRef<str> + Serialize,
-    T: AsRef<str> + Serialize,
+    S: AsRef<str>,
+    T: Serialize,
   {
     let queued_item = QueuedRender {
       id: uuid::Uuid::new_v4().to_string(),

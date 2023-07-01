@@ -2,6 +2,8 @@ module Route.Device exposing (Message(..), Model, default, subscriptions, update
 
 import Alert
 import Button
+import DeviceAuthority as DA
+import DeviceSchedule as DS
 import Dropdown
 import Environment
 import Html
@@ -19,21 +21,24 @@ import TimeDiff
 
 type alias DeviceInfoResponse =
     { id : String
-    , last_seen : Int
+    , lastSeen : Int
     , nickname : Maybe String
-    , first_seen : Int
-    , sent_message_count : Maybe Int
-    , current_queue_count : Int
+    , firstSeen : Int
+    , sentMessageCount : Maybe Int
+    , currentQueueCount : Int
     }
 
 
 type SettingsMenuMessage
     = StartRename
     | QueueWelcomeScannable
+    | MakePublic
+    | MakePrivate
 
 
 type Message
     = Loaded (Result Http.Error ())
+    | LoadedDeviceAuthority (Result Http.Error DA.DeviceAuthorityResponse)
     | LoadedDeviceInfo (Result Http.Error DeviceInfoResponse)
     | QueuedMessageJob (Result Http.Error Job.JobHandle)
     | Tick Time.Posix
@@ -41,6 +46,8 @@ type Message
     | AttemptMessage
     | SetMessage String
     | ToggleLights Bool
+    | ToggleSchedule Bool
+    | ClearAlert
     | UpdateInput InputKinds
     | SettingsMenuUpdate Dropdown.Dropdown (Maybe SettingsMenuMessage)
     | LoadedTime Time.Posix
@@ -56,8 +63,10 @@ type QueuePayloadKinds
     = MessagePayload String
     | LinkPayload String
     | LightPayload Bool
+    | SchedulePayload Bool
     | DeviceRenamePayload String
     | WelcomeMessage
+    | PublicAccessChange Bool
 
 
 type alias Model =
@@ -65,6 +74,7 @@ type alias Model =
     , activeInput : ( InputKinds, Maybe (Maybe (Result Http.Error String)) )
     , alert : Maybe Alert.Alert
     , loadedDevice : Maybe (Result Http.Error DeviceInfoResponse)
+    , loadedAuthority : Maybe (Result Http.Error DA.DeviceAuthorityResponse)
     , pendingRefresh : Maybe (Maybe (Result Http.Error DeviceInfoResponse))
     , pendingMessageJobs : List Job.JobHandle
     , currentTime : Maybe Time.Posix
@@ -104,7 +114,7 @@ resetInput : InputKinds -> InputKinds
 resetInput kind =
     case kind of
         DeviceName _ ->
-            DeviceName ""
+            Message ""
 
         Message _ ->
             Message ""
@@ -177,23 +187,11 @@ view model env =
             else
                 Button.PrimaryIcon Icon.Send AttemptMessage
 
-        lightButtons =
-            case isBusy model of
-                True ->
-                    [ Button.view (Button.DisabledIcon Icon.Sun)
-                    , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.DisabledIcon Icon.Moon) ]
-                    ]
-
-                False ->
-                    [ Button.view (Button.SecondaryIcon Icon.Sun (ToggleLights True))
-                    , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.SecondaryIcon Icon.Moon (ToggleLights False)) ]
-                    ]
-
         settingsMenu =
             [ ( StartRename, Html.div [] [ Html.text "Rename Device" ] )
             , ( QueueWelcomeScannable, Html.div [] [ Html.text "Send Registration Scannable" ] )
+            , ( MakePublic, Html.div [] [ Html.text "Make Public" ] )
+            , ( MakePrivate, Html.div [] [ Html.text "Make Private" ] )
             ]
     in
     Html.div [ ATT.class "px-4 py-3" ]
@@ -209,28 +207,73 @@ view model env =
             , Html.div [ ATT.class "ml-2" ] [ Button.view sendButton ]
             , Html.div [ ATT.class "hidden lg:flex ml-8 items-center" ] inputToggles
             ]
-        , case model.loadedDevice of
-            Nothing ->
-                Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text "Loading ..." ]
-
-            Just (Err error) ->
-                let
-                    failureString =
-                        case error of
-                            Http.BadStatus _ ->
-                                "Unknown Device"
-
-                            _ ->
-                                "Failed"
-                in
-                Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text failureString ]
-
-            Just (Ok info) ->
-                Html.div []
-                    [ Html.div [ ATT.class "flex items-center mt-2 justify-center" ] lightButtons
-                    , deviceInfoTable model info
-                    ]
+        , bottom model env
         ]
+
+
+bottom : Model -> Environment.Environment -> Html.Html Message
+bottom model env =
+    let
+        lightButtons =
+            case isBusy model of
+                True ->
+                    [ Button.view (Button.DisabledIcon Icon.Sun)
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.DisabledIcon Icon.Moon) ]
+                    ]
+
+                False ->
+                    [ Button.view (Button.SecondaryIcon Icon.Sun (ToggleLights True))
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.SecondaryIcon Icon.Moon (ToggleLights False)) ]
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.SecondaryIcon Icon.CalendarOn (ToggleSchedule True)) ]
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.SecondaryIcon Icon.CalendarOff (ToggleSchedule False)) ]
+                    ]
+    in
+    case model.loadedDevice of
+        Nothing ->
+            Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text "Loading ..." ]
+
+        Just (Err error) ->
+            let
+                failureString =
+                    case error of
+                        Http.BadStatus _ ->
+                            "Unknown Device"
+
+                        _ ->
+                            "Failed"
+            in
+            Html.div [ ATT.class "mt-2 pt-2" ] [ Html.text failureString ]
+
+        Just (Ok info) ->
+            Html.div []
+                [ Html.div [ ATT.class "flex items-center mt-2 justify-center" ] lightButtons
+                , Html.div [ ATT.class "sm:flex sm:items-start mt-4 pt-4 border-t border-solid border-neutral-500" ]
+                    [ Html.div [ ATT.class "flex-1 pb-4 sm:pb-0 sm:mr-2 sm:pr-2" ]
+                        [ deviceInfoTable model info ]
+                    , Html.div [ ATT.class "flex-1 border-t pt-4 sm:ml-2 sm:pl-2 sm:border-t-0 sm:pt-0 border-neutral-500" ]
+                        [ deviceAuhtorityInfo model ]
+                    ]
+                ]
+
+
+deviceAuhtorityInfo : Model -> Html.Html Message
+deviceAuhtorityInfo model =
+    case model.loadedAuthority of
+        Just (Ok auth) ->
+            Html.div [ ATT.class "flex items-center" ]
+                [ Html.div [ ATT.class "mr-2" ] [ Icon.view (DA.icon auth.authorityModel) ]
+                , Html.div [] [ Html.text auth.authorityModel.kind ]
+                ]
+
+        Just (Err _) ->
+            Html.div [] [ Html.text "unable to load authority model" ]
+
+        Nothing ->
+            Html.div [] [ Html.text "loading authority model..." ]
 
 
 modelInfoHeader : Model -> Html.Html Message
@@ -258,38 +301,43 @@ deviceInfoTable : Model -> DeviceInfoResponse -> Html.Html Message
 deviceInfoTable model info =
     let
         sentMessageCount =
-            Maybe.withDefault 0 info.sent_message_count |> String.fromInt
+            Maybe.withDefault 0 info.sentMessageCount |> String.fromInt
 
-        lastSeenText =
+        ( lastSeenText, firstSeenText ) =
             case model.currentTime of
                 Just time ->
                     let
-                        theDiff =
-                            TimeDiff.diff time (Time.millisToPosix info.last_seen)
+                        lastDiff =
+                            TimeDiff.diff time (Time.millisToPosix info.lastSeen)
+
+                        firstDiff =
+                            TimeDiff.diff time (Time.millisToPosix info.firstSeen)
                     in
-                    Html.text (TimeDiff.toString theDiff)
+                    ( Html.text (TimeDiff.toString lastDiff), Html.text (TimeDiff.toString firstDiff) )
 
                 Nothing ->
-                    Html.text (TimeDiff.formatDeviceTime info.last_seen ++ "UTC")
+                    ( Html.text (TimeDiff.formatDeviceTime info.lastSeen ++ "UTC")
+                    , Html.text (TimeDiff.formatDeviceTime info.firstSeen ++ "UTC")
+                    )
     in
     Html.table [ ATT.class "w-full mt-2" ]
         [ Html.thead [] []
         , Html.tbody []
             [ Html.tr []
-                [ Html.td [] [ Html.text "Total Messages Sent" ]
+                [ Html.td [ ATT.class "whitespace-nowrap text-ellipsis" ] [ Html.text "Total Messages Sent" ]
                 , Html.td [] [ Html.text sentMessageCount ]
                 ]
             , Html.tr []
-                [ Html.td [] [ Html.text "Current Queue" ]
-                , Html.td [] [ Html.text (String.fromInt info.current_queue_count) ]
+                [ Html.td [ ATT.class "whitespace-nowrap text-ellipsis" ] [ Html.text "Current Queue" ]
+                , Html.td [] [ Html.text (String.fromInt info.currentQueueCount) ]
                 ]
             , Html.tr []
-                [ Html.td [] [ Html.text "Last Seen" ]
-                , Html.td [] [ lastSeenText ]
+                [ Html.td [ ATT.class "whitespace-nowrap text-ellipsis" ] [ Html.text "Last Seen" ]
+                , Html.td [ ATT.title (TimeDiff.formatDeviceTime info.lastSeen) ] [ lastSeenText ]
                 ]
             , Html.tr []
-                [ Html.td [] [ Html.text "First Seen" ]
-                , Html.td [] [ Html.text (TimeDiff.formatDeviceTime info.first_seen ++ "UTC") ]
+                [ Html.td [ ATT.class "whitespace-nowrap text-ellipsis" ] [ Html.text "First Seen" ]
+                , Html.td [] [ firstSeenText ]
                 ]
             ]
         ]
@@ -334,8 +382,31 @@ postMessage env id payloadKind =
                 LightPayload isOn ->
                     Http.jsonBody (encoder "lights" (Encode.bool isOn))
 
+                SchedulePayload isOn ->
+                    Http.jsonBody (encoder "schedule" (Encode.bool isOn))
+
                 LinkPayload str ->
                     Http.jsonBody (encoder "link" (Encode.string str))
+
+                PublicAccessChange value ->
+                    Http.jsonBody
+                        (Encode.object
+                            [ ( "device_id", Encode.string id )
+                            , ( "kind"
+                              , Encode.object
+                                    [ ( "beetle:kind"
+                                      , Encode.string
+                                            (if value then
+                                                "make_public"
+
+                                             else
+                                                "make_private"
+                                            )
+                                      )
+                                    ]
+                              )
+                            ]
+                        )
 
                 MessagePayload str ->
                     Http.jsonBody (encoder "message" (Encode.string str))
@@ -382,11 +453,20 @@ setActiveInputText newValue kind =
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
+        ClearAlert ->
+            ( { model | alert = Nothing }, Cmd.none )
+
         SettingsMenuUpdate dropdown (Just StartRename) ->
             ( { model | settingsMenu = dropdown, activeInput = ( DeviceName "", Nothing ) }, Cmd.none )
 
         SettingsMenuUpdate dropdown (Just QueueWelcomeScannable) ->
             ( { model | settingsMenu = dropdown }, postMessage env model.id WelcomeMessage )
+
+        SettingsMenuUpdate dropdown (Just MakePublic) ->
+            ( { model | settingsMenu = dropdown }, postMessage env model.id (PublicAccessChange True) )
+
+        SettingsMenuUpdate dropdown (Just MakePrivate) ->
+            ( { model | settingsMenu = dropdown }, postMessage env model.id (PublicAccessChange False) )
 
         SettingsMenuUpdate dropdown Nothing ->
             ( { model | settingsMenu = dropdown }, Cmd.none )
@@ -416,6 +496,9 @@ update env message model =
             , Cmd.batch [ refreshCommand, pollCommand ]
             )
 
+        LoadedDeviceAuthority authorityResult ->
+            ( { model | loadedAuthority = Just authorityResult }, Cmd.none )
+
         LoadedJobHandle handle (Ok job) ->
             let
                 jobResult =
@@ -428,7 +511,7 @@ update env message model =
                 -- TODO(job-polling): this clears out the job being polled whenever it reaches a terminal
                 --                    state. eventually we will want to handle failures much better.
                 _ ->
-                    ( { model | pendingMessageJobs = [] }, Cmd.none )
+                    ( { model | pendingMessageJobs = [] }, DA.fetchDeviceAuthority env model.id LoadedDeviceAuthority )
 
         LoadedJobHandle handle (Err _) ->
             ( { model | pendingMessageJobs = [] }, Cmd.none )
@@ -458,6 +541,11 @@ update env message model =
                     Tuple.first model.activeInput |> resetInput
             in
             ( { model | activeInput = ( emptiedInput, Nothing ) }, Cmd.none )
+
+        ToggleSchedule state ->
+            ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }
+            , postMessage env model.id (SchedulePayload state)
+            )
 
         ToggleLights state ->
             ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }
@@ -516,7 +604,8 @@ viewAlert : Model -> Html.Html Message
 viewAlert model =
     case model.alert of
         Just a ->
-            Html.div [ ATT.class "mb-4" ] [ Alert.view a ]
+            Html.div [ ATT.class "mb-4 w-full" ]
+                [ Alert.view a ClearAlert ]
 
         Nothing ->
             Html.div [] []
@@ -527,11 +616,22 @@ default env id =
     ( { id = id
       , activeInput = ( Message "", Nothing )
       , loadedDevice = Nothing
+      , loadedAuthority = Nothing
       , pendingMessageJobs = []
       , pendingRefresh = Nothing
       , currentTime = Nothing
       , settingsMenu = Dropdown.empty
       , alert = Nothing
       }
-    , Cmd.batch [ fetchDevice env id, getNow ]
+    , Cmd.batch
+        [ fetchDevice env id
+        , getNow
+        , DA.fetchDeviceAuthority env
+            id
+            LoadedDeviceAuthority
+        , DS.fetchDeviceSchedule
+            env
+            id
+            Loaded
+        ]
     )

@@ -7,10 +7,18 @@ use std::io::{Error, ErrorKind, Result};
 pub struct Worker {
   /// The original web configuration.
   pub(super) web_configuration: super::WebConfiguration,
+
   /// The original redis configuration.
   pub(super) redis_configuration: crate::config::RedisConfiguration,
+
   /// The original auth0 configuration.
   pub(super) auth0_configuration: crate::config::Auth0Configuration,
+
+  /// The original google configuration.
+  pub(super) google_configuration: crate::config::GoogleConfiguration,
+
+  /// The original registrar configuration.
+  pub(super) registrar_configuration: crate::config::RegistrarConfiguration,
 
   /// Our shared mongo client + configuration.
   mongo: (mongodb::Client, crate::config::MongoConfiguration),
@@ -37,19 +45,31 @@ impl Worker {
 
     Ok(Self {
       web_configuration: config.web,
+      google_configuration: config.google,
       redis_configuration: config.redis,
+      registrar_configuration: config.registrar,
       auth0_configuration: config.auth0,
       mongo: (mongo, config.mongo),
       redis_pool,
     })
   }
 
-  /// Will attempt to queue a render request.
-  pub(super) async fn queue_job(&self, job: crate::registrar::RegistrarJob) -> Result<String> {
-    let serialized = serde_json::to_string(&job)
-      .map_err(|err| Error::new(ErrorKind::Other, format!("unable to serialize job - {err}")))?;
+  /// Creates an id and a job from the kind, returning the id.
+  pub(super) async fn queue_job_kind(&self, job: crate::registrar::RegistrarJobKind) -> Result<String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let job = crate::registrar::RegistrarJob { id, job };
+    self.queue_job(job).await
+  }
 
-    let pending_json = serde_json::to_string(&crate::job_result::JobResult::Pending).map_err(|error| {
+  /// Will attempt to queue various registrar jobs by serializing them and pushing the job onto our
+  /// job queue redis list. During this process we will encrypt the actual job.
+  pub(super) async fn queue_job(&self, job: crate::registrar::RegistrarJob) -> Result<String> {
+    // TODO: this is where id generation should happen, not in the job construction itself.
+    let id = job.id.clone();
+
+    let serialized = job.encrypt(&self.registrar_configuration)?;
+
+    let pending_json = serde_json::to_string(&crate::registrar::jobs::JobResult::Pending).map_err(|error| {
       log::warn!("unable to serialize pending job state - {error}");
       Error::new(ErrorKind::Other, "job-serialize")
     })?;
@@ -57,7 +77,7 @@ impl Worker {
     self
       .command(&kramer::Command::Hashes(kramer::HashCommand::Set(
         crate::constants::REGISTRAR_JOB_RESULTS,
-        kramer::Arity::One((&job.id, &pending_json)),
+        kramer::Arity::One((&id, &pending_json)),
         kramer::Insertion::Always,
       )))
       .await?;
@@ -70,7 +90,7 @@ impl Worker {
       )))
       .await?;
 
-    Ok(job.id)
+    Ok(id)
   }
 
   /// Will attempt to queue a render request.
@@ -109,7 +129,7 @@ impl Worker {
 
     let id = id.ok_or_else(|| Error::new(ErrorKind::Other, "unable to queue within reasonable amount of attempts"))?;
 
-    let pending_json = serde_json::to_string(&crate::job_result::JobResult::Pending).map_err(|error| {
+    let pending_json = serde_json::to_string(&crate::registrar::jobs::JobResult::Pending).map_err(|error| {
       log::warn!("unable to serialize pending job state - {error}");
       Error::new(ErrorKind::Other, "job-serialize")
     })?;
@@ -193,6 +213,17 @@ impl Worker {
     result
   }
 
+  /// This is an associated, helper function for routes to require that a request has a valid user
+  /// associated with it. The `Err` will be returned if there is none or an "actual" problem
+  /// happened while fetching.
+  pub(super) async fn require_authority(request: &tide::Request<Self>) -> Result<crate::types::User> {
+    request
+      .state()
+      .request_authority(request)
+      .await?
+      .ok_or_else(|| Error::new(ErrorKind::Other, "no-user"))
+  }
+
   /// Given a request, this method will attempt to determine what kind of authority we are
   /// processing with.
   ///
@@ -201,11 +232,15 @@ impl Worker {
   pub(super) async fn request_authority(&self, request: &tide::Request<Self>) -> Result<Option<crate::types::User>> {
     let oid = request
       .cookie(&self.web_configuration.session_cookie)
-      .and_then(|cook| super::claims::Claims::decode(cook.value(), &self.web_configuration.session_secret).ok())
+      .and_then(|cook| {
+        log::trace!("found cookie - '{cook:?}'");
+        super::claims::Claims::decode(cook.value(), &self.web_configuration.session_secret).ok()
+      })
       .map(|claims| claims.oid)
       .unwrap_or_default();
 
     if oid.is_empty() {
+      log::trace!("no user id found in cookies");
       return Ok(None);
     }
 
@@ -246,7 +281,12 @@ impl Worker {
     &self,
     user_id: &String,
     device_id: &String,
-  ) -> Result<Option<crate::registrar::AccessLevel>> {
+  ) -> Result<
+    Option<(
+      crate::registrar::AccessLevel,
+      Option<crate::types::DeviceAuthorityRecord>,
+    )>,
+  > {
     crate::registrar::user_access(&self.mongo.0, &self.mongo.1, user_id, device_id).await
   }
 

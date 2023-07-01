@@ -1,4 +1,9 @@
+//! Note: currently considering migrating away from auth0 to google entirely.
+
 use serde::{Deserialize, Serialize};
+
+/// Google apis.
+pub mod google;
 
 /// The flags that will be used to set our cookie when not using https.
 #[cfg(debug_assertions)]
@@ -9,7 +14,11 @@ const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly
 const COOKIE_SET_FLAGS: &str = "Max-Age=86400; Path=/; SameSite=Strict; HttpOnly; Secure";
 
 /// The flags of our `Set-Cookie` header used to clear the cookie.
-const COOKIE_CLEAR_FLAGS: &str = "Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; SameSite=Strict; HttpOnly";
+#[cfg(debug_assertions)]
+const COOKIE_CLEAR_FLAGS: &str = "Max-Age: 0; Path=/; SameSite=Strict; HttpOnly";
+/// The flags of our `Set-Cookie` header used to clear the cookie.
+#[cfg(not(debug_assertions))]
+const COOKIE_CLEAR_FLAGS: &str = "Max-Age: 0; Path=/; SameSite=Strict; HttpOnly; Secure";
 
 /// The schema of the Auth0 code -> token exchange api.
 #[derive(Debug, Deserialize)]
@@ -129,7 +138,7 @@ pub async fn complete(request: tide::Request<super::worker::Worker>) -> tide::Re
     .await
     .ok_or_else(|| tide::Error::from_str(404, "bad-token"))?;
 
-  log::debug!("loaded user info for '{}'", info.sub);
+  log::info!("loaded user info for '{info:?}'");
 
   // Attempt to upsert this user into our db.
   let query = bson::doc! { "oid": info.sub.clone() };
@@ -186,7 +195,10 @@ pub async fn logout(request: tide::Request<super::worker::Worker>) -> tide::Resu
 
   log::debug!("redirecting user with logout cookie");
 
-  let cookie = format!("{}=; {}", &worker.web_configuration.session_cookie, COOKIE_CLEAR_FLAGS);
+  let cookie = format!(
+    "{}=''; {}; Domain={}",
+    &worker.web_configuration.session_cookie, COOKIE_CLEAR_FLAGS, &worker.web_configuration.cookie_domain,
+  );
   let response = tide::Response::builder(302)
     .header("Set-Cookie", cookie)
     .header("Location", &worker.web_configuration.ui_redirect)

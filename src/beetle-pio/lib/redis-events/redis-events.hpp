@@ -48,14 +48,18 @@ namespace redisevents {
       uint8_t copy_id(char *, uint8_t);
 
     private:
-      constexpr static const uint32_t FRAMEBUFFER_SIZE = 2828 * 3;
-      constexpr static const uint32_t PARSED_MESSAGE_SIZE = 2828 * 3;
+      // These two amounts are the size of memory allocations used for receiving data from our redis
+      // client, and storing the parsed value.
+      constexpr static const uint32_t FRAMEBUFFER_SIZE = 1024 * 20;
+      constexpr static const uint32_t PARSED_MESSAGE_SIZE = 1024 * 20;
+
       constexpr static const uint32_t MAX_ID_SIZE = 36;
 
       // The amount of attempts to read from our tls connection that return no data
       // before we attempt to reconnect.
       constexpr static const uint32_t MAX_EMPTY_READ_RESET = 100;
 
+      // The messages we send back are pretty small.
       constexpr static const uint8_t OUTBOUND_BUFFER_SIZE = 200;
 
       // The amount of times we reset our connection before we will re-request a new device id.

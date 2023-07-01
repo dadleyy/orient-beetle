@@ -42,8 +42,12 @@ where
   .await?;
 
   if let kramer::Response::Item(kramer::ResponseValue::String(id)) = taken {
-    log::debug!("found device push from '{id}' waiting in incoming queue");
-    let (mongo_client, mongo_config) = &mut worker.mongo;
+    log::trace!("found device push from '{id}' waiting in incoming queue");
+
+    let super::worker::WorkerMongo {
+      client: mongo_client,
+      config: mongo_config,
+    } = &worker.mongo;
     let collection = mongo_client
       .database(&mongo_config.database)
       .collection::<crate::types::DeviceDiagnostic>(&mongo_config.collections.device_diagnostics);
@@ -145,7 +149,7 @@ where
         }
       }
       Some(other) => {
-        log::debug!("device '{}' has {other:?} previous registration", device_diagnostic.id);
+        log::trace!("device '{}' has {other:?} previous registration", device_diagnostic.id);
       }
     }
 

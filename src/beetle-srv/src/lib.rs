@@ -45,9 +45,9 @@ pub mod redis;
 /// Functionality associated with our background registrar worker.
 pub mod registrar;
 
+/// Third party types.
+pub mod vendor;
+
 /// Generally speaking, this module contains types stored in the mongo instance. It should be
 /// renamed to something better.
 pub mod types;
-
-/// This module contains the enumerated types related to the various jobs performed in our system.
-mod job_result;
