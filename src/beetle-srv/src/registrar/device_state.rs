@@ -84,6 +84,13 @@ pub(super) async fn attempt_transition(
     (None, DeviceStateTransition::PushMessage(content, origin)) => Some(schema::DeviceRenderingState::MessageList(
       vec![(content.clone(), origin.clone())],
     )),
+    (
+      Some(schema::DeviceRenderingState::MessageList(mut current_list)),
+      DeviceStateTransition::PushMessage(content, origin),
+    ) => {
+      current_list.push((content.clone(), origin.clone()));
+      Some(schema::DeviceRenderingState::MessageList(current_list))
+    }
     _ => None,
   };
 
