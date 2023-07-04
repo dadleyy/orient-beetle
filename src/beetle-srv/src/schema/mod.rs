@@ -3,6 +3,13 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The device state is a bit beefy.
+mod device_state;
+pub use device_state::{DeviceRenderingState, DeviceState, DeviceStateMessageOrigin};
+
+/// The general schema related to the background jobs used.
+pub(crate) mod jobs;
+
 /// The "snapshot in time" of device information we want stored on our user documents themselves.
 #[derive(Deserialize, Serialize, Debug, Default)]
 #[serde(rename_all = "snake_case")]
@@ -156,13 +163,6 @@ impl DeviceDiagnostic {
       nickname: self.nickname.as_ref().cloned(),
     }
   }
-}
-
-/// This schema is the long-lived representation of what is being rendered to a device.
-#[derive(Debug, Deserialize, Serialize)]
-pub struct DeviceState {
-  /// The id of a device.
-  pub(crate) device_id: String,
 }
 
 impl std::fmt::Display for DeviceDiagnostic {

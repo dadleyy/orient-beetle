@@ -1,10 +1,10 @@
-use crate::schema;
+use crate::{registrar, schema};
 use std::io;
 
 /// The internal struct used by our entrypoint each iteration of the interval.
 struct Worker {
   /// The configuration, and parsed options for mongo.
-  config: (crate::registrar::Configuration, mongodb::options::ClientOptions),
+  config: (registrar::Configuration, mongodb::options::ClientOptions),
 
   /// Connection pools.
   connections: (Option<mongodb::Client>, Option<crate::redis::RedisConnection>),
@@ -12,7 +12,7 @@ struct Worker {
 
 impl Worker {
   /// Constructs the worker, with some validation on the configuration.
-  async fn new(config: crate::registrar::Configuration) -> io::Result<Self> {
+  async fn new(config: registrar::Configuration) -> io::Result<Self> {
     let mut connections = (None, None);
 
     let mongo_options = mongodb::options::ClientOptions::parse(&config.mongo.url)
@@ -135,8 +135,8 @@ impl Worker {
         // clients know the render has been processed in the background.
         let serialized_result = serde_json::to_string(
           &queue_error
-            .map(crate::registrar::jobs::JobResult::Failure)
-            .unwrap_or_else(|| crate::registrar::jobs::JobResult::Success),
+            .map(schema::jobs::JobResult::Failure)
+            .unwrap_or_else(|| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal)),
         )
         .map_err(|error| {
           log::warn!("unable to complete serialization of render result - {error}");

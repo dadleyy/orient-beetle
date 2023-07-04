@@ -140,7 +140,8 @@ pub struct TokenHandle {
 }
 
 /// An enumerated type meant to distinguish whole-day events from timed events.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "beetle:kind", content = "beetle:content")]
 pub enum ParsedEventTimeMarker {
   /// A whole-day event.
   Date(u32, u32, u32),
@@ -149,7 +150,7 @@ pub enum ParsedEventTimeMarker {
 }
 
 /// The schema of an event that our application is concerned with.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ParsedEvent {
   /// The id of this event.
   pub id: String,

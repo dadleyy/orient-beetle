@@ -182,7 +182,12 @@ where
           )
         })?;
 
-      let events = crate::vendor::google::fetch_events(&partial_user.latest_token, &primary).await?;
+      let events: Vec<crate::vendor::google::ParsedEvent> =
+        crate::vendor::google::fetch_events(&partial_user.latest_token, &primary)
+          .await?
+          .into_iter()
+          .filter_map(|raw_event| crate::vendor::google::parse_event(&raw_event).ok())
+          .collect();
 
       log::info!(
         "found {} events for user '{user_id}' ({:?})",
@@ -192,11 +197,7 @@ where
 
       let mut left = vec![];
 
-      for event in events
-        .iter()
-        .filter_map(|raw_event| crate::vendor::google::parse_event(raw_event).ok())
-        .take(MAX_DISPLAYED_EVENTS)
-      {
+      for event in events.iter().take(MAX_DISPLAYED_EVENTS) {
         log::info!("rendering event '{event:?}'");
 
         left.push(crate::rendering::components::StylizedMessage {
@@ -220,7 +221,7 @@ where
           ..Default::default()
         });
 
-        match (event.start, event.end) {
+        match (&event.start, &event.end) {
           (google::ParsedEventTimeMarker::DateTime(s), google::ParsedEventTimeMarker::DateTime(e)) => {
             let formatted_start = s.format("%H:%M").to_string();
             let formatted_end = e.format("%H:%M").to_string();
@@ -260,6 +261,15 @@ where
         }),
         ..Default::default()
       };
+
+      worker
+        .enqueue_kind(super::RegistrarJobKind::MutateDeviceState(
+          super::device_state::DeviceStateTransitionRequest {
+            device_id: device_id.as_ref().to_string(),
+            transition: super::device_state::DeviceStateTransition::SetSchedule(events),
+          },
+        ))
+        .await?;
 
       worker
         .render(

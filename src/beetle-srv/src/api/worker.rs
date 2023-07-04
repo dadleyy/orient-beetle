@@ -66,7 +66,7 @@ impl Worker {
 
     let serialized = job.encrypt(&self.registrar_configuration)?;
 
-    let pending_json = serde_json::to_string(&crate::registrar::jobs::JobResult::Pending).map_err(|error| {
+    let pending_json = serde_json::to_string(&schema::jobs::JobResult::Pending).map_err(|error| {
       log::warn!("unable to serialize pending job state - {error}");
       Error::new(ErrorKind::Other, "job-serialize")
     })?;
@@ -126,7 +126,7 @@ impl Worker {
 
     let id = id.ok_or_else(|| Error::new(ErrorKind::Other, "unable to queue within reasonable amount of attempts"))?;
 
-    let pending_json = serde_json::to_string(&crate::registrar::jobs::JobResult::Pending).map_err(|error| {
+    let pending_json = serde_json::to_string(&schema::jobs::JobResult::Pending).map_err(|error| {
       log::warn!("unable to serialize pending job state - {error}");
       Error::new(ErrorKind::Other, "job-serialize")
     })?;

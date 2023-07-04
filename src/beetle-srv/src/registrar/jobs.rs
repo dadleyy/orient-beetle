@@ -1,22 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::io;
 
+use super::device_state;
 use super::ownership;
 use super::rename::DeviceRenameRequest;
-
-/// The enumerated result set of all background jobs.
-#[derive(Deserialize, Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
-pub enum JobResult {
-  /// The job is currently pending.
-  Pending,
-
-  /// A success without any more info.
-  Success,
-
-  /// A failure with a reason.
-  Failure(String),
-}
 
 /// Rendering jobs specific to the registrar. Eventually this might be expanded to wrap _all_
 /// rendering jobs that currently go directly to the queue.
@@ -25,6 +12,9 @@ pub enum JobResult {
 pub enum RegistrarRenderKinds {
   /// Queues a render for the initial scannable
   RegistrationScannable(String),
+
+  /// Attempts to render the current device state.
+  CurrentDeviceState(String),
 }
 
 /// The individual kinds of jobs.
@@ -39,6 +29,9 @@ pub enum RegistrarJobKind {
 
   /// Renaming devices can be expensive; it is a job.
   Rename(DeviceRenameRequest),
+
+  /// These jobs mutate the current "rendered" device state.
+  MutateDeviceState(device_state::DeviceStateTransitionRequest),
 
   /// An immediate attempt to run the schedule for a device.
   RunDeviceSchedule(String),
