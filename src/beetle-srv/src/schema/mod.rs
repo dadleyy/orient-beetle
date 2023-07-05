@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// The device state is a bit beefy.
 mod device_state;
-pub use device_state::{DeviceRenderingState, DeviceState, DeviceStateMessageOrigin};
+pub use device_state::{DeviceRenderingState, DeviceRenderingStateMessageEntry, DeviceState, DeviceStateMessageOrigin};
 
 /// The general schema related to the background jobs used.
 pub(crate) mod jobs;

@@ -5,18 +5,6 @@ use crate::{schema, vendor::google};
 use serde::Deserialize;
 use std::io;
 
-/// The most amount of events to display at once when rendering things from a google calendar.
-const MAX_DISPLAYED_EVENTS: usize = 4;
-
-/// The size of font to use when rendering event summaries.
-const EVENT_SUMMARY_SIZE: f32 = 34.0f32;
-
-/// The size of font to use when rendering event timestamps.
-const EVENT_TIME_SIZE: f32 = 28.0f32;
-
-/// The size of font to use when rendering the calendar "signature".
-const CALENDAR_NAME_SIZE: f32 = 28.0f32;
-
 /// TODO: this type is a mirror of the schema defined in our `schedule` module, it is likely we can
 /// bundle this up in the worker through some api for fetching an access token by user ID.
 #[derive(Deserialize, Debug)]
@@ -25,7 +13,7 @@ struct UserTokenInfo {
   name: Option<String>,
 
   #[allow(clippy::missing_docs_in_private_items)]
-  latest_token: crate::vendor::google::TokenHandle,
+  latest_token: google::TokenHandle,
 }
 
 /// Attempts to upsert a device schedule and then either replace the found device with a default
@@ -173,7 +161,7 @@ where
         partial_user.latest_token.created
       );
 
-      let primary = crate::vendor::google::fetch_primary(&partial_user.latest_token)
+      let primary = google::fetch_primary(&partial_user.latest_token)
         .await?
         .ok_or_else(|| {
           io::Error::new(
@@ -182,85 +170,17 @@ where
           )
         })?;
 
-      let events: Vec<crate::vendor::google::ParsedEvent> =
-        crate::vendor::google::fetch_events(&partial_user.latest_token, &primary)
-          .await?
-          .into_iter()
-          .filter_map(|raw_event| crate::vendor::google::parse_event(&raw_event).ok())
-          .collect();
+      let events: Vec<google::ParsedEvent> = google::fetch_events(&partial_user.latest_token, &primary)
+        .await?
+        .into_iter()
+        .filter_map(|raw_event| google::parse_event(&raw_event).ok())
+        .collect();
 
       log::info!(
         "found {} events for user '{user_id}' ({:?})",
         events.len(),
         partial_user.name
       );
-
-      let mut left = vec![];
-
-      for event in events.iter().take(MAX_DISPLAYED_EVENTS) {
-        log::info!("rendering event '{event:?}'");
-
-        left.push(crate::rendering::components::StylizedMessage {
-          message: event.summary.clone(),
-          size: Some(EVENT_SUMMARY_SIZE),
-
-          border: Some(crate::rendering::components::OptionalBoundingBox {
-            left: Some(2),
-            ..Default::default()
-          }),
-          margin: Some(crate::rendering::components::OptionalBoundingBox {
-            top: Some(10),
-            left: Some(10),
-            ..Default::default()
-          }),
-          padding: Some(crate::rendering::components::OptionalBoundingBox {
-            left: Some(10),
-            ..Default::default()
-          }),
-
-          ..Default::default()
-        });
-
-        match (&event.start, &event.end) {
-          (google::ParsedEventTimeMarker::DateTime(s), google::ParsedEventTimeMarker::DateTime(e)) => {
-            let formatted_start = s.format("%H:%M").to_string();
-            let formatted_end = e.format("%H:%M").to_string();
-
-            left.push(crate::rendering::components::StylizedMessage {
-              message: format!("{formatted_start} - {formatted_end}"),
-              size: Some(EVENT_TIME_SIZE),
-
-              border: Some(crate::rendering::components::OptionalBoundingBox {
-                left: Some(2),
-                ..Default::default()
-              }),
-              margin: Some(crate::rendering::components::OptionalBoundingBox {
-                left: Some(10),
-                ..Default::default()
-              }),
-              padding: Some(crate::rendering::components::OptionalBoundingBox {
-                left: Some(10),
-                ..Default::default()
-              }),
-
-              ..Default::default()
-            });
-          }
-          (s, e) => {
-            log::warn!("event start/end combination not implemented yet - {s:?} {e:?}");
-          }
-        }
-      }
-
-      let right = crate::rendering::components::StylizedMessage {
-        message: partial_user.name.unwrap_or_else(|| "unknown".to_string()),
-        size: Some(CALENDAR_NAME_SIZE),
-        margin: Some(crate::rendering::components::OptionalBoundingBox {
-          top: Some(220),
-          ..Default::default()
-        }),
-        ..Default::default()
-      };
 
       worker
         .enqueue_kind(super::RegistrarJobKind::MutateDeviceState(
@@ -269,17 +189,6 @@ where
             transition: super::device_state::DeviceStateTransition::SetSchedule(events),
           },
         ))
-        .await?;
-
-      worker
-        .render(
-          device_id.as_ref().to_string(),
-          crate::rendering::RenderLayout::Split(crate::rendering::SplitLayout {
-            left: crate::rendering::SplitContents::Messages(left),
-            right: crate::rendering::SplitContents::Messages(vec![right]),
-            ratio: 66,
-          }),
-        )
         .await?;
     }
   }

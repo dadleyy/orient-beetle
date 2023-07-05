@@ -1,14 +1,27 @@
+use crate::vendor::google;
 use serde::{Deserialize, Serialize};
+
+/// Entries in our device rendering state that are messages.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct DeviceRenderingStateMessageEntry {
+  /// The string to be rendered.
+  pub content: String,
+  /// Who/what sent this message.
+  pub origin: DeviceStateMessageOrigin,
+  /// The timestamp the message was added to our list.
+  pub timestamp: Option<chrono::DateTime<chrono::Utc>>,
+}
 
 /// This schema is the long-lived representation of what is being rendered to a device.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum DeviceRenderingState {
   /// The layout of our state for rendering a calendar.
-  ScheduleLayout,
+  ScheduleLayout(Vec<google::ParsedEvent>, Vec<DeviceRenderingStateMessageEntry>),
 
   /// Just a list of messages.
-  MessageList(Vec<(String, DeviceStateMessageOrigin)>),
+  MessageList(Vec<DeviceRenderingStateMessageEntry>),
 }
 
 /// This schema is the long-lived representation of what is being rendered to a device.

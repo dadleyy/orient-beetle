@@ -55,6 +55,9 @@ pub struct SplitLayout<S> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum RenderLayout<S> {
+  /// Clears the screen.
+  Clear,
+
   /// A single styleized message. Will be rendered in the middle of the display being rasterized
   /// to.
   StylizedMessage(components::StylizedMessage<S>),
@@ -89,6 +92,7 @@ where
     );
 
     match self {
+      Self::Clear => (),
       // Scannables will replace the image buffer with one provided from the qr crate.
       Self::Scannable(scannable) => {
         image = scannable.grayscale(dimensions)?;

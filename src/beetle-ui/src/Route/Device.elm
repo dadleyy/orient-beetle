@@ -3,6 +3,7 @@ module Route.Device exposing (Message(..), Model, default, subscriptions, update
 import Alert
 import Button
 import DeviceAuthority as DA
+import DeviceQueue as DQ
 import DeviceSchedule as DS
 import Dropdown
 import Environment
@@ -36,6 +37,11 @@ type SettingsMenuMessage
     | MakePrivate
 
 
+type QuickActions
+    = RefreshRender
+    | ClearRender
+
+
 type Message
     = Loaded (Result Http.Error ())
     | LoadedDeviceAuthority (Result Http.Error DA.DeviceAuthorityResponse)
@@ -43,6 +49,7 @@ type Message
     | QueuedMessageJob (Result Http.Error Job.JobHandle)
     | Tick Time.Posix
     | LoadedJobHandle Job.JobHandle (Result Http.Error Job.Job)
+    | QuickAction QuickActions
     | AttemptMessage
     | SetMessage String
     | ToggleLights Bool
@@ -57,16 +64,6 @@ type InputKinds
     = Message String
     | Link String
     | DeviceName String
-
-
-type QueuePayloadKinds
-    = MessagePayload String
-    | LinkPayload String
-    | LightPayload Bool
-    | SchedulePayload Bool
-    | DeviceRenamePayload String
-    | WelcomeMessage
-    | PublicAccessChange Bool
 
 
 type alias Model =
@@ -230,6 +227,10 @@ bottom model env =
                         [ Button.view (Button.SecondaryIcon Icon.CalendarOn (ToggleSchedule True)) ]
                     , Html.div [ ATT.class "ml-2" ]
                         [ Button.view (Button.SecondaryIcon Icon.CalendarOff (ToggleSchedule False)) ]
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.SecondaryIcon Icon.Refresh (QuickAction RefreshRender)) ]
+                    , Html.div [ ATT.class "ml-2" ]
+                        [ Button.view (Button.SecondaryIcon Icon.ClearCircle (QuickAction ClearRender)) ]
                     ]
     in
     case model.loadedDevice of
@@ -343,81 +344,6 @@ deviceInfoTable model info =
         ]
 
 
-encodeStringPayloadWithKind : String -> String -> Encode.Value -> Encode.Value
-encodeStringPayloadWithKind id kind content =
-    Encode.object
-        [ ( "device_id", Encode.string id )
-        , ( "kind"
-          , Encode.object
-                [ ( "beetle:kind", Encode.string kind )
-                , ( "beetle:content", content )
-                ]
-          )
-        ]
-
-
-postMessage : Environment.Environment -> String -> QueuePayloadKinds -> Cmd Message
-postMessage env id payloadKind =
-    let
-        encoder =
-            encodeStringPayloadWithKind id
-
-        payload =
-            case payloadKind of
-                WelcomeMessage ->
-                    Http.jsonBody
-                        (Encode.object
-                            [ ( "device_id", Encode.string id )
-                            , ( "kind"
-                              , Encode.object
-                                    [ ( "beetle:kind", Encode.string "registration" )
-                                    ]
-                              )
-                            ]
-                        )
-
-                DeviceRenamePayload newName ->
-                    Http.jsonBody (encoder "rename" (Encode.string newName))
-
-                LightPayload isOn ->
-                    Http.jsonBody (encoder "lights" (Encode.bool isOn))
-
-                SchedulePayload isOn ->
-                    Http.jsonBody (encoder "schedule" (Encode.bool isOn))
-
-                LinkPayload str ->
-                    Http.jsonBody (encoder "link" (Encode.string str))
-
-                PublicAccessChange value ->
-                    Http.jsonBody
-                        (Encode.object
-                            [ ( "device_id", Encode.string id )
-                            , ( "kind"
-                              , Encode.object
-                                    [ ( "beetle:kind"
-                                      , Encode.string
-                                            (if value then
-                                                "make_public"
-
-                                             else
-                                                "make_private"
-                                            )
-                                      )
-                                    ]
-                              )
-                            ]
-                        )
-
-                MessagePayload str ->
-                    Http.jsonBody (encoder "message" (Encode.string str))
-    in
-    Http.post
-        { url = Environment.apiRoute env "device-queue"
-        , body = payload
-        , expect = Http.expectJson QueuedMessageJob Job.handleDecoder
-        }
-
-
 infoDecoder : D.Decoder DeviceInfoResponse
 infoDecoder =
     D.map6 DeviceInfoResponse
@@ -460,13 +386,13 @@ update env message model =
             ( { model | settingsMenu = dropdown, activeInput = ( DeviceName "", Nothing ) }, Cmd.none )
 
         SettingsMenuUpdate dropdown (Just QueueWelcomeScannable) ->
-            ( { model | settingsMenu = dropdown }, postMessage env model.id WelcomeMessage )
+            ( { model | settingsMenu = dropdown }, DQ.postMessage env QueuedMessageJob model.id DQ.WelcomeMessage )
 
         SettingsMenuUpdate dropdown (Just MakePublic) ->
-            ( { model | settingsMenu = dropdown }, postMessage env model.id (PublicAccessChange True) )
+            ( { model | settingsMenu = dropdown }, DQ.postMessage env QueuedMessageJob model.id (DQ.PublicAccessChange True) )
 
         SettingsMenuUpdate dropdown (Just MakePrivate) ->
-            ( { model | settingsMenu = dropdown }, postMessage env model.id (PublicAccessChange False) )
+            ( { model | settingsMenu = dropdown }, DQ.postMessage env QueuedMessageJob model.id (DQ.PublicAccessChange False) )
 
         SettingsMenuUpdate dropdown Nothing ->
             ( { model | settingsMenu = dropdown }, Cmd.none )
@@ -544,12 +470,24 @@ update env message model =
 
         ToggleSchedule state ->
             ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }
-            , postMessage env model.id (SchedulePayload state)
+            , DQ.postMessage env QueuedMessageJob model.id (DQ.SchedulePayload state)
             )
+
+        QuickAction q ->
+            let
+                cmd =
+                    case q of
+                        RefreshRender ->
+                            DQ.postMessage env QueuedMessageJob model.id DQ.Refresh
+
+                        ClearRender ->
+                            DQ.postMessage env QueuedMessageJob model.id DQ.Clear
+            in
+            ( model, cmd )
 
         ToggleLights state ->
             ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }
-            , postMessage env model.id (LightPayload state)
+            , DQ.postMessage env QueuedMessageJob model.id (DQ.LightPayload state)
             )
 
         --
@@ -578,18 +516,18 @@ update env message model =
                 payload =
                     case Tuple.first model.activeInput of
                         DeviceName str ->
-                            DeviceRenamePayload str
+                            DQ.DeviceRenamePayload str
 
                         Message str ->
-                            MessagePayload str
+                            DQ.MessagePayload str
 
                         Link str ->
-                            LinkPayload str
+                            DQ.LinkPayload str
 
                 newInput =
                     ( Tuple.first model.activeInput, Just Nothing )
             in
-            ( { model | activeInput = newInput }, postMessage env model.id payload )
+            ( { model | activeInput = newInput }, DQ.postMessage env QueuedMessageJob model.id payload )
 
         LoadedTime now ->
             ( { model | currentTime = Just now }, Cmd.none )

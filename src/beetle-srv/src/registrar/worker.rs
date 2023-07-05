@@ -64,12 +64,16 @@ pub(super) struct WorkerHandle<'a> {
 
 impl<'a> WorkerHandle<'a> {
   /// Pushes a render layout onto the queue for a device.
-  pub(super) async fn render<I, S>(&mut self, device_id: I, layout: crate::rendering::RenderLayout<S>) -> io::Result<()>
+  pub(super) async fn render<I, S>(
+    &mut self,
+    device_id: I,
+    layout: crate::rendering::RenderLayout<S>,
+  ) -> io::Result<String>
   where
     I: AsRef<str>,
     S: Serialize,
   {
-    crate::rendering::queue::Queue::new(self.redis)
+    let (id, _) = crate::rendering::queue::Queue::new(self.redis)
       .queue(
         device_id,
         &crate::rendering::QueuedRenderAuthority::Registrar,
@@ -77,7 +81,7 @@ impl<'a> WorkerHandle<'a> {
       )
       .await?;
 
-    Ok(())
+    Ok(id)
   }
 
   /// Actually creates the id we will be adding to our queue.

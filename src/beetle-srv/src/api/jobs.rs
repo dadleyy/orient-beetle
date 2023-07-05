@@ -47,6 +47,12 @@ enum QueuePayloadKind {
   /// Attempts to rename the device.
   Rename(String),
 
+  /// Attempts to render the currently persisted state for a device.
+  Refresh,
+
+  /// Attempts to clear anything that is currently rendered.
+  ClearRender,
+
   /// Attempts to queue a message that will force redisplay of registration.
   Registration,
 
@@ -57,79 +63,6 @@ enum QueuePayloadKind {
 
   /// Will update the ownership record model to be private.
   MakePrivate,
-}
-
-/// Builds the message layout that is rendered for requests to the job api.
-/// TODO: this is no longer used but is being kept around for posterity.
-#[allow(unused)]
-fn message_layout<'a, 'b>(user: &'a schema::User, message: &'b str) -> crate::rendering::RenderVariant<String>
-where
-  'a: 'b,
-{
-  let left_message = crate::rendering::components::StylizedMessage {
-    message: message.to_owned(),
-    size: Some(36.0f32),
-    ..Default::default()
-  };
-
-  let timestamp_line = crate::rendering::components::StylizedMessage {
-    message: chrono::Utc::now().format("%H:%M").to_string(),
-    border: Some(crate::rendering::components::OptionalBoundingBox {
-      left: Some(2),
-      ..Default::default()
-    }),
-    padding: Some(crate::rendering::components::OptionalBoundingBox {
-      left: Some(10),
-      top: Some(10),
-      bottom: Some(10),
-      ..Default::default()
-    }),
-    margin: Some(crate::rendering::components::OptionalBoundingBox {
-      top: Some(5),
-      ..Default::default()
-    }),
-    size: Some(28.0f32),
-    ..Default::default()
-  };
-
-  let from_line = crate::rendering::components::StylizedMessage {
-    message: user
-      .nickname
-      .as_ref()
-      .or(user.name.as_ref())
-      .map(|v| v.as_str())
-      .unwrap_or("unknown")
-      .to_string(),
-    border: Some(crate::rendering::components::OptionalBoundingBox {
-      left: Some(2),
-      ..Default::default()
-    }),
-    padding: Some(crate::rendering::components::OptionalBoundingBox {
-      left: Some(10),
-      top: Some(10),
-      bottom: Some(10),
-      ..Default::default()
-    }),
-    margin: Some(crate::rendering::components::OptionalBoundingBox {
-      top: Some(200),
-      ..Default::default()
-    }),
-    size: Some(28.0f32),
-    ..Default::default()
-  };
-
-  let layout = crate::rendering::RenderLayout::Split(crate::rendering::SplitLayout {
-    left: crate::rendering::SplitContents::Messages(vec![left_message]),
-    right: crate::rendering::SplitContents::Messages(vec![from_line, timestamp_line]),
-    ratio: 66,
-  });
-
-  let container = crate::rendering::RenderLayoutContainer {
-    layout,
-    created: Some(chrono::Utc::now()),
-  };
-
-  crate::rendering::RenderVariant::Layout(container)
 }
 
 /// Route: message
@@ -179,6 +112,27 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
       let job = registrar::RegistrarJob::set_public_availability(device_id, privacy);
       let id = worker.queue_job(job).await?;
 
+      return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
+    }
+
+    QueuePayloadKind::ClearRender => {
+      log::info!("clearing current device '{device_id}' render state!");
+      let id = worker
+        .queue_job_kind(registrar::RegistrarJobKind::MutateDeviceState(
+          registrar::device_state::DeviceStateTransitionRequest {
+            device_id,
+            transition: registrar::device_state::DeviceStateTransition::Clear,
+          },
+        ))
+        .await?;
+
+      return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
+    }
+
+    QueuePayloadKind::Refresh => {
+      let job =
+        registrar::RegistrarJobKind::Renders(registrar::jobs::RegistrarRenderKinds::CurrentDeviceState(device_id));
+      let id = worker.queue_job_kind(job).await?;
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
 
