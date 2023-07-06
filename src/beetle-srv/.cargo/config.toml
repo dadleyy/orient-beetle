@@ -3,7 +3,6 @@ reg = "run --bin beetle-registrar"
 web = "run --bin beetle-web"
 cli = "run --bin beetle-cli"
 ren = "run --bin beetle-renderer"
-mock = "run --bin beetle-pio-mock"
 
 [target.armv7-unknown-linux-gnueabihf]
 linker = "arm-linux-gnueabihf-gcc"

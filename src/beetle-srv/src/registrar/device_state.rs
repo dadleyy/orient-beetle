@@ -54,6 +54,18 @@ pub struct DeviceStateTransitionRequest {
   pub(crate) transition: DeviceStateTransition,
 }
 
+/// Applies some basic styling for all our components so we don't repeat ourselves too much.
+fn apply_padding<S>(component: &mut rendering::components::StylizedMessage<S>) {
+  component.padding = Some(rendering::OptionalBoundingBox {
+    left: Some(10),
+    ..rendering::OptionalBoundingBox::default()
+  });
+  component.border = Some(rendering::OptionalBoundingBox {
+    left: Some(2),
+    ..rendering::OptionalBoundingBox::default()
+  });
+}
+
 /// This method will actually build the render layout based on the current device rendering state.
 /// It is possible that this would be better implemented as an associated method on the
 /// `DeviceRenderingState` type itself, but the goal is to avoid _any_ methods directly built in
@@ -66,20 +78,20 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
       for event in events.iter().take(MAX_DISPLAYED_EVENTS) {
         log::info!("rendering event '{event:?}'");
 
-        left.push(crate::rendering::components::StylizedMessage {
+        left.push(rendering::components::StylizedMessage {
           message: event.summary.clone(),
           size: Some(EVENT_SUMMARY_SIZE),
 
-          border: Some(crate::rendering::components::OptionalBoundingBox {
+          border: Some(rendering::OptionalBoundingBox {
             left: Some(2),
             ..Default::default()
           }),
-          margin: Some(crate::rendering::components::OptionalBoundingBox {
+          margin: Some(rendering::OptionalBoundingBox {
             top: Some(10),
             left: Some(10),
             ..Default::default()
           }),
-          padding: Some(crate::rendering::components::OptionalBoundingBox {
+          padding: Some(rendering::OptionalBoundingBox {
             left: Some(10),
             ..Default::default()
           }),
@@ -92,19 +104,19 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
             let formatted_start = s.format("%H:%M").to_string();
             let formatted_end = e.format("%H:%M").to_string();
 
-            left.push(crate::rendering::components::StylizedMessage {
+            left.push(rendering::components::StylizedMessage {
               message: format!("{formatted_start} - {formatted_end}"),
               size: Some(EVENT_TIME_SIZE),
 
-              border: Some(crate::rendering::components::OptionalBoundingBox {
+              border: Some(rendering::OptionalBoundingBox {
                 left: Some(2),
                 ..Default::default()
               }),
-              margin: Some(crate::rendering::components::OptionalBoundingBox {
+              margin: Some(rendering::OptionalBoundingBox {
                 left: Some(10),
                 ..Default::default()
               }),
-              padding: Some(crate::rendering::components::OptionalBoundingBox {
+              padding: Some(rendering::OptionalBoundingBox {
                 left: Some(10),
                 ..Default::default()
               }),
@@ -126,31 +138,39 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
 
           message_component.message = entry.content.clone();
           message_component.size = Some(32.0f32);
-          message_component.padding = Some(rendering::components::OptionalBoundingBox {
-            left: Some(10),
-            ..rendering::components::OptionalBoundingBox::default()
-          });
-
+          apply_padding(&mut message_component);
           origin_component.size = Some(28.0f32);
-          let from_string = match &entry.origin {
+          origin_component.message = match &entry.origin {
             schema::DeviceStateMessageOrigin::Unknown => "unknown".to_string(),
             schema::DeviceStateMessageOrigin::User(value) => value.clone(),
           };
-          origin_component.message = entry
-            .timestamp
-            .map(|ts| format!("{from_string} (@ {})", ts.format("%B %d, %H:%M")))
-            .unwrap_or(from_string);
-          origin_component.margin = Some(rendering::components::OptionalBoundingBox {
-            bottom: Some(10),
-            ..rendering::components::OptionalBoundingBox::default()
-          });
-          origin_component.padding = Some(rendering::components::OptionalBoundingBox {
-            left: Some(10),
-            ..rendering::components::OptionalBoundingBox::default()
-          });
+          apply_padding(&mut origin_component);
 
           acc.push(message_component);
+
+          if let Some(ts) = entry.timestamp {
+            let mut time_component = rendering::StylizedMessage {
+              message: ts.format("%B %d, %H:%M").to_string(),
+              size: Some(28.0f32),
+              margin: Some(rendering::OptionalBoundingBox {
+                bottom: Some(10),
+                ..rendering::OptionalBoundingBox::default()
+              }),
+              ..rendering::components::StylizedMessage::default()
+            };
+
+            apply_padding(&mut time_component);
+            acc.push(origin_component);
+            acc.push(time_component);
+            return acc;
+          }
+
+          origin_component.margin = Some(rendering::OptionalBoundingBox {
+            bottom: Some(10),
+            ..rendering::OptionalBoundingBox::default()
+          });
           acc.push(origin_component);
+
           acc
         });
 
@@ -166,10 +186,7 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
 
         message_component.message = entry.content.clone();
         message_component.size = Some(32.0f32);
-        message_component.padding = Some(rendering::components::OptionalBoundingBox {
-          left: Some(10),
-          ..rendering::components::OptionalBoundingBox::default()
-        });
+        apply_padding(&mut message_component);
 
         origin_component.size = Some(28.0f32);
         let from_string = match &entry.origin {
@@ -180,13 +197,11 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
           .timestamp
           .map(|ts| format!("{from_string} (@ {})", ts.format("%B %d, %H:%M")))
           .unwrap_or(from_string);
-        origin_component.margin = Some(rendering::components::OptionalBoundingBox {
+        apply_padding(&mut origin_component);
+
+        origin_component.margin = Some(rendering::OptionalBoundingBox {
           bottom: Some(10),
-          ..rendering::components::OptionalBoundingBox::default()
-        });
-        origin_component.padding = Some(rendering::components::OptionalBoundingBox {
-          left: Some(10),
-          ..rendering::components::OptionalBoundingBox::default()
+          ..rendering::OptionalBoundingBox::default()
         });
 
         acc.push(message_component);
@@ -326,6 +341,11 @@ pub(super) async fn attempt_transition(
     (_, DeviceStateTransition::Clear) => {
       log::warn!("clearing device '{device_id}' render state!");
       None
+    }
+
+    // set schedule onto an existing schedule.
+    (Some(schema::DeviceRenderingState::ScheduleLayout(_, messages)), DeviceStateTransition::SetSchedule(events)) => {
+      Some(schema::DeviceRenderingState::ScheduleLayout(events.clone(), messages))
     }
 
     // set schedule onto anything (loss of messages).

@@ -108,9 +108,9 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
         CommandLineCommand::Lighten(inner) => (&inner.id, beetle::rendering::RenderVariant::on()),
         _ => unreachable!(),
       };
-      let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
+      let mut queue = beetle::rendering::Queue::new(&mut stream);
       let (request_id, pending) = queue
-        .queue::<&str, &str>(id, &beetle::rendering::queue::QueuedRenderAuthority::CommandLine, inner)
+        .queue::<&str, &str>(id, &beetle::rendering::QueuedRenderAuthority::CommandLine, inner)
         .await?;
       log::info!("id '{request_id}' | pending {pending}");
 

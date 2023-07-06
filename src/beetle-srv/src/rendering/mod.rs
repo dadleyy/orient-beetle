@@ -15,15 +15,17 @@ mod constants;
 
 /// Defines the components that can be used within a layout.
 pub mod components;
+pub use components::{OptionalBoundingBox, StylizedMessage};
 
 /// The rendering queue module contains the central business logic for taking a layout and adding
 /// it to the queue of things to be rendered and sent to devices.
-pub mod queue;
-pub use queue::QueuedRenderAuthority;
+pub(crate) mod queue;
+pub use queue::{Queue, QueuedRenderAuthority};
 
 /// The renderer itself is responsible for periodically popping from the queue and doing the
 /// things.
-pub mod renderer;
+mod renderer;
+pub use renderer::run;
 
 /// The types of things that a split can contain.
 #[derive(Debug, Clone, Serialize, Deserialize)]

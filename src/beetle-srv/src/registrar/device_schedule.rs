@@ -2,6 +2,7 @@
 //! associated with scheduled things.
 
 use crate::{schema, vendor::google};
+use anyhow::Context;
 use serde::Deserialize;
 use std::io;
 
@@ -27,11 +28,7 @@ pub(super) async fn toggle<S>(
 where
   S: AsRef<str>,
 {
-  let collection = worker
-    .mongo
-    .client
-    .database(&worker.mongo.config.database)
-    .collection::<schema::DeviceSchedule>(&worker.mongo.config.collections.device_schedules);
+  let collection = worker.device_schedule_collection()?;
 
   let mut schedule = collection
     .find_one_and_update(
@@ -98,9 +95,9 @@ where
   S: AsRef<str>,
 {
   let db = worker.mongo.client.database(&worker.mongo.config.database);
-  let collection = db.collection::<schema::DeviceSchedule>(&worker.mongo.config.collections.device_schedules);
+  let schedules_collection = worker.device_schedule_collection()?;
 
-  let schedule = collection
+  let schedule = schedules_collection
     .find_one(bson::doc! { "device_id": device_id.as_ref() }, None)
     .await
     .map_err(|error| {
@@ -127,9 +124,9 @@ where
         user_id
       );
 
-      let collection = db.collection::<UserTokenInfo>(&worker.mongo.config.collections.users);
+      let users_collection = db.collection::<UserTokenInfo>(&worker.mongo.config.collections.users);
 
-      let mut partial_user = collection
+      let mut partial_user = users_collection
         .find_one(bson::doc! { "oid": &user_id }, None)
         .await
         .map_err(|error| {
@@ -193,5 +190,15 @@ where
     }
   }
 
-  Ok(())
+  let now = chrono::Utc::now().timestamp_millis();
+  log::debug!("setting last executed timestamp for '{}' to {now}", device_id.as_ref());
+  schedules_collection
+    .find_one_and_update(
+      bson::doc! { "device_id": device_id.as_ref() },
+      bson::doc! { "$set": { "last_executed": now } },
+      None,
+    )
+    .await
+    .map(|_| ())
+    .with_context(|| format!("unable to update device schedule for '{}'", device_id.as_ref()))
 }

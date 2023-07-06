@@ -112,7 +112,8 @@ pub enum DeviceDiagnosticRegistration {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum DeviceScheduleKind {
-  /// The most basic kind of schedule.
+  /// The most basic kind of schedule. The `String` held by this variant is the user id for whom we
+  /// should fetch events.
   UserEventsBasic(String),
 }
 

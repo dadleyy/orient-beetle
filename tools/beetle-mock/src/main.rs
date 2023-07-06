@@ -5,6 +5,7 @@
 //! local filesystem.
 
 use clap::Parser;
+use iced::Application;
 use std::io;
 
 #[derive(Parser)]
@@ -365,6 +366,34 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
   }
 }
 
+struct BeetleMock {}
+
+#[derive(Debug, Clone)]
+enum BeetleMessage {}
+
+impl iced::Application for BeetleMock {
+  type Message = BeetleMessage;
+  type Executor = iced::executor::Default;
+  type Theme = iced::Theme;
+  type Flags = ();
+
+  fn new(_flags: Self::Flags) -> (Self, iced::Command<Self::Message>) {
+    (Self {}, iced::Command::none())
+  }
+
+  fn update(&mut self, _message: Self::Message) -> iced::Command<Self::Message> {
+    iced::Command::none()
+  }
+
+  fn view(&self) -> iced::Element<Self::Message> {
+    iced::widget::column![].into()
+  }
+
+  fn title(&self) -> String {
+    "hello".to_string()
+  }
+}
+
 fn main() -> io::Result<()> {
   let load_env = std::fs::metadata(".env").map(|meta| meta.is_file()).unwrap_or(false);
 
@@ -375,7 +404,9 @@ fn main() -> io::Result<()> {
 
   env_logger::init();
   let args = CommandLineArguments::parse();
-  async_std::task::block_on(run(args))
+  async_std::task::spawn(run(args));
+
+  BeetleMock::run(iced::Settings::default()).map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))
 }
 
 #[cfg(test)]

@@ -122,6 +122,17 @@ impl<'a> WorkerHandle<'a> {
     Ok(())
   }
 
+  /// Returns the mongodb collection for our current device schedules.
+  pub fn device_schedule_collection(&mut self) -> io::Result<mongodb::Collection<schema::DeviceSchedule>> {
+    Ok(
+      self
+        .mongo
+        .client
+        .database(&self.mongo.config.database)
+        .collection(&self.mongo.config.collections.device_schedules),
+    )
+  }
+
   /// Returns the mongodb collection for our current device state.
   pub fn device_state_collection(&mut self) -> io::Result<mongodb::Collection<schema::DeviceState>> {
     Ok(

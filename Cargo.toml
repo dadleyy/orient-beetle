@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "src/beetle-srv",
+  "tools/beetle-mock",
   "tools/wchgen"
 ]
 
