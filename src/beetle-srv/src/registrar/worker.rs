@@ -20,6 +20,9 @@ use std::io;
 /// store them in the system.
 const DEFAULT_POOL_MINIMUM: u8 = 3;
 
+/// The most amount of jobs to try working at once.
+const DEFAULT_JOB_BATCH_SIZE: u8 = 3;
+
 /// A wrapping container for our mongo types that provides the api for accessing collection.
 pub(super) struct WorkerMongo {
   /// The actual mongodb client.
@@ -216,8 +219,18 @@ impl Worker {
           log::error!("failed scheduled registrar workflow - {error}");
         }
 
-        if let Err(error) = work_jobs(self, &mut redis_connection).await {
-          log::error!("registar job worker failed - {error}");
+        let mut job_count = 0u8;
+        while job_count < DEFAULT_JOB_BATCH_SIZE {
+          log::info!("attempting to run job attempt #{job_count}");
+
+          job_count += match work_jobs(self, &mut redis_connection).await {
+            Err(error) => {
+              log::error!("registar job worker failed - {error}");
+              DEFAULT_JOB_BATCH_SIZE
+            }
+            Ok(amt) if amt == 0 => DEFAULT_JOB_BATCH_SIZE,
+            Ok(amt) => amt,
+          };
         }
 
         Some(redis_connection)
@@ -242,7 +255,7 @@ impl Worker {
 /// Attempts to pop and execute the next job available for us. This happens _outside_ our worker's
 /// `work` method so we can enforce that we have a valid redis connection to use, which is the
 /// primary function of the `work` method.
-async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis::RedisConnection) -> io::Result<()> {
+async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis::RedisConnection) -> io::Result<u8> {
   // Attempt to get the next job.
   log::info!(
     "attempting to pop next actual job from '{}'",
@@ -396,7 +409,9 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
       )),
     )
     .await?;
+
+    return Ok(1);
   }
 
-  Ok(())
+  Ok(0)
 }

@@ -8,14 +8,14 @@ use serde::{Deserialize, Serialize};
 /// The most amount of events to display at once when rendering things from a google calendar.
 const MAX_DISPLAYED_EVENTS: usize = 4;
 
-/// The size of font to use when rendering event summaries.
-const EVENT_SUMMARY_SIZE: f32 = 34.0f32;
-
-/// The size of font to use when rendering event timestamps.
-const EVENT_TIME_SIZE: f32 = 28.0f32;
-
 /// The most amount of messages to retain in a list. Older messages are popped off.
 const MAX_MESSAGE_LIST_LEN: usize = 4;
+
+/// The size of "secondary" text on the screen.
+const SECONDARY_TEXT_SIZE: f32 = 24.0f32;
+
+/// The size of "primary" text on the screen.
+const PRIMARY_TEXT_SIZE: f32 = 34.0f32;
 
 /// This type is used internally to these jobs as the schema used for the `$set` payload in our
 /// device state update requests.
@@ -66,6 +66,86 @@ fn apply_padding<S>(component: &mut rendering::components::StylizedMessage<S>) {
   });
 }
 
+/// When rendering messages, we'll either be rendering the origin and timestamp on the same line,
+/// or we will split them into two separate lines.
+enum MessageEntryLayout {
+  /// Render the timestamp and origin separately.
+  Separate,
+  /// Render the timestamp and origin together.
+  Together,
+}
+
+/// Pushes some messages onto an accumulator, based on the layout desired.
+fn render_message_entry(
+  entry: &schema::DeviceRenderingStateMessageEntry,
+  acc: &mut Vec<rendering::StylizedMessage<String>>,
+  layout: MessageEntryLayout,
+) -> () {
+  let is_first = acc.is_empty();
+
+  // Render the main content.
+  let mut message_component = rendering::components::StylizedMessage::default();
+  message_component.message = entry.content.clone();
+  message_component.size = Some(PRIMARY_TEXT_SIZE);
+  apply_padding(&mut message_component);
+  if is_first {
+    message_component.margin = Some(rendering::OptionalBoundingBox {
+      top: Some(10),
+      ..Default::default()
+    });
+  }
+  acc.push(message_component);
+
+  let mut origin_component = rendering::components::StylizedMessage::default();
+  origin_component.size = Some(SECONDARY_TEXT_SIZE);
+  apply_padding(&mut origin_component);
+  origin_component.margin = Some(rendering::OptionalBoundingBox {
+    bottom: Some(10),
+    ..rendering::OptionalBoundingBox::default()
+  });
+
+  // Render the origin information.
+  match layout {
+    MessageEntryLayout::Separate => {
+      origin_component.message = match &entry.origin {
+        schema::DeviceStateMessageOrigin::Unknown => "unknown".to_string(),
+        schema::DeviceStateMessageOrigin::User(value) => value.clone(),
+      };
+
+      if let Some(ts) = entry.timestamp {
+        origin_component.margin = None;
+        let mut time_component = rendering::StylizedMessage {
+          message: ts.format("%B %d, %H:%M").to_string(),
+          size: Some(SECONDARY_TEXT_SIZE),
+          margin: Some(rendering::OptionalBoundingBox {
+            bottom: Some(10),
+            ..rendering::OptionalBoundingBox::default()
+          }),
+          ..rendering::components::StylizedMessage::default()
+        };
+
+        apply_padding(&mut time_component);
+        acc.push(origin_component);
+        acc.push(time_component);
+        return ();
+      }
+
+      acc.push(origin_component);
+    }
+    MessageEntryLayout::Together => {
+      let from_addr = match &entry.origin {
+        schema::DeviceStateMessageOrigin::Unknown => "unknown".to_string(),
+        schema::DeviceStateMessageOrigin::User(value) => value.clone(),
+      };
+      origin_component.message = entry
+        .timestamp
+        .map(|ts| format!("{from_addr} (@ {})", ts.format("%B %d, %H:%M")))
+        .unwrap_or(from_addr);
+      acc.push(origin_component);
+    }
+  }
+}
+
 /// This method will actually build the render layout based on the current device rendering state.
 /// It is possible that this would be better implemented as an associated method on the
 /// `DeviceRenderingState` type itself, but the goal is to avoid _any_ methods directly built in
@@ -80,7 +160,7 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
 
         left.push(rendering::components::StylizedMessage {
           message: event.summary.clone(),
-          size: Some(EVENT_SUMMARY_SIZE),
+          size: Some(PRIMARY_TEXT_SIZE),
 
           border: Some(rendering::OptionalBoundingBox {
             left: Some(2),
@@ -106,7 +186,7 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
 
             left.push(rendering::components::StylizedMessage {
               message: format!("{formatted_start} - {formatted_end}"),
-              size: Some(EVENT_TIME_SIZE),
+              size: Some(SECONDARY_TEXT_SIZE),
 
               border: Some(rendering::OptionalBoundingBox {
                 left: Some(2),
@@ -133,44 +213,7 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
       let messages = message_list
         .iter()
         .fold(Vec::with_capacity(message_list.len() * 2), |mut acc, entry| {
-          let mut message_component = rendering::components::StylizedMessage::default();
-          let mut origin_component = rendering::components::StylizedMessage::default();
-
-          message_component.message = entry.content.clone();
-          message_component.size = Some(32.0f32);
-          apply_padding(&mut message_component);
-          origin_component.size = Some(28.0f32);
-          origin_component.message = match &entry.origin {
-            schema::DeviceStateMessageOrigin::Unknown => "unknown".to_string(),
-            schema::DeviceStateMessageOrigin::User(value) => value.clone(),
-          };
-          apply_padding(&mut origin_component);
-
-          acc.push(message_component);
-
-          if let Some(ts) = entry.timestamp {
-            let mut time_component = rendering::StylizedMessage {
-              message: ts.format("%B %d, %H:%M").to_string(),
-              size: Some(28.0f32),
-              margin: Some(rendering::OptionalBoundingBox {
-                bottom: Some(10),
-                ..rendering::OptionalBoundingBox::default()
-              }),
-              ..rendering::components::StylizedMessage::default()
-            };
-
-            apply_padding(&mut time_component);
-            acc.push(origin_component);
-            acc.push(time_component);
-            return acc;
-          }
-
-          origin_component.margin = Some(rendering::OptionalBoundingBox {
-            bottom: Some(10),
-            ..rendering::OptionalBoundingBox::default()
-          });
-          acc.push(origin_component);
-
+          render_message_entry(&entry, &mut acc, MessageEntryLayout::Separate);
           acc
         });
 
@@ -181,31 +224,7 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
     }
     schema::DeviceRenderingState::MessageList(list) => {
       let messages = list.iter().fold(Vec::with_capacity(list.len() * 2), |mut acc, entry| {
-        let mut message_component = rendering::components::StylizedMessage::default();
-        let mut origin_component = rendering::components::StylizedMessage::default();
-
-        message_component.message = entry.content.clone();
-        message_component.size = Some(32.0f32);
-        apply_padding(&mut message_component);
-
-        origin_component.size = Some(28.0f32);
-        let from_string = match &entry.origin {
-          schema::DeviceStateMessageOrigin::Unknown => "unknown".to_string(),
-          schema::DeviceStateMessageOrigin::User(value) => value.clone(),
-        };
-        origin_component.message = entry
-          .timestamp
-          .map(|ts| format!("{from_string} (@ {})", ts.format("%B %d, %H:%M")))
-          .unwrap_or(from_string);
-        apply_padding(&mut origin_component);
-
-        origin_component.margin = Some(rendering::OptionalBoundingBox {
-          bottom: Some(10),
-          ..rendering::OptionalBoundingBox::default()
-        });
-
-        acc.push(message_component);
-        acc.push(origin_component);
+        render_message_entry(&entry, &mut acc, MessageEntryLayout::Together);
         acc
       });
       let left = rendering::SplitContents::Messages(messages);

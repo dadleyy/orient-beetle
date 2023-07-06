@@ -8,7 +8,7 @@ use super::users::EncodedUserAccessToken;
 const EXPIRATION_BUFFER: u64 = 1000;
 
 /// The amount of seconds between device schedule refreshes.
-const SCHEDULE_REFRESH_SECONDS: i64 = 10;
+const SCHEDULE_REFRESH_SECONDS: i64 = 60 * 5;
 
 /// This type represents the partial schema from our users collection that we are concerned with
 /// here.
