@@ -55,6 +55,7 @@ type Message
     | ToggleLights Bool
     | ToggleSchedule Bool
     | ClearAlert
+    | MainInputKey Int
     | UpdateInput InputKinds
     | SettingsMenuUpdate Dropdown.Dropdown (Maybe SettingsMenuMessage)
     | LoadedTime Time.Posix
@@ -144,14 +145,24 @@ disabledToggles =
     ]
 
 
+enterDecoder : D.Decoder Message
+enterDecoder =
+    D.map MainInputKey
+        (D.field "keyCode" D.int)
+
+
 view : Model -> Environment.Environment -> Html.Html Message
 view model env =
     let
         isDisabled =
             isBusy model
 
+        -- the input box here is being created as a function that takes the current value of whatever
+        -- mode we are currently in. it is likely there is a cleaner way to do this.
         activeInputTextbox str =
-            Html.input [ EV.onInput SetMessage, ATT.value str, ATT.disabled isDisabled ] []
+            Html.input
+                [ EV.onInput SetMessage, ATT.value str, ATT.disabled isDisabled, EV.on "keydown" enterDecoder ]
+                []
 
         ( inputNode, inputToggles ) =
             case ( model.activeInput, isDisabled ) of
@@ -208,30 +219,34 @@ view model env =
         ]
 
 
+renderLightButton : Button.Button Message -> Html.Html Message
+renderLightButton button =
+    Html.div [ ATT.class "ml-2" ]
+        [ Button.view button ]
+
+
 bottom : Model -> Environment.Environment -> Html.Html Message
 bottom model env =
     let
-        lightButtons =
+        buttonList =
+            [ Button.SecondaryIcon Icon.Sun (ToggleLights True)
+            , Button.SecondaryIcon Icon.Moon (ToggleLights False)
+            , Button.SecondaryIcon Icon.CalendarOn (ToggleSchedule True)
+            , Button.SecondaryIcon Icon.CalendarOff (ToggleSchedule False)
+            , Button.SecondaryIcon Icon.Refresh (QuickAction RefreshRender)
+            , Button.SecondaryIcon Icon.ClearCircle (QuickAction ClearRender)
+            ]
+
+        buttonStates =
             case isBusy model of
                 True ->
-                    [ Button.view (Button.DisabledIcon Icon.Sun)
-                    , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.DisabledIcon Icon.Moon) ]
-                    ]
+                    List.map Button.disable buttonList
 
                 False ->
-                    [ Button.view (Button.SecondaryIcon Icon.Sun (ToggleLights True))
-                    , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.SecondaryIcon Icon.Moon (ToggleLights False)) ]
-                    , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.SecondaryIcon Icon.CalendarOn (ToggleSchedule True)) ]
-                    , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.SecondaryIcon Icon.CalendarOff (ToggleSchedule False)) ]
-                    , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.SecondaryIcon Icon.Refresh (QuickAction RefreshRender)) ]
-                    , Html.div [ ATT.class "ml-2" ]
-                        [ Button.view (Button.SecondaryIcon Icon.ClearCircle (QuickAction ClearRender)) ]
-                    ]
+                    buttonList
+
+        lightButtons =
+            List.map renderLightButton buttonStates
     in
     case model.loadedDevice of
         Nothing ->
@@ -379,6 +394,19 @@ setActiveInputText newValue kind =
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
+        MainInputKey 13 ->
+            let
+                cmd =
+                    commandForCurrentInput env model
+
+                newInput =
+                    ( Tuple.first model.activeInput, Just Nothing )
+            in
+            ( { model | activeInput = newInput, alert = Nothing }, Maybe.withDefault Cmd.none cmd )
+
+        MainInputKey _ ->
+            ( { model | alert = Nothing }, Cmd.none )
+
         ClearAlert ->
             ( { model | alert = Nothing }, Cmd.none )
 
@@ -513,24 +541,43 @@ update env message model =
 
         AttemptMessage ->
             let
-                payload =
-                    case Tuple.first model.activeInput of
-                        DeviceName str ->
-                            DQ.DeviceRenamePayload str
-
-                        Message str ->
-                            DQ.MessagePayload str
-
-                        Link str ->
-                            DQ.LinkPayload str
+                cmd =
+                    commandForCurrentInput env model
 
                 newInput =
                     ( Tuple.first model.activeInput, Just Nothing )
             in
-            ( { model | activeInput = newInput }, DQ.postMessage env QueuedMessageJob model.id payload )
+            ( { model | activeInput = newInput }, Maybe.withDefault Cmd.none cmd )
 
         LoadedTime now ->
             ( { model | currentTime = Just now }, Cmd.none )
+
+
+notEmptyString : String -> Maybe String
+notEmptyString input =
+    case String.length input of
+        0 ->
+            Nothing
+
+        _ ->
+            Just input
+
+
+commandForCurrentInput : Environment.Environment -> Model -> Maybe (Cmd Message)
+commandForCurrentInput env model =
+    let
+        payload =
+            case Tuple.first model.activeInput of
+                DeviceName str ->
+                    notEmptyString str |> Maybe.map DQ.DeviceRenamePayload
+
+                Message str ->
+                    notEmptyString str |> Maybe.map DQ.MessagePayload
+
+                Link str ->
+                    notEmptyString str |> Maybe.map DQ.LinkPayload
+    in
+    Maybe.map (DQ.postMessage env QueuedMessageJob model.id) payload
 
 
 getNow : Cmd Message
