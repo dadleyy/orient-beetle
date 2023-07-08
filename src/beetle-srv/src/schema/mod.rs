@@ -1,7 +1,14 @@
+//! TODO: this is currently a dumping ground of non-interesting struct definitions
+//! for things sent over the wire or persisted in mongo.
+
 use serde::{Deserialize, Serialize};
 
-/// TODO: this is currently a dumping ground of non-interesting struct definitions
-/// for things sent over the wire or persisted in mongo.
+/// The device state is a bit beefy.
+mod device_state;
+pub use device_state::{DeviceRenderingState, DeviceRenderingStateMessageEntry, DeviceState, DeviceStateMessageOrigin};
+
+/// The general schema related to the background jobs used.
+pub(crate) mod jobs;
 
 /// The "snapshot in time" of device information we want stored on our user documents themselves.
 #[derive(Deserialize, Serialize, Debug, Default)]
@@ -35,7 +42,7 @@ pub struct User {
 /// Mongo + serde + chrono don't work perfectly together; for now these are serialized into a user
 /// readable string.
 fn format_datetime(datetime: &chrono::DateTime<chrono::Utc>) -> String {
-  format!("{}", datetime.format("%b %d, %Y %H:%M:%S"))
+  datetime.format("%b %d, %Y %H:%M:%S").to_string()
 }
 
 /// The various kinds of authority models supported for devices.
@@ -83,7 +90,10 @@ pub struct DeviceDiagnosticOwnership {
   pub original_owner: String,
 }
 
-/// This type represents the different states of "registration" a device may be in.
+/// This type represents the different states of "registration" a device may be in. This
+/// information is long-lived in the `device-diagnostics` collection. Note that the registration is
+/// not the same as the `AuthorityModel` associated with a device: the registration information is
+/// generally immutable.
 #[derive(Deserialize, Serialize, Debug, Default)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum DeviceDiagnosticRegistration {
@@ -102,7 +112,8 @@ pub enum DeviceDiagnosticRegistration {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum DeviceScheduleKind {
-  /// The most basic kind of schedule.
+  /// The most basic kind of schedule. The `String` held by this variant is the user id for whom we
+  /// should fetch events.
   UserEventsBasic(String),
 }
 

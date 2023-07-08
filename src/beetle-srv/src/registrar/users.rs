@@ -1,3 +1,4 @@
+use crate::schema;
 use serde::{Deserialize, Serialize};
 use std::io;
 
@@ -40,7 +41,7 @@ where
 
   let collection = mongo_client
     .database(&mongo_config.database)
-    .collection::<crate::types::User>(&mongo_config.collections.users);
+    .collection::<schema::User>(&mongo_config.collections.users);
 
   let header = &jsonwebtoken::Header::default();
   let secret = jsonwebtoken::EncodingKey::from_secret(worker.config.vendor_api_secret.as_bytes());

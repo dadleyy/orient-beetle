@@ -1,3 +1,4 @@
+use crate::schema;
 use serde::{Deserialize, Serialize};
 use std::io;
 
@@ -22,11 +23,11 @@ pub async fn rename(worker: &mut super::Worker, request: &DeviceRenameRequest) -
 
   let users_collection = mongo
     .database(&config.database)
-    .collection::<crate::types::User>(&config.collections.users);
+    .collection::<schema::User>(&config.collections.users);
 
   log::info!("attepting to find device for rename request '{request:?}'");
 
-  let found_device: crate::types::DeviceDiagnostic = device_collection
+  let found_device: schema::DeviceDiagnostic = device_collection
     .find_one_and_update(
       bson::doc! { "id": &request.device_id },
       bson::doc! { "$set": { "nickname": &request.new_name } },

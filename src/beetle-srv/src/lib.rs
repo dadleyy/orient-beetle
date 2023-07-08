@@ -50,4 +50,4 @@ pub mod vendor;
 
 /// Generally speaking, this module contains types stored in the mongo instance. It should be
 /// renamed to something better.
-pub mod types;
+pub mod schema;

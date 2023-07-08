@@ -1,3 +1,4 @@
+use crate::schema;
 use serde::{Deserialize, Serialize};
 
 /// The payload for looking up a device by id.
@@ -168,7 +169,7 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
       // Update our user handle
       let oid = user.oid.clone();
       let query = bson::doc! { "oid": &oid };
-      let updated = crate::types::User {
+      let updated = schema::User {
         devices: Some(device_map),
         ..user
       };

@@ -1,3 +1,7 @@
+//! This module defines the job(s) that are responsible for writing to our device diagnostic
+//! collections.
+
+use crate::schema;
 use serde::Serialize;
 use std::io;
 
@@ -50,7 +54,7 @@ where
     } = &worker.mongo;
     let collection = mongo_client
       .database(&mongo_config.database)
-      .collection::<crate::types::DeviceDiagnostic>(&mongo_config.collections.device_diagnostics);
+      .collection::<schema::DeviceDiagnostic>(&mongo_config.collections.device_diagnostics);
 
     // Attempt to update the diagnostic information in mongo. We only really want to set `last_seen`
     // on every message; to set `first_seen`, we'll take advantage of mongo's `$setOnInsert`
@@ -93,7 +97,7 @@ where
       .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "upsert failed"))?;
 
     match &device_diagnostic.registration_state {
-      Some(crate::types::DeviceDiagnosticRegistration::Initial) | None => {
+      Some(schema::DeviceDiagnosticRegistration::Initial) | None => {
         log::info!(
           "first message received by device '{}'! sending initial qr code",
           device_diagnostic.id
@@ -127,7 +131,7 @@ where
             "first render queued, updating diagnostic registration state for '{}'",
             device_diagnostic.id
           );
-          let updated_reg = crate::types::DeviceDiagnosticRegistration::PendingRegistration;
+          let updated_reg = schema::DeviceDiagnosticRegistration::PendingRegistration;
           let serialized_registration = bson::to_bson(&updated_reg).map_err(|error| {
             log::warn!("unable to serialize registration_state: {error}");
             io::Error::new(io::ErrorKind::Other, format!("{error}"))

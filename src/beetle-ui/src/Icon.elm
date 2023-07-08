@@ -10,6 +10,7 @@ type Icon
     | Home
     | Trash
     | Cancel
+    | ClearCircle
     | CalendarOn
     | CalendarOff
     | Lightbulb
@@ -23,12 +24,19 @@ type Icon
     | Sun
     | Add
     | Send
+    | Refresh
     | EllipsisH
 
 
 view : Icon -> Html.Html a
 view icon =
     case icon of
+        Refresh ->
+            Html.i [ A.class "icon-refresh" ] []
+
+        ClearCircle ->
+            Html.i [ A.class "icon-times-circle-o" ] []
+
         CalendarOn ->
             Html.i [ A.class "icon-calendar-check-o" ] []
 

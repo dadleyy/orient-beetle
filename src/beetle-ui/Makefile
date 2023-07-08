@@ -18,9 +18,9 @@ DEBUG_FAVICON=$(subst ./static,target/debug,$(wildcard ./static/favicon/*.png))
 
 .PHONY: all clean fmt debug_font release_font debug_favicon release_favicon bundle
 
-bundle: fmt all
-
 all: $(MAIN_JS) $(BOOT_JS) $(INDEX_HTML) $(MAIN_CSS) debug_font debug_favicon
+
+bundle: fmt all
 
 release: $(RELEASE_MAIN_JS) $(RELEASE_BOOT_JS) $(RELEASE_INDEX) $(RELEASE_MAIN_CSS) release_font release_favicon
 

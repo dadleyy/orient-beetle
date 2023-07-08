@@ -89,11 +89,11 @@ pub async fn send_layout(config: &super::CommandLineConfig, command: SendLayoutC
 
   if let Some(device_id) = &command.id {
     let mut stream = beetle::redis::connect(&config.redis).await?;
-    let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
+    let mut queue = beetle::rendering::Queue::new(&mut stream);
     let (request_id, pending) = queue
       .queue(
         device_id,
-        &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
+        &beetle::rendering::QueuedRenderAuthority::CommandLine,
         beetle::rendering::RenderVariant::layout(parsed_layout),
       )
       .await?;
@@ -135,11 +135,11 @@ pub async fn send_scannable(config: &super::CommandLineConfig, command: SendScan
   }
 
   let request = beetle::rendering::RenderVariant::scannable(&command.content);
-  let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
+  let mut queue = beetle::rendering::Queue::new(&mut stream);
   let (request_id, pending) = queue
     .queue(
       &command.id,
-      &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
+      &beetle::rendering::QueuedRenderAuthority::CommandLine,
       request,
     )
     .await?;
@@ -195,11 +195,11 @@ pub async fn send_image(config: &super::CommandLineConfig, command: SendImageCom
 
   if let Some(device_id) = &command.id {
     let mut stream = beetle::redis::connect(&config.redis).await?;
-    let mut queue = beetle::rendering::queue::Queue::new(&mut stream);
+    let mut queue = beetle::rendering::Queue::new(&mut stream);
     let (request_id, pending) = queue
       .queue(
         device_id,
-        &beetle::rendering::queue::QueuedRenderAuthority::CommandLine,
+        &beetle::rendering::QueuedRenderAuthority::CommandLine,
         beetle::rendering::RenderVariant::message(&command.message),
       )
       .await?;

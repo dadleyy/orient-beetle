@@ -13,6 +13,22 @@ type Button a
     | DisabledIcon I.Icon
 
 
+disable : Button a -> Button a
+disable button =
+    case button of
+        LinkIcon i url ->
+            DisabledIcon i
+
+        SecondaryIcon i _ ->
+            DisabledIcon i
+
+        PrimaryIcon i _ ->
+            DisabledIcon i
+
+        DisabledIcon i ->
+            DisabledIcon i
+
+
 view : Button a -> Html.Html a
 view button =
     case button of

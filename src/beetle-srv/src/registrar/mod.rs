@@ -33,6 +33,9 @@ mod diagnostics;
 /// Defines the rename device job.
 mod rename;
 
+/// Defines the various jobs that will mutate device state.
+pub(crate) mod device_state;
+
 /// Defines rules for what can be done to devices.
 mod access;
 pub use access::{user_access, AccessLevel};

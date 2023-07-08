@@ -47,8 +47,6 @@ pub struct Configuration {
   pub(self) web: WebConfiguration,
   /// General redis configuration.
   pub(self) redis: crate::config::RedisConfiguration,
-  /// General auth0 configuration.
-  pub(self) auth0: crate::config::Auth0Configuration,
   /// General mongo configuration.
   pub(self) mongo: crate::config::MongoConfiguration,
   /// General mongo configuration.
@@ -100,8 +98,6 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   app.at("/auth/g/redirect").get(auth::google::redirect);
   app.at("/auth/g/complete").get(auth::google::complete);
 
-  app.at("/auth/redirect").get(auth::redirect);
-  app.at("/auth/complete").get(auth::complete);
   app.at("/auth/identify").get(auth::identify);
   app.at("/auth/logout").get(auth::logout);
 

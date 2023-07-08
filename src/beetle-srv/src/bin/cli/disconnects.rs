@@ -1,3 +1,4 @@
+use beetle::schema;
 use std::io;
 
 /// The amount of time to consider as a cutoff amount for devices having sent a "ack" message back
@@ -9,7 +10,7 @@ pub async fn print_connected(config: &super::CommandLineConfig) -> io::Result<()
   let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
   let collection = mongo
     .database(&config.mongo.database)
-    .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
+    .collection::<schema::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
 
   let mut cursor = collection
     .find(None, Some(mongodb::options::FindOptions::builder().limit(50).build()))
@@ -49,7 +50,7 @@ pub async fn clean_disconnects(config: &super::CommandLineConfig) -> io::Result<
 
   let collection = mongo
     .database(&config.mongo.database)
-    .collection::<beetle::types::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
+    .collection::<schema::DeviceDiagnostic>(&config.mongo.collections.device_diagnostics);
 
   let cutoff = chrono::Utc::now()
     .checked_sub_signed(chrono::Duration::seconds(MAX_IDLE_TIME_SECONDS))

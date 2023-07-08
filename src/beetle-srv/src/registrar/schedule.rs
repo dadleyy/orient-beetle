@@ -7,6 +7,9 @@ use super::users::EncodedUserAccessToken;
 /// The amount of time to buffer between a token expriting and we refresh it.
 const EXPIRATION_BUFFER: u64 = 1000;
 
+/// The amount of seconds between device schedule refreshes.
+const SCHEDULE_REFRESH_SECONDS: i64 = 60 * 5;
+
 /// This type represents the partial schema from our users collection that we are concerned with
 /// here.
 #[derive(Deserialize, Debug)]
@@ -59,8 +62,9 @@ async fn refresh_token(
   })
 }
 
-/// Queries the user collection, gets refresh tokens.
-pub(super) async fn check_schedule(mut worker: super::worker::WorkerHandle<'_>) -> io::Result<()> {
+/// This background method will attempt to find close-to-expiring oauth access tokens and request
+/// new ones from the oauth providers.
+async fn check_tokens(worker: &mut super::worker::WorkerHandle<'_>) -> io::Result<()> {
   let super::worker::WorkerMongo {
     client: mongo,
     config: mongo_config,
@@ -202,4 +206,50 @@ pub(super) async fn check_schedule(mut worker: super::worker::WorkerHandle<'_>) 
   }
 
   Ok(())
+}
+
+/// This is the background method responsible for querying the device schedules collection for any
+/// that have not been run in some time. For these, the worker will queue an execution job and move
+/// onto the next one.
+async fn check_schedules(worker: &mut super::worker::WorkerHandle<'_>) -> anyhow::Result<()> {
+  log::info!("registrar now checking for any schedules due for a refresh");
+  let schedules_collection = worker.device_schedule_collection()?;
+  let cutoff = chrono::Utc::now()
+    .checked_sub_signed(chrono::Duration::seconds(SCHEDULE_REFRESH_SECONDS))
+    .ok_or_else(|| anyhow::Error::msg("unable to create cutoff date for device schedule refresh"))?
+    .timestamp_millis();
+
+  let mut cursor = schedules_collection
+    .find(
+      bson::doc! { "last_executed": { "$lt": cutoff } },
+      mongodb::options::FindOptions::builder().limit(10).build(),
+    )
+    .await?;
+
+  log::debug!("queried device schedules with cutoff");
+  while let Some(handle_result) = async_std::stream::StreamExt::next(&mut cursor).await {
+    log::debug!("found schedule needing refresh - {handle_result:?}");
+    let device_id = match handle_result {
+      Err(error) => {
+        log::warn!("strange device schedule problem - {error}");
+        continue;
+      }
+      Ok(schedule) => schedule.device_id,
+    };
+
+    if let Err(error) = worker
+      .enqueue_kind(super::RegistrarJobKind::RunDeviceSchedule(device_id))
+      .await
+    {
+      log::error!("unable to queue device schedule execution job - {error}");
+    }
+  }
+
+  Ok(())
+}
+
+/// Queries the user collection, gets refresh tokens.
+pub(super) async fn check_schedule(mut worker: super::worker::WorkerHandle<'_>) -> anyhow::Result<()> {
+  check_tokens(&mut worker).await?;
+  check_schedules(&mut worker).await
 }

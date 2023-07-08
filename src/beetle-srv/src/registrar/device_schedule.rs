@@ -1,21 +1,10 @@
 //! This module contains the job handler responsible for adding layouts to device rendering queue
 //! associated with scheduled things.
 
-use crate::vendor::google;
+use crate::{schema, vendor::google};
+use anyhow::Context;
 use serde::Deserialize;
 use std::io;
-
-/// The most amount of events to display at once when rendering things from a google calendar.
-const MAX_DISPLAYED_EVENTS: usize = 4;
-
-/// The size of font to use when rendering event summaries.
-const EVENT_SUMMARY_SIZE: f32 = 34.0f32;
-
-/// The size of font to use when rendering event timestamps.
-const EVENT_TIME_SIZE: f32 = 28.0f32;
-
-/// The size of font to use when rendering the calendar "signature".
-const CALENDAR_NAME_SIZE: f32 = 28.0f32;
 
 /// TODO: this type is a mirror of the schema defined in our `schedule` module, it is likely we can
 /// bundle this up in the worker through some api for fetching an access token by user ID.
@@ -25,7 +14,7 @@ struct UserTokenInfo {
   name: Option<String>,
 
   #[allow(clippy::missing_docs_in_private_items)]
-  latest_token: crate::vendor::google::TokenHandle,
+  latest_token: google::TokenHandle,
 }
 
 /// Attempts to upsert a device schedule and then either replace the found device with a default
@@ -39,11 +28,7 @@ pub(super) async fn toggle<S>(
 where
   S: AsRef<str>,
 {
-  let collection = worker
-    .mongo
-    .client
-    .database(&worker.mongo.config.database)
-    .collection::<crate::types::DeviceSchedule>(&worker.mongo.config.collections.device_schedules);
+  let collection = worker.device_schedule_collection()?;
 
   let mut schedule = collection
     .find_one_and_update(
@@ -68,7 +53,7 @@ where
 
   schedule.kind = match (should_enable, schedule.kind.take()) {
     (true, Some(kind)) => Some(kind),
-    (true, None) => Some(crate::types::DeviceScheduleKind::UserEventsBasic(
+    (true, None) => Some(schema::DeviceScheduleKind::UserEventsBasic(
       user_id.as_ref().to_string(),
     )),
     (false, _) => None,
@@ -110,9 +95,9 @@ where
   S: AsRef<str>,
 {
   let db = worker.mongo.client.database(&worker.mongo.config.database);
-  let collection = db.collection::<crate::types::DeviceSchedule>(&worker.mongo.config.collections.device_schedules);
+  let schedules_collection = worker.device_schedule_collection()?;
 
-  let schedule = collection
+  let schedule = schedules_collection
     .find_one(bson::doc! { "device_id": device_id.as_ref() }, None)
     .await
     .map_err(|error| {
@@ -132,16 +117,16 @@ where
     None => {
       log::info!("nothing to do for device '{}' schedule", device_id.as_ref());
     }
-    Some(crate::types::DeviceScheduleKind::UserEventsBasic(user_id)) => {
+    Some(schema::DeviceScheduleKind::UserEventsBasic(user_id)) => {
       log::info!(
         "querying events for device '{}' and user '{}'",
         device_id.as_ref(),
         user_id
       );
 
-      let collection = db.collection::<UserTokenInfo>(&worker.mongo.config.collections.users);
+      let users_collection = db.collection::<UserTokenInfo>(&worker.mongo.config.collections.users);
 
-      let mut partial_user = collection
+      let mut partial_user = users_collection
         .find_one(bson::doc! { "oid": &user_id }, None)
         .await
         .map_err(|error| {
@@ -173,7 +158,7 @@ where
         partial_user.latest_token.created
       );
 
-      let primary = crate::vendor::google::fetch_primary(&partial_user.latest_token)
+      let primary = google::fetch_primary(&partial_user.latest_token)
         .await?
         .ok_or_else(|| {
           io::Error::new(
@@ -182,7 +167,11 @@ where
           )
         })?;
 
-      let events = crate::vendor::google::fetch_events(&partial_user.latest_token, &primary).await?;
+      let events: Vec<google::ParsedEvent> = google::fetch_events(&partial_user.latest_token, &primary)
+        .await?
+        .into_iter()
+        .filter_map(|raw_event| google::parse_event(&raw_event).ok())
+        .collect();
 
       log::info!(
         "found {} events for user '{user_id}' ({:?})",
@@ -190,89 +179,26 @@ where
         partial_user.name
       );
 
-      let mut left = vec![];
-
-      for event in events
-        .iter()
-        .filter_map(|raw_event| crate::vendor::google::parse_event(raw_event).ok())
-        .take(MAX_DISPLAYED_EVENTS)
-      {
-        log::info!("rendering event '{event:?}'");
-
-        left.push(crate::rendering::components::StylizedMessage {
-          message: event.summary.clone(),
-          size: Some(EVENT_SUMMARY_SIZE),
-
-          border: Some(crate::rendering::components::OptionalBoundingBox {
-            left: Some(2),
-            ..Default::default()
-          }),
-          margin: Some(crate::rendering::components::OptionalBoundingBox {
-            top: Some(10),
-            left: Some(10),
-            ..Default::default()
-          }),
-          padding: Some(crate::rendering::components::OptionalBoundingBox {
-            left: Some(10),
-            ..Default::default()
-          }),
-
-          ..Default::default()
-        });
-
-        match (event.start, event.end) {
-          (google::ParsedEventTimeMarker::DateTime(s), google::ParsedEventTimeMarker::DateTime(e)) => {
-            let formatted_start = s.format("%H:%M").to_string();
-            let formatted_end = e.format("%H:%M").to_string();
-
-            left.push(crate::rendering::components::StylizedMessage {
-              message: format!("{formatted_start} - {formatted_end}"),
-              size: Some(EVENT_TIME_SIZE),
-
-              border: Some(crate::rendering::components::OptionalBoundingBox {
-                left: Some(2),
-                ..Default::default()
-              }),
-              margin: Some(crate::rendering::components::OptionalBoundingBox {
-                left: Some(10),
-                ..Default::default()
-              }),
-              padding: Some(crate::rendering::components::OptionalBoundingBox {
-                left: Some(10),
-                ..Default::default()
-              }),
-
-              ..Default::default()
-            });
-          }
-          (s, e) => {
-            log::warn!("event start/end combination not implemented yet - {s:?} {e:?}");
-          }
-        }
-      }
-
-      let right = crate::rendering::components::StylizedMessage {
-        message: partial_user.name.unwrap_or_else(|| "unknown".to_string()),
-        size: Some(CALENDAR_NAME_SIZE),
-        margin: Some(crate::rendering::components::OptionalBoundingBox {
-          top: Some(220),
-          ..Default::default()
-        }),
-        ..Default::default()
-      };
-
       worker
-        .render(
-          device_id.as_ref().to_string(),
-          crate::rendering::RenderLayout::Split(crate::rendering::SplitLayout {
-            left: crate::rendering::SplitContents::Messages(left),
-            right: crate::rendering::SplitContents::Messages(vec![right]),
-            ratio: 66,
-          }),
-        )
+        .enqueue_kind(super::RegistrarJobKind::MutateDeviceState(
+          super::device_state::DeviceStateTransitionRequest {
+            device_id: device_id.as_ref().to_string(),
+            transition: super::device_state::DeviceStateTransition::SetSchedule(events),
+          },
+        ))
         .await?;
     }
   }
 
-  Ok(())
+  let now = chrono::Utc::now().timestamp_millis();
+  log::debug!("setting last executed timestamp for '{}' to {now}", device_id.as_ref());
+  schedules_collection
+    .find_one_and_update(
+      bson::doc! { "device_id": device_id.as_ref() },
+      bson::doc! { "$set": { "last_executed": now } },
+      None,
+    )
+    .await
+    .map(|_| ())
+    .with_context(|| format!("unable to update device schedule for '{}'", device_id.as_ref()))
 }

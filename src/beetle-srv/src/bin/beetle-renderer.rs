@@ -20,7 +20,7 @@ async fn run(args: CommandLineArguments) -> io::Result<()> {
     args.config,
     option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev")
   );
-  beetle::rendering::renderer::run(config).await
+  beetle::rendering::run(config).await
 }
 
 fn main() -> io::Result<()> {

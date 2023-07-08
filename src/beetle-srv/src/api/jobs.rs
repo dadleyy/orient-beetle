@@ -1,3 +1,6 @@
+//! Defines routes for job lookup as well as queing.
+
+use crate::{registrar, schema};
 use serde::{Deserialize, Serialize};
 
 /// The payload for looking up a device by id.
@@ -44,6 +47,12 @@ enum QueuePayloadKind {
   /// Attempts to rename the device.
   Rename(String),
 
+  /// Attempts to render the currently persisted state for a device.
+  Refresh,
+
+  /// Attempts to clear anything that is currently rendered.
+  ClearRender,
+
   /// Attempts to queue a message that will force redisplay of registration.
   Registration,
 
@@ -54,80 +63,6 @@ enum QueuePayloadKind {
 
   /// Will update the ownership record model to be private.
   MakePrivate,
-
-  /// Clears screen.
-  Clear,
-}
-
-/// Builds the message layout that is rendered for requests to the job api.
-fn message_layout<'a, 'b>(user: &'a crate::types::User, message: &'b str) -> crate::rendering::RenderVariant<String>
-where
-  'a: 'b,
-{
-  let left_message = crate::rendering::components::StylizedMessage {
-    message: message.to_owned(),
-    size: Some(36.0f32),
-    ..Default::default()
-  };
-
-  let timestamp_line = crate::rendering::components::StylizedMessage {
-    message: chrono::Utc::now().format("%H:%M").to_string(),
-    border: Some(crate::rendering::components::OptionalBoundingBox {
-      left: Some(2),
-      ..Default::default()
-    }),
-    padding: Some(crate::rendering::components::OptionalBoundingBox {
-      left: Some(10),
-      top: Some(10),
-      bottom: Some(10),
-      ..Default::default()
-    }),
-    margin: Some(crate::rendering::components::OptionalBoundingBox {
-      top: Some(5),
-      ..Default::default()
-    }),
-    size: Some(28.0f32),
-    ..Default::default()
-  };
-
-  let from_line = crate::rendering::components::StylizedMessage {
-    message: user
-      .nickname
-      .as_ref()
-      .or(user.name.as_ref())
-      .map(|v| v.as_str())
-      .unwrap_or("unknown")
-      .to_string(),
-    border: Some(crate::rendering::components::OptionalBoundingBox {
-      left: Some(2),
-      ..Default::default()
-    }),
-    padding: Some(crate::rendering::components::OptionalBoundingBox {
-      left: Some(10),
-      top: Some(10),
-      bottom: Some(10),
-      ..Default::default()
-    }),
-    margin: Some(crate::rendering::components::OptionalBoundingBox {
-      top: Some(200),
-      ..Default::default()
-    }),
-    size: Some(28.0f32),
-    ..Default::default()
-  };
-
-  let layout = crate::rendering::RenderLayout::Split(crate::rendering::SplitLayout {
-    left: crate::rendering::SplitContents::Messages(vec![left_message]),
-    right: crate::rendering::SplitContents::Messages(vec![from_line, timestamp_line]),
-    ratio: 66,
-  });
-
-  let container = crate::rendering::RenderLayoutContainer {
-    layout,
-    created: Some(chrono::Utc::now()),
-  };
-
-  crate::rendering::RenderVariant::Layout(container)
 }
 
 /// Route: message
@@ -169,27 +104,51 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
   let layout = match queue_payload.kind {
     kind @ QueuePayloadKind::MakePublic | kind @ QueuePayloadKind::MakePrivate => {
       let privacy = match kind {
-        QueuePayloadKind::MakePublic => crate::registrar::ownership::PublicAvailabilityChange::ToPublic,
-        QueuePayloadKind::MakePrivate => crate::registrar::ownership::PublicAvailabilityChange::ToPrivate,
+        QueuePayloadKind::MakePublic => registrar::ownership::PublicAvailabilityChange::ToPublic,
+        QueuePayloadKind::MakePrivate => registrar::ownership::PublicAvailabilityChange::ToPrivate,
         _ => return Ok(tide::Error::from_str(422, "bad transition").into()),
       };
 
-      let job = crate::registrar::RegistrarJob::set_public_availability(device_id, privacy);
+      let job = registrar::RegistrarJob::set_public_availability(device_id, privacy);
       let id = worker.queue_job(job).await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
+
+    QueuePayloadKind::ClearRender => {
+      log::info!("clearing current device '{device_id}' render state!");
+      let id = worker
+        .queue_job_kind(registrar::RegistrarJobKind::MutateDeviceState(
+          registrar::device_state::DeviceStateTransitionRequest {
+            device_id,
+            transition: registrar::device_state::DeviceStateTransition::Clear,
+          },
+        ))
+        .await?;
+
+      return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
+    }
+
+    QueuePayloadKind::Refresh => {
+      let job =
+        registrar::RegistrarJobKind::Renders(registrar::jobs::RegistrarRenderKinds::CurrentDeviceState(device_id));
+      let id = worker.queue_job_kind(job).await?;
+      return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
+    }
+
+    // Attempt to queue the large, scannable QR code for registering this define.
     QueuePayloadKind::Registration => {
-      let job = crate::registrar::RegistrarJob::registration_scannable(device_id);
+      let job = registrar::RegistrarJob::registration_scannable(device_id);
       let id = worker.queue_job(job).await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
+
     QueuePayloadKind::Schedule(desired_state) => {
       log::info!("toggling device schedule '{desired_state:?}' for user '{}'", user.oid);
       let user_id = user.oid.clone();
       let id = worker
-        .queue_job_kind(crate::registrar::RegistrarJobKind::ToggleDefaultSchedule {
+        .queue_job_kind(registrar::RegistrarJobKind::ToggleDefaultSchedule {
           device_id,
           user_id,
           should_enable: desired_state,
@@ -199,16 +158,37 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
     QueuePayloadKind::Rename(new_name) => {
-      let job = crate::registrar::RegistrarJob::rename_device(device_id, new_name.clone());
+      let job = registrar::RegistrarJob::rename_device(device_id, new_name.clone());
       let id = worker.queue_job(job).await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
+
+    // Attempt to transition the device rendering state, which will cause a re-render.
+    QueuePayloadKind::Message(message) => {
+      let origin = user
+        .nickname
+        .or(user.name)
+        .map(schema::DeviceStateMessageOrigin::User)
+        .unwrap_or_else(|| schema::DeviceStateMessageOrigin::Unknown);
+
+      let id = worker
+        .queue_job_kind(registrar::RegistrarJobKind::MutateDeviceState(
+          registrar::device_state::DeviceStateTransitionRequest {
+            device_id,
+            transition: registrar::device_state::DeviceStateTransition::PushMessage(message, origin),
+          },
+        ))
+        .await?;
+
+      return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
+    }
+
+    // TODO: these variants need to go through the device state transition flow; they are currently
+    // being written directly to the device render queue here.
     QueuePayloadKind::Lights(true) => crate::rendering::RenderVariant::on(),
     QueuePayloadKind::Lights(false) => crate::rendering::RenderVariant::off(),
-    QueuePayloadKind::Clear => crate::rendering::RenderVariant::message("".to_string()),
     QueuePayloadKind::Link(scannable_link) => crate::rendering::RenderVariant::scannable(scannable_link),
-    QueuePayloadKind::Message(message) => message_layout(&user, &message),
   };
 
   let request_id = worker
@@ -261,7 +241,7 @@ pub async fn find(request: tide::Request<super::worker::Worker>) -> tide::Result
     kramer::Response::Item(kramer::ResponseValue::Empty) => Ok(tide::Response::builder(404).build()),
     kramer::Response::Item(kramer::ResponseValue::String(contents)) => {
       log::debug!("found job contents - '{contents:?}'");
-      let parsed = serde_json::from_str::<crate::registrar::jobs::JobResult>(&contents).map_err(|error| {
+      let parsed = serde_json::from_str::<schema::jobs::JobResult>(&contents).map_err(|error| {
         log::warn!("unable to lookup job - {error}");
         tide::Error::from_str(500, "internal error")
       })?;

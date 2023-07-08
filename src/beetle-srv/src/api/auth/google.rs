@@ -1,6 +1,7 @@
 //! This module is currently in the process of replacing the Auth0-based module defined in the
 //! parent directory. Some of the code in here is repetetive while that is being phases out.
 
+use crate::schema;
 use anyhow::Context;
 
 /// This value is how auth0 "tags" ids during its oauth handshake. It will be added for all users
@@ -66,7 +67,7 @@ pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Resul
   // TODO: this got a little bit messy when names were introduced: we're attempting to upsert a
   // user if it doesnt exist, but _always_ updating the `name` that came back from google user
   // info.
-  let state = crate::types::User {
+  let state = schema::User {
     oid: normalized_id.clone(),
     picture: userinfo.picture.clone(),
     name: Some(userinfo.name.clone()),

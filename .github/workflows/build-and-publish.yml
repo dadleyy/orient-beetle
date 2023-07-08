@@ -20,13 +20,13 @@ jobs:
       - name: "(srv-test) install clippy"
         run: rustup component add clippy
       - name: "(srv-test) build"
-        run: cargo build
+        run: cargo build -p beetle-srv
       - name: "(srv-test) clippy"
-        run: cargo clippy
+        run: cargo clippy -p beetle-srv
       - name: "(srv-test) test"
-        run: cargo test
+        run: cargo test -p beetle-srv
       - name: "(srv-test) doc"
-        run: cargo doc --document-private-items
+        run: cargo doc --document-private-items -p beetle-srv
       - name: "(srv-test) bundle: prepare"
         run: mkdir -p beetle-srv-docs
       - name: "(srv-test) bundle: copy"
@@ -240,7 +240,7 @@ jobs:
         run: |
           echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
       - name: "build"
-        run: cargo build --release
+        run: cargo build --release -p beetle-srv
       - name: "bundle: prepare"
         run: mkdir -p beetle-server-dist/bin
       - name: "bundle: cli"
@@ -271,7 +271,7 @@ jobs:
           echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
 
       - name: "cargo: build"
-        run: cargo build --target armv7-unknown-linux-gnueabihf --release
+        run: cargo build --target armv7-unknown-linux-gnueabihf --release -p beetle-srv
         env:
           OPENSSL_LIB_DIR: /tmp/openssl-1.1.1g/
           OPENSSL_INCLUDE_DIR: /tmp/openssl-1.1.1g/include
@@ -306,7 +306,7 @@ jobs:
         run: |
           echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
       - name: "build"
-        run: cargo build --target x86_64-unknown-linux-gnu --release
+        run: cargo build --target x86_64-unknown-linux-gnu --release -p beetle-srv
 
       - name: "bundle"
         run: |
