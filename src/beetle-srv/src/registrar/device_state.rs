@@ -80,13 +80,15 @@ fn render_message_entry(
   entry: &schema::DeviceRenderingStateMessageEntry,
   acc: &mut Vec<rendering::StylizedMessage<String>>,
   layout: MessageEntryLayout,
-) -> () {
+) {
   let is_first = acc.is_empty();
 
   // Render the main content.
-  let mut message_component = rendering::components::StylizedMessage::default();
-  message_component.message = entry.content.clone();
-  message_component.size = Some(PRIMARY_TEXT_SIZE);
+  let mut message_component = rendering::components::StylizedMessage {
+    message: entry.content.clone(),
+    size: Some(PRIMARY_TEXT_SIZE),
+    ..Default::default()
+  };
   apply_padding(&mut message_component);
   if is_first {
     message_component.margin = Some(rendering::OptionalBoundingBox {
@@ -96,8 +98,10 @@ fn render_message_entry(
   }
   acc.push(message_component);
 
-  let mut origin_component = rendering::components::StylizedMessage::default();
-  origin_component.size = Some(SECONDARY_TEXT_SIZE);
+  let mut origin_component = rendering::components::StylizedMessage {
+    size: Some(SECONDARY_TEXT_SIZE),
+    ..Default::default()
+  };
   apply_padding(&mut origin_component);
   origin_component.margin = Some(rendering::OptionalBoundingBox {
     bottom: Some(10),
@@ -109,7 +113,7 @@ fn render_message_entry(
     MessageEntryLayout::Separate => {
       origin_component.message = match &entry.origin {
         schema::DeviceStateMessageOrigin::Unknown => "unknown".to_string(),
-        schema::DeviceStateMessageOrigin::User(value) => value.clone(),
+        schema::DeviceStateMessageOrigin::User { nickname: value } => value.clone(),
       };
 
       if let Some(ts) = entry.timestamp {
@@ -127,7 +131,7 @@ fn render_message_entry(
         apply_padding(&mut time_component);
         acc.push(origin_component);
         acc.push(time_component);
-        return ();
+        return;
       }
 
       acc.push(origin_component);
@@ -135,7 +139,7 @@ fn render_message_entry(
     MessageEntryLayout::Together => {
       let from_addr = match &entry.origin {
         schema::DeviceStateMessageOrigin::Unknown => "unknown".to_string(),
-        schema::DeviceStateMessageOrigin::User(value) => value.clone(),
+        schema::DeviceStateMessageOrigin::User { nickname: value } => value.clone(),
       };
       origin_component.message = entry
         .timestamp
@@ -152,7 +156,10 @@ fn render_message_entry(
 /// the `schema` module (though it is tempting).
 fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<rendering::RenderLayout<String>> {
   match state {
-    schema::DeviceRenderingState::ScheduleLayout(events, message_list) => {
+    schema::DeviceRenderingState::ScheduleLayout {
+      events,
+      messages: message_list,
+    } => {
       let mut left = vec![];
 
       for event in events.iter().take(MAX_DISPLAYED_EVENTS) {
@@ -213,7 +220,7 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
       let messages = message_list
         .iter()
         .fold(Vec::with_capacity(message_list.len() * 2), |mut acc, entry| {
-          render_message_entry(&entry, &mut acc, MessageEntryLayout::Separate);
+          render_message_entry(entry, &mut acc, MessageEntryLayout::Separate);
           acc
         });
 
@@ -222,9 +229,9 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
       let split = rendering::SplitLayout { left, right, ratio: 50 };
       Ok(rendering::RenderLayout::Split(split))
     }
-    schema::DeviceRenderingState::MessageList(list) => {
+    schema::DeviceRenderingState::MessageList { messages: list } => {
       let messages = list.iter().fold(Vec::with_capacity(list.len() * 2), |mut acc, entry| {
-        render_message_entry(&entry, &mut acc, MessageEntryLayout::Together);
+        render_message_entry(entry, &mut acc, MessageEntryLayout::Together);
         acc
       });
       let left = rendering::SplitContents::Messages(messages);
@@ -314,19 +321,19 @@ pub(super) async fn attempt_transition(
 
   let next_state = match (current_state.rendering, &transition_request.transition) {
     // push a message onto nothing.
-    (None, DeviceStateTransition::PushMessage(content, origin)) => {
-      Some(schema::DeviceRenderingState::MessageList(vec![
-        schema::DeviceRenderingStateMessageEntry {
-          content: content.clone(),
-          origin: origin.clone(),
-          timestamp: Some(chrono::Utc::now()),
-        },
-      ]))
-    }
+    (None, DeviceStateTransition::PushMessage(content, origin)) => Some(schema::DeviceRenderingState::MessageList {
+      messages: vec![schema::DeviceRenderingStateMessageEntry {
+        content: content.clone(),
+        origin: origin.clone(),
+        timestamp: Some(chrono::Utc::now()),
+      }],
+    }),
 
     // push a message onto a message list.
     (
-      Some(schema::DeviceRenderingState::MessageList(mut current_list)),
+      Some(schema::DeviceRenderingState::MessageList {
+        messages: mut current_list,
+      }),
       DeviceStateTransition::PushMessage(content, origin),
     ) => {
       while current_list.len() > MAX_MESSAGE_LIST_LEN {
@@ -337,12 +344,15 @@ pub(super) async fn attempt_transition(
         origin: origin.clone(),
         timestamp: Some(chrono::Utc::now()),
       });
-      Some(schema::DeviceRenderingState::MessageList(current_list))
+      Some(schema::DeviceRenderingState::MessageList { messages: current_list })
     }
 
     // push a message onto a schedule.
     (
-      Some(schema::DeviceRenderingState::ScheduleLayout(events, mut current_list)),
+      Some(schema::DeviceRenderingState::ScheduleLayout {
+        events,
+        messages: mut current_list,
+      }),
       DeviceStateTransition::PushMessage(content, origin),
     ) => {
       while current_list.len() > MAX_MESSAGE_LIST_LEN {
@@ -354,7 +364,10 @@ pub(super) async fn attempt_transition(
         timestamp: Some(chrono::Utc::now()),
       });
 
-      Some(schema::DeviceRenderingState::ScheduleLayout(events, current_list))
+      Some(schema::DeviceRenderingState::ScheduleLayout {
+        events,
+        messages: current_list,
+      })
     }
 
     (_, DeviceStateTransition::Clear) => {
@@ -363,14 +376,19 @@ pub(super) async fn attempt_transition(
     }
 
     // set schedule onto an existing schedule.
-    (Some(schema::DeviceRenderingState::ScheduleLayout(_, messages)), DeviceStateTransition::SetSchedule(events)) => {
-      Some(schema::DeviceRenderingState::ScheduleLayout(events.clone(), messages))
-    }
+    (
+      Some(schema::DeviceRenderingState::ScheduleLayout { messages, .. }),
+      DeviceStateTransition::SetSchedule(events),
+    ) => Some(schema::DeviceRenderingState::ScheduleLayout {
+      events: events.clone(),
+      messages,
+    }),
 
     // set schedule onto anything (loss of messages).
-    (_, DeviceStateTransition::SetSchedule(events)) => {
-      Some(schema::DeviceRenderingState::ScheduleLayout(events.clone(), vec![]))
-    }
+    (_, DeviceStateTransition::SetSchedule(events)) => Some(schema::DeviceRenderingState::ScheduleLayout {
+      events: events.clone(),
+      messages: vec![],
+    }),
   };
 
   let update = bson::to_document(&PartialStateUpdate {

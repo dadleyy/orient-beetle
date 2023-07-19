@@ -78,16 +78,11 @@ impl Default for HeartbeatPayload {
 
 /// An api route to verify uptime/availability.
 async fn heartbeat<T>(_request: tide::Request<T>) -> tide::Result {
-  Ok(
-    tide::Response::builder(200)
-      .body(tide::Body::from_json(&HeartbeatPayload::default())?)
-      .build(),
-  )
+  tide::Body::from_json(&HeartbeatPayload::default()).map(|body| tide::Response::builder(200).body(body).build())
 }
 
 /// The 404 handler.
 async fn missing(_request: tide::Request<worker::Worker>) -> tide::Result {
-  log::debug!("not-found");
   Ok(tide::Response::builder(404).build())
 }
 

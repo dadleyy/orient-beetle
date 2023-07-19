@@ -32,6 +32,7 @@ mod diagnostics;
 
 /// Defines the rename device job.
 mod rename;
+pub(crate) use rename::DeviceRenameRequest;
 
 /// Defines the various jobs that will mutate device state.
 pub(crate) mod device_state;

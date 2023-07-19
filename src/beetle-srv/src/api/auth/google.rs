@@ -1,7 +1,7 @@
 //! This module is currently in the process of replacing the Auth0-based module defined in the
 //! parent directory. Some of the code in here is repetetive while that is being phases out.
 
-use crate::schema;
+use crate::{registrar, schema};
 use anyhow::Context;
 
 /// This value is how auth0 "tags" ids during its oauth handshake. It will be added for all users
@@ -101,7 +101,10 @@ pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Resul
   let jwt = crate::api::claims::Claims::for_user(&user.oid).encode(&worker.web_configuration.session_secret)?;
 
   if let Err(error) = worker
-    .queue_job(crate::registrar::RegistrarJob::access_token_refresh(handle, user.oid))
+    .queue_job_kind(registrar::RegistrarJobKind::UserAccessTokenRefresh {
+      handle,
+      user_id: user.oid,
+    })
     .await
   {
     log::warn!("unable to queued refresh token request - {error}");

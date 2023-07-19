@@ -50,14 +50,30 @@ fn format_datetime(datetime: &chrono::DateTime<chrono::Utc>) -> String {
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum DeviceAuthorityModel {
   /// When a device is in an exclusive authority model, only a single user can manage it.
-  Exclusive(String),
+  Exclusive {
+    /// The id of the owner.
+    owner: String,
+  },
 
   /// When a device is in a shared authority model, a list of users can manage it.
-  Shared(String, Vec<String>),
+  Shared {
+    /// The original owner.
+    owner: String,
+
+    /// A list of other user ids that can manage this device.
+    guests: Vec<String>,
+  },
 
   /// When a device is in an "open" model, anyone can send things to it. We will retain the list of
   /// folks who have added themselves as a way to transition easily into "shared".
-  Public(String, Vec<String>),
+  Public {
+    /// In this state, the owner is the only one who can toggle the ownership off of "public".
+    owner: String,
+
+    /// The guest list here is cosmetic; users in this list will be re-added to the shared list,
+    /// but otherwise are not special.
+    guests: Vec<String>,
+  },
 }
 
 /// The schema of our records that are stored in `device_histories` collection.
@@ -114,7 +130,10 @@ pub enum DeviceDiagnosticRegistration {
 pub enum DeviceScheduleKind {
   /// The most basic kind of schedule. The `String` held by this variant is the user id for whom we
   /// should fetch events.
-  UserEventsBasic(String),
+  UserEventsBasic {
+    /// The id of our user.
+    user_oid: String,
+  },
 }
 
 /// A schedule of things to render for a specific device.

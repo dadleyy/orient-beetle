@@ -87,7 +87,8 @@ impl<'a> WorkerHandle<'a> {
     Ok(id)
   }
 
-  /// Actually creates the id we will be adding to our queue.
+  /// Actually creates the id we will be adding to our queue. This method is preferred to the
+  /// `enqueue` method, which expects the consumer to create the job id correctly.
   pub(super) async fn enqueue_kind(&mut self, job: super::RegistrarJobKind) -> io::Result<String> {
     let id = uuid::Uuid::new_v4().to_string();
     let job = super::RegistrarJob { id: id.clone(), job };
@@ -97,7 +98,7 @@ impl<'a> WorkerHandle<'a> {
 
   /// This function can be used by job processing functionality to "percolate" additional jobs
   /// back onto the queue. Such is the case for scheduled access token refreshes.
-  pub(super) async fn enqueue(&mut self, job: super::RegistrarJob) -> io::Result<()> {
+  async fn enqueue(&mut self, job: super::RegistrarJob) -> io::Result<()> {
     let id = job.id.clone();
     let serialized = job.encrypt(self.config)?;
 
@@ -161,12 +162,16 @@ impl<'a> WorkerHandle<'a> {
 pub struct Worker {
   /// The redis configuration.
   pub(super) redis: crate::config::RedisConfiguration,
+
   /// The TCP connection we have to our redis host, if we currently have one.
   pub(super) connection: Option<crate::redis::RedisConnection>,
+
   /// The mongo client + configuration
   pub(super) mongo: WorkerMongo,
+
   /// Configuration specific to this worker.
   pub(super) config: RegistrarConfiguration,
+
   /// Configuration for google apis.
   pub(super) google: crate::config::GoogleConfiguration,
 }
@@ -389,10 +394,10 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
     };
 
     let serialized_result = match result {
-      Ok(c) => serde_json::to_string(&c),
-      Err(c) => {
-        log::error!("job failure - {c:?}, recording!");
-        serde_json::to_string(&schema::jobs::JobResult::Failure(c.to_string()))
+      Ok(job_result) => serde_json::to_string(&job_result),
+      Err(job_error) => {
+        log::error!("job failure - {job_error:?}, recording!");
+        serde_json::to_string(&schema::jobs::JobResult::Failure(job_error.to_string()))
       }
     }
     .map_err(|error| {

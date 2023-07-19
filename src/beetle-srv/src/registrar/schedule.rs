@@ -178,9 +178,12 @@ async fn check_tokens(worker: &mut super::worker::WorkerHandle<'_>) -> io::Resul
 
           // Be sure to persist the refresh token itself across updates.
           updated_token.token.refresh_token = current_handle.latest_token.token.refresh_token;
-          let job = super::RegistrarJob::access_token_refresh(updated_token, current_handle.oid);
+          let job = super::RegistrarJobKind::UserAccessTokenRefresh {
+            handle: updated_token,
+            user_id: current_handle.oid,
+          };
 
-          if let Err(error) = worker.enqueue(job).await {
+          if let Err(error) = worker.enqueue_kind(job).await {
             log::warn!("failed access token refresh percolation - {error}");
           }
         }

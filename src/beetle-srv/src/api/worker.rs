@@ -60,7 +60,7 @@ impl Worker {
 
   /// Will attempt to queue various registrar jobs by serializing them and pushing the job onto our
   /// job queue redis list. During this process we will encrypt the actual job.
-  pub(super) async fn queue_job(&self, job: crate::registrar::RegistrarJob) -> Result<String> {
+  async fn queue_job(&self, job: crate::registrar::RegistrarJob) -> Result<String> {
     // TODO: this is where id generation should happen, not in the job construction itself.
     let id = job.id.clone();
 

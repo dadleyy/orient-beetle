@@ -65,7 +65,9 @@ where
       auth: auth.clone(),
     };
     let json = serde_json::to_string(&queued_item)?;
+
     log::info!("attempting to push a rendering request onto the queue for {json:?}");
+
     let res = kramer::execute(
       &mut self.connection,
       kramer::Command::Lists(kramer::ListCommand::Push(

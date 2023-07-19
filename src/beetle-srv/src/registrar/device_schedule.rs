@@ -53,9 +53,9 @@ where
 
   schedule.kind = match (should_enable, schedule.kind.take()) {
     (true, Some(kind)) => Some(kind),
-    (true, None) => Some(schema::DeviceScheduleKind::UserEventsBasic(
-      user_id.as_ref().to_string(),
-    )),
+    (true, None) => Some(schema::DeviceScheduleKind::UserEventsBasic {
+      user_oid: user_id.as_ref().to_string(),
+    }),
     (false, _) => None,
   };
 
@@ -117,7 +117,7 @@ where
     None => {
       log::info!("nothing to do for device '{}' schedule", device_id.as_ref());
     }
-    Some(schema::DeviceScheduleKind::UserEventsBasic(user_id)) => {
+    Some(schema::DeviceScheduleKind::UserEventsBasic { user_oid: user_id }) => {
       log::info!(
         "querying events for device '{}' and user '{}'",
         device_id.as_ref(),
