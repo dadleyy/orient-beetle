@@ -20,6 +20,8 @@ pub struct RegistrarConfiguration {
   pub id_consumer_password: Option<String>,
   /// The list of acl entries that should _not_ be invalidated when cleaning up.
   pub acl_user_allowlist: Option<Vec<String>>,
+  /// The secret used to encrypt vendor api access tokens.
+  pub vendor_api_secret: String,
 }
 
 /// The CLI tool's internal configuration schema; this should basically mirror the same structure

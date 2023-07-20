@@ -163,7 +163,7 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
       let mut left = vec![];
 
       for event in events.iter().take(MAX_DISPLAYED_EVENTS) {
-        log::info!("rendering event '{event:?}'");
+        log::trace!("rendering event '{event:?}'");
 
         left.push(rendering::components::StylizedMessage {
           message: event.summary.clone(),
@@ -256,7 +256,7 @@ pub(super) async fn render_current(
     .with_context(|| format!("unable to load current device state for '{device_id}'"))?
     .ok_or_else(|| anyhow::Error::msg(format!("no device state found for '{device_id}'")))?;
 
-  log::info!("current render state for '{device_id}': {current_state:?}");
+  log::info!("rendering current state for '{device_id}'");
 
   let layout = current_state
     .rendering

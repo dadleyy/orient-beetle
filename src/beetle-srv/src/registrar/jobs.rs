@@ -86,8 +86,12 @@ pub struct RegistrarJob {
 impl RegistrarJob {
   /// Serializes and encrypts a job.
   pub fn encrypt(self, config: &crate::config::RegistrarConfiguration) -> io::Result<String> {
+    // TODO(job_encryption): using jwt here for ease, not the fact that it is the best. The
+    // original intent in doing this was to avoid having plaintext in our redis messages.
+    // Leveraging and existing depedency like `aes-gcm` would be awesome.
     let header = &jsonwebtoken::Header::default();
     let secret = jsonwebtoken::EncodingKey::from_secret(config.vendor_api_secret.as_bytes());
+
     let exp = chrono::Utc::now()
       .checked_add_signed(chrono::Duration::minutes(1440))
       .unwrap_or_else(chrono::Utc::now)

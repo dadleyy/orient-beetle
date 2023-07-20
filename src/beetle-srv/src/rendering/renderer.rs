@@ -1,3 +1,4 @@
+use super::queue;
 use crate::{registrar, schema};
 use std::io;
 
@@ -59,6 +60,12 @@ impl Worker {
         Some((None, 5)),
       ));
 
+      // TODO(job_encryption): using jwt here for ease, not the fact that it is the best. The
+      // original intent in doing this was to avoid having plaintext in our redis messages.
+      // Leveraging and existing depedency like `aes-gcm` would be awesome.
+      let key = jsonwebtoken::DecodingKey::from_secret(self.config.0.registrar.vendor_api_secret.as_bytes());
+      let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
+
       let payload = match kramer::execute(&mut c, cmd).await {
         Err(error) => {
           log::warn!("nuking redis connection; failed pop execution - {error}");
@@ -71,22 +78,10 @@ impl Worker {
         Ok(kramer::Response::Item(kramer::ResponseValue::String(payload))) => {
           log::debug!("found payload - '{payload}'");
 
-          serde_json::from_str::<super::queue::QueuedRender<String>>(payload.as_str())
-            .map_err(|error| {
-              log::warn!("unable to deserialize queued item - {error}");
-              error
-            })
-            .ok()
+          Some(payload)
         }
         Ok(kramer::Response::Array(contents)) => match contents.get(1) {
-          Some(kramer::ResponseValue::String(payload)) => {
-            serde_json::from_str::<super::queue::QueuedRender<String>>(payload.as_str())
-              .map_err(|error| {
-                log::warn!("unable to deserialize queued item - {error}");
-                error
-              })
-              .ok()
-          }
+          Some(kramer::ResponseValue::String(payload)) => Some(payload.clone()),
           other => {
             log::warn!("strange response from rendering queue pop - {other:?}");
             None
@@ -96,9 +91,17 @@ impl Worker {
           log::warn!("strange response from rendering queue pop - {other:?}");
           None
         }
-      };
+      }
+      .and_then(|response_string| {
+        jsonwebtoken::decode::<queue::QueuedRenderEncrypted<String>>(&response_string, &key, &validation)
+          .map_err(|error| {
+            log::error!("registrar worker unable to decode token - {}", error);
+            io::Error::new(io::ErrorKind::Other, "bad-jwt")
+          })
+          .ok()
+      });
 
-      if let Some(queued_render) = payload {
+      if let Some(queued_render) = payload.map(|p| p.claims.job) {
         log::info!("found render, rasterizing + publish to '{}'", queued_render.device_id);
 
         let queue_id = crate::redis::device_message_queue_id(&queued_render.device_id);

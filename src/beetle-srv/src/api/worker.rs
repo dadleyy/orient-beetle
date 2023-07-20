@@ -109,7 +109,8 @@ impl Worker {
       let mut redis_connection = self.get_redis_lock().await?;
 
       if let Some(ref mut connection) = *redis_connection {
-        let mut queue = crate::rendering::queue::Queue::new(connection);
+        let mut queue =
+          crate::rendering::queue::Queue::new(connection, &self.registrar_configuration.vendor_api_secret);
 
         let result = queue
           .queue(

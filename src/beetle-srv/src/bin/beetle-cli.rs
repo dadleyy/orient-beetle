@@ -116,7 +116,7 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
         CommandLineCommand::Lighten(inner) => (&inner.id, beetle::rendering::RenderVariant::on()),
         _ => unreachable!(),
       };
-      let mut queue = beetle::rendering::Queue::new(&mut stream);
+      let mut queue = beetle::rendering::Queue::new(&mut stream, &config.registrar.vendor_api_secret);
       let (request_id, pending) = queue
         .queue::<&str, &str>(id, &beetle::rendering::QueuedRenderAuthority::CommandLine, inner)
         .await?;

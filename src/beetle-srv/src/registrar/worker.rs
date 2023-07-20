@@ -76,7 +76,7 @@ impl<'a> WorkerHandle<'a> {
     I: AsRef<str>,
     S: Serialize,
   {
-    let (id, _) = crate::rendering::queue::Queue::new(self.redis)
+    let (id, _) = crate::rendering::queue::Queue::new(self.redis, &self.config.vendor_api_secret)
       .queue(
         device_id,
         &crate::rendering::QueuedRenderAuthority::Registrar,
@@ -288,6 +288,9 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
       .and_then(|string| {
         log::debug!("pulled encrypted job ({} chars)", string.len());
 
+        // TODO(job_encryption): using jwt here for ease, not the fact that it is the best. The
+        // original intent in doing this was to avoid having plaintext in our redis messages.
+        // Leveraging and existing depedency like `aes-gcm` would be awesome.
         let key = jsonwebtoken::DecodingKey::from_secret(worker.config.vendor_api_secret.as_bytes());
         let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
 
@@ -341,7 +344,7 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
           query.append_pair("device_target_id", device_id);
         }
 
-        let mut queue = crate::rendering::queue::Queue::new(redis_connection);
+        let mut queue = crate::rendering::queue::Queue::new(redis_connection, &worker.config.vendor_api_secret);
         let layout = crate::rendering::RenderVariant::scannable(initial_url.to_string());
         let job_result = queue
           .queue(&device_id, &crate::rendering::QueuedRenderAuthority::Registrar, layout)
