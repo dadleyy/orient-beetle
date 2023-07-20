@@ -52,6 +52,13 @@ enum CommandLineCommand {
 
   /// Prints the length of a device message queue.
   PrintItems(cli::SingleDeviceCommand),
+
+  /// Do migration things.
+  Migrate {
+    /// The operation
+    #[clap(value_enum)]
+    kind: cli::migrate::MigrateOp,
+  },
 }
 
 /// The command line options themselves.
@@ -74,6 +81,7 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
   println!("  mongofb: {}", config.mongo.url);
   println!("==");
   match command {
+    CommandLineCommand::Migrate { kind } => cli::migrate::run(&config, kind).await,
     CommandLineCommand::DropCollections => {
       let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
       mongo

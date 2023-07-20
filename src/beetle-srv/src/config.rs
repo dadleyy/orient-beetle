@@ -33,6 +33,9 @@ pub struct GoogleConfiguration {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct MongoCollectionsConfiguration {
+  /// The collection of migration info.
+  pub migrations: String,
+
   /// The collection name which holds our list of users (which includes their device access).
   pub users: String,
 

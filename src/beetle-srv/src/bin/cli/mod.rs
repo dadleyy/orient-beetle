@@ -38,6 +38,9 @@ pub struct CommandLineConfig {
 mod disconnects;
 pub use disconnects::{clean_disconnects, print_connected};
 
+/// A list of migrations
+pub mod migrate;
+
 /// Commands associated with device permissions + authentication.
 mod acls;
 pub use acls::{invalidate_acls, provision, ProvisionCommand};
