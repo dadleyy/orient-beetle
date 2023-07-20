@@ -14,7 +14,8 @@
             "elm/random": "1.0.0",
             "elm/time": "1.0.0",
             "elm/url": "1.0.0",
-            "hecrj/html-parser": "2.4.0"
+            "hecrj/html-parser": "2.4.0",
+            "rtfeldman/elm-iso8601-date-strings": "1.1.4"
         },
         "indirect": {
             "elm/bytes": "1.0.8",
