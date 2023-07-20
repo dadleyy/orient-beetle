@@ -1,4 +1,17 @@
 #![allow(clippy::missing_docs_in_private_items)]
+
+//! Note: this current implementation of "migrations" only exists to unblock schema refinement
+//! during the initial, MVP phase of this project. There are some  benefits to doing it this way
+//! where the migration authors have lots of control, but the boilerplate and scalability here is
+//! questionable.
+//!
+//! Effectively, each migration would be implemented as a new variant to our `Migration` enum,
+//! where the appropriate "solution" is added to the `up`/`down` method and implemented in the
+//! `migrations` module.
+//!
+//! The migrations define their entire own schema for the before/after and should _not_ use the
+//! schema provided by the crate.
+
 use serde::{Deserialize, Serialize};
 use std::io;
 
