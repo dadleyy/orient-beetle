@@ -72,12 +72,15 @@ pub async fn run(config: &super::CommandLineConfig, dir: MigrateOp) -> io::Resul
   }
 
   let mut new_list = vec![];
+  let mut migration_count = 0;
 
   for migration in full_list {
     let serialized = serde_json::to_string(&migration)?;
     match (run.contains(&serialized), dir) {
       (_, MigrateOp::UpForce) | (false, MigrateOp::Up) => {
         log::info!("running UP '{serialized}'");
+        migration_count += 1;
+
         migration
           .up(config)
           .await
@@ -86,17 +89,22 @@ pub async fn run(config: &super::CommandLineConfig, dir: MigrateOp) -> io::Resul
       }
       (_, MigrateOp::DownForce) | (true, MigrateOp::Down) => {
         log::info!("running DOWN '{serialized}'");
+        migration_count += 1;
         migration
           .down(config)
           .await
           .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
       }
+      // If we already ran this but we're going up, just make sure to retain it in the updated list
+      // of migrations.
       (true, MigrateOp::Up) => {
         new_list.push(migration);
       }
       _ => continue,
     }
   }
+
+  log::info!("migrations complete, {migration_count} were executed");
 
   collection
     .find_one_and_replace(
