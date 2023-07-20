@@ -1,6 +1,10 @@
 #![allow(clippy::missing_docs_in_private_items)]
-use anyhow::Context;
-use async_std::stream::StreamExt;
+
+//! Migration note: This migration is responsible for the breaking changes made to the
+//! `device_authorities` and `device_states` collections, which were converted to use nested
+//! structs as their enum datum (instead of tuple fields).
+
+use super::super::ops::from_to;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -10,236 +14,148 @@ pub struct Migration {}
 impl Migration {
   pub async fn up(&self, config: &crate::cli::CommandLineConfig) -> anyhow::Result<()> {
     log::debug!("moving from old to new");
-    self.up_auth(config).await?;
-    self.up_states(config).await
-  }
-
-  async fn up_states(&self, config: &crate::cli::CommandLineConfig) -> anyhow::Result<()> {
-    let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
-    let db = mongo.database(&config.mongo.database);
-    let origin_collection = db.collection::<OriginDeviceState>(&config.mongo.collections.device_states);
-    let target_collection = db.collection::<TargetDeviceState>(&config.mongo.collections.device_states);
-
-    let mut cursor = origin_collection
-      .find(bson::doc! { "device_id": { "$exists": 1 } }, None)
-      .await?;
-
-    let mut updates = vec![];
-    while let Some(n) = cursor.next().await {
-      log::debug!("attemping to migrate device state '{n:?}'");
-      let record = n.with_context(|| "unable to deserialize into old")?;
-
-      let updated = TargetDeviceState {
-        updated_at: record.updated_at,
-        device_id: record.device_id,
-        rendering: record.rendering.map(|old| match old {
-          OriginDeviceRenderingState::MessageList(messages) => {
-            let messages = messages
-              .into_iter()
-              .map(|m| TargetDeviceRenderingStateMessageEntry {
-                content: m.content,
-                origin: match m.origin {
-                  OriginDeviceStateMessageOrigin::Unknown => TargetDeviceStateMessageOrigin::Unknown,
-                  OriginDeviceStateMessageOrigin::User(id) => TargetDeviceStateMessageOrigin::User { nickname: id },
-                },
-                timestamp: m.timestamp,
-              })
-              .collect();
-            TargetDeviceRenderingState::MessageList { messages }
-          }
-          OriginDeviceRenderingState::ScheduleLayout(events, messages) => {
-            let messages = messages
-              .into_iter()
-              .map(|m| TargetDeviceRenderingStateMessageEntry {
-                content: m.content,
-                origin: match m.origin {
-                  OriginDeviceStateMessageOrigin::Unknown => TargetDeviceStateMessageOrigin::Unknown,
-                  OriginDeviceStateMessageOrigin::User(id) => TargetDeviceStateMessageOrigin::User { nickname: id },
-                },
-                timestamp: m.timestamp,
-              })
-              .collect();
-
-            TargetDeviceRenderingState::ScheduleLayout { events, messages }
-          }
-        }),
-      };
-      updates.push(updated);
-    }
-
-    for update in updates {
-      log::debug!("applying update '{update:?}'");
-      target_collection
-        .find_one_and_replace(
-          bson::doc! { "device_id": update.device_id.clone() },
-          update,
-          mongodb::options::FindOneAndReplaceOptions::builder()
-            .return_document(mongodb::options::ReturnDocument::After)
-            .build(),
-        )
-        .await?;
-    }
-
-    Ok(())
-  }
-
-  async fn up_auth(&self, config: &crate::cli::CommandLineConfig) -> anyhow::Result<()> {
-    let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
-    let db = mongo.database(&config.mongo.database);
-    let origin_collection = db.collection::<OriginDeviceAuthorityRecord>(&config.mongo.collections.device_authorities);
-    let target_collection = db.collection::<TargetDeviceAuthorityRecord>(&config.mongo.collections.device_authorities);
-
-    let mut cursor = origin_collection
-      .find(bson::doc! { "device_id": { "$exists": 1 } }, None)
-      .await?;
-
-    let mut updates = vec![];
-    while let Some(n) = cursor.next().await {
-      log::debug!("attemping to migrate device authority '{n:?}'");
-      let record = n.with_context(|| "unable to deserialize into old")?;
-
-      let updated = TargetDeviceAuthorityRecord {
-        device_id: record.device_id,
-        authority_model: record.authority_model.map(|model| match model {
-          OriginDeviceAuthorityModel::Exclusive(owner) => TargetDeviceAuthorityModel::Exclusive { owner },
-          OriginDeviceAuthorityModel::Shared(owner, _) => TargetDeviceAuthorityModel::Shared { owner, guests: vec![] },
-          OriginDeviceAuthorityModel::Public(owner, _) => TargetDeviceAuthorityModel::Public { owner, guests: vec![] },
-        }),
-      };
-      updates.push(updated);
-    }
-
-    for update in updates {
-      log::debug!("applying update '{update:?}'");
-      target_collection
-        .find_one_and_replace(
-          bson::doc! { "device_id": update.device_id.clone() },
-          update,
-          mongodb::options::FindOneAndReplaceOptions::builder()
-            .return_document(mongodb::options::ReturnDocument::After)
-            .build(),
-        )
-        .await?;
-    }
-
-    Ok(())
+    from_to(config, &config.mongo.collections.device_schedules, up_schedule).await?;
+    from_to(config, &config.mongo.collections.device_states, up_state).await?;
+    from_to(config, &config.mongo.collections.device_authorities, up_auth).await
   }
 
   pub async fn down(&self, config: &crate::cli::CommandLineConfig) -> anyhow::Result<()> {
-    self.down_auth(config).await?;
-    self.down_states(config).await
+    from_to(config, &config.mongo.collections.device_schedules, down_schedule).await?;
+    from_to(config, &config.mongo.collections.device_states, down_state).await?;
+    from_to(config, &config.mongo.collections.device_authorities, down_auth).await
   }
-  pub async fn down_states(&self, config: &crate::cli::CommandLineConfig) -> anyhow::Result<()> {
-    let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
-    let db = mongo.database(&config.mongo.database);
-    let origin_collection = db.collection::<OriginDeviceState>(&config.mongo.collections.device_states);
-    let target_collection = db.collection::<TargetDeviceState>(&config.mongo.collections.device_states);
+}
 
-    let mut cursor = target_collection
-      .find(bson::doc! { "device_id": { "$exists": 1 } }, None)
-      .await?;
+fn up_auth(record: OriginDeviceAuthorityRecord) -> (TargetDeviceAuthorityRecord, bson::Document) {
+  let updated = TargetDeviceAuthorityRecord {
+    device_id: record.device_id.clone(),
+    authority_model: record.authority_model.map(|model| match model {
+      OriginDeviceAuthorityModel::Exclusive(owner) => TargetDeviceAuthorityModel::Exclusive { owner },
+      OriginDeviceAuthorityModel::Shared(owner, _) => TargetDeviceAuthorityModel::Shared { owner, guests: vec![] },
+      OriginDeviceAuthorityModel::Public(owner, _) => TargetDeviceAuthorityModel::Public { owner, guests: vec![] },
+    }),
+  };
 
-    let mut updates = vec![];
-    while let Some(n) = cursor.next().await {
-      log::debug!("attemping to migrate device state '{n:?}'");
-      let record = n.with_context(|| "unable to deserialize into old")?;
+  (updated, bson::doc! { "device_id": record.device_id })
+}
 
-      let updated = OriginDeviceState {
-        updated_at: record.updated_at,
-        device_id: record.device_id,
-        rendering: record.rendering.map(|old| match old {
-          TargetDeviceRenderingState::MessageList { messages } => {
-            let messages = messages
-              .into_iter()
-              .map(|m| OriginDeviceRenderingStateMessageEntry {
-                content: m.content,
-                origin: match m.origin {
-                  TargetDeviceStateMessageOrigin::Unknown => OriginDeviceStateMessageOrigin::Unknown,
-                  TargetDeviceStateMessageOrigin::User { nickname } => OriginDeviceStateMessageOrigin::User(nickname),
-                },
-                timestamp: m.timestamp,
-              })
-              .collect();
-            OriginDeviceRenderingState::MessageList(messages)
-          }
-          TargetDeviceRenderingState::ScheduleLayout { events, messages } => {
-            let messages = messages
-              .into_iter()
-              .map(|m| OriginDeviceRenderingStateMessageEntry {
-                content: m.content,
-                origin: match m.origin {
-                  TargetDeviceStateMessageOrigin::Unknown => OriginDeviceStateMessageOrigin::Unknown,
-                  TargetDeviceStateMessageOrigin::User { nickname } => OriginDeviceStateMessageOrigin::User(nickname),
-                },
-                timestamp: m.timestamp,
-              })
-              .collect();
+fn down_auth(record: TargetDeviceAuthorityRecord) -> (OriginDeviceAuthorityRecord, bson::Document) {
+  let updated = OriginDeviceAuthorityRecord {
+    device_id: record.device_id.clone(),
+    authority_model: record.authority_model.map(|model| match model {
+      TargetDeviceAuthorityModel::Exclusive { owner } => OriginDeviceAuthorityModel::Exclusive(owner),
+      TargetDeviceAuthorityModel::Shared { owner, .. } => OriginDeviceAuthorityModel::Exclusive(owner),
+      TargetDeviceAuthorityModel::Public { owner, .. } => OriginDeviceAuthorityModel::Exclusive(owner),
+    }),
+  };
 
-            OriginDeviceRenderingState::ScheduleLayout(events, messages)
-          }
-        }),
-      };
-      updates.push(updated);
-    }
+  (updated, bson::doc! { "device_id": record.device_id })
+}
 
-    for update in updates {
-      log::debug!("applying update '{update:?}'");
-      origin_collection
-        .find_one_and_replace(
-          bson::doc! { "device_id": update.device_id.clone() },
-          update,
-          mongodb::options::FindOneAndReplaceOptions::builder()
-            .return_document(mongodb::options::ReturnDocument::After)
-            .build(),
-        )
-        .await?;
-    }
+fn up_schedule(record: OriginDeviceSchedule) -> (TargetDeviceSchedule, bson::Document) {
+  let updated = TargetDeviceSchedule {
+    device_id: record.device_id.clone(),
+    last_executed: record.last_executed,
+    kind: record.kind.map(|k| match k {
+      OriginDeviceScheduleKind::UserEventsBasic(id) => TargetDeviceScheduleKind::UserEventsBasic { user_oid: id },
+    }),
+  };
+  log::debug!("migrating UP TO schedule '{updated:?}'");
 
-    Ok(())
-  }
+  (updated, bson::doc! { "device_id": record.device_id })
+}
 
-  pub async fn down_auth(&self, config: &crate::cli::CommandLineConfig) -> anyhow::Result<()> {
-    log::debug!("moving from new to old");
-    let mongo = beetle::mongo::connect_mongo(&config.mongo).await?;
-    let db = mongo.database(&config.mongo.database);
-    let target_collection = db.collection::<TargetDeviceAuthorityRecord>(&config.mongo.collections.device_authorities);
-    let origin_collection = db.collection::<OriginDeviceAuthorityRecord>(&config.mongo.collections.device_authorities);
+fn down_schedule(record: TargetDeviceSchedule) -> (OriginDeviceSchedule, bson::Document) {
+  let updated = OriginDeviceSchedule {
+    device_id: record.device_id.clone(),
+    last_executed: record.last_executed,
+    kind: record.kind.map(|k| match k {
+      TargetDeviceScheduleKind::UserEventsBasic { user_oid } => OriginDeviceScheduleKind::UserEventsBasic(user_oid),
+    }),
+  };
+  log::debug!("migrating DOWN TO schedule '{updated:?}'");
 
-    let mut cursor = target_collection
-      .find(bson::doc! { "device_id": { "$exists": 1 } }, None)
-      .await?;
+  (updated, bson::doc! { "device_id": record.device_id })
+}
 
-    let mut updates = vec![];
-    while let Some(n) = cursor.next().await {
-      log::debug!("attemping to migrate");
-      let record = n.with_context(|| "unable to deserialize into new")?;
+fn up_state(record: OriginDeviceState) -> (TargetDeviceState, bson::Document) {
+  let updated = TargetDeviceState {
+    updated_at: record.updated_at,
+    device_id: record.device_id.clone(),
+    rendering: record.rendering.map(|old| match old {
+      OriginDeviceRenderingState::MessageList(messages) => {
+        let messages = messages
+          .into_iter()
+          .map(|m| TargetDeviceRenderingStateMessageEntry {
+            content: m.content,
+            origin: match m.origin {
+              OriginDeviceStateMessageOrigin::Unknown => TargetDeviceStateMessageOrigin::Unknown,
+              OriginDeviceStateMessageOrigin::User(id) => TargetDeviceStateMessageOrigin::User { nickname: id },
+            },
+            timestamp: m.timestamp,
+          })
+          .collect();
+        TargetDeviceRenderingState::MessageList { messages }
+      }
+      OriginDeviceRenderingState::ScheduleLayout(events, messages) => {
+        let messages = messages
+          .into_iter()
+          .map(|m| TargetDeviceRenderingStateMessageEntry {
+            content: m.content,
+            origin: match m.origin {
+              OriginDeviceStateMessageOrigin::Unknown => TargetDeviceStateMessageOrigin::Unknown,
+              OriginDeviceStateMessageOrigin::User(id) => TargetDeviceStateMessageOrigin::User { nickname: id },
+            },
+            timestamp: m.timestamp,
+          })
+          .collect();
 
-      let updated = OriginDeviceAuthorityRecord {
-        device_id: record.device_id,
-        authority_model: record.authority_model.map(|model| match model {
-          TargetDeviceAuthorityModel::Exclusive { owner } => OriginDeviceAuthorityModel::Exclusive(owner),
-          TargetDeviceAuthorityModel::Shared { owner, .. } => OriginDeviceAuthorityModel::Exclusive(owner),
-          TargetDeviceAuthorityModel::Public { owner, .. } => OriginDeviceAuthorityModel::Exclusive(owner),
-        }),
-      };
-      updates.push(updated);
-    }
+        TargetDeviceRenderingState::ScheduleLayout { events, messages }
+      }
+    }),
+  };
 
-    for update in updates {
-      log::debug!("updating to '{update:?}'");
-      origin_collection
-        .find_one_and_replace(
-          bson::doc! { "device_id": update.device_id.clone() },
-          update,
-          mongodb::options::FindOneAndReplaceOptions::builder()
-            .return_document(mongodb::options::ReturnDocument::After)
-            .build(),
-        )
-        .await?;
-    }
+  (updated, bson::doc! { "device_id": record.device_id })
+}
 
-    Ok(())
-  }
+fn down_state(record: TargetDeviceState) -> (OriginDeviceState, bson::Document) {
+  let updated = OriginDeviceState {
+    updated_at: record.updated_at,
+    device_id: record.device_id.clone(),
+    rendering: record.rendering.map(|old| match old {
+      TargetDeviceRenderingState::MessageList { messages } => {
+        let messages = messages
+          .into_iter()
+          .map(|m| OriginDeviceRenderingStateMessageEntry {
+            content: m.content,
+            origin: match m.origin {
+              TargetDeviceStateMessageOrigin::Unknown => OriginDeviceStateMessageOrigin::Unknown,
+              TargetDeviceStateMessageOrigin::User { nickname } => OriginDeviceStateMessageOrigin::User(nickname),
+            },
+            timestamp: m.timestamp,
+          })
+          .collect();
+        OriginDeviceRenderingState::MessageList(messages)
+      }
+      TargetDeviceRenderingState::ScheduleLayout { events, messages } => {
+        let messages = messages
+          .into_iter()
+          .map(|m| OriginDeviceRenderingStateMessageEntry {
+            content: m.content,
+            origin: match m.origin {
+              TargetDeviceStateMessageOrigin::Unknown => OriginDeviceStateMessageOrigin::Unknown,
+              TargetDeviceStateMessageOrigin::User { nickname } => OriginDeviceStateMessageOrigin::User(nickname),
+            },
+            timestamp: m.timestamp,
+          })
+          .collect();
+
+        OriginDeviceRenderingState::ScheduleLayout(events, messages)
+      }
+    }),
+  };
+
+  (updated, bson::doc! { "device_id": record.device_id })
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -338,4 +254,32 @@ enum TargetDeviceAuthorityModel {
 struct TargetDeviceAuthorityRecord {
   device_id: String,
   authority_model: Option<TargetDeviceAuthorityModel>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
+enum OriginDeviceScheduleKind {
+  UserEventsBasic(String),
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+struct OriginDeviceSchedule {
+  device_id: String,
+  last_executed: Option<u64>,
+  kind: Option<OriginDeviceScheduleKind>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
+enum TargetDeviceScheduleKind {
+  UserEventsBasic { user_oid: String },
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+struct TargetDeviceSchedule {
+  device_id: String,
+  last_executed: Option<u64>,
+  kind: Option<TargetDeviceScheduleKind>,
 }

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::io;
 
 mod migrations;
+mod ops;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case", tag = "migration:name")]
