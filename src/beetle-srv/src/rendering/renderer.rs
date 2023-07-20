@@ -106,6 +106,10 @@ impl Worker {
 
         let queue_id = crate::redis::device_message_queue_id(&queued_render.device_id);
 
+        if let Err(error) = self.clear_pending(&mut c, &queue_id).await {
+          log::error!("unable to clear stale renders for '{queue_id}' - {error:?}");
+        }
+
         // Actually attempt to rasterize the layout into bytes and send it along to the device via
         // the device redis queue.
         let queue_error = match self.send_layout(&mut c, &queue_id, queued_render.layout.clone()).await {
@@ -223,6 +227,42 @@ impl Worker {
     }
 
     Ok(())
+  }
+
+  /// Given a queue id, the goal of this method is to remove all things in it. This does check the
+  /// length before doing so, which is nice for logging purposes.
+  async fn clear_pending(
+    &mut self,
+    mut connection: &mut crate::redis::RedisConnection,
+    queue_id: &str,
+  ) -> io::Result<()> {
+    log::info!("clearing all pending renders for '{queue_id}'");
+    let len = kramer::Command::<&str, &str>::Lists(kramer::ListCommand::Len(queue_id));
+    let res = kramer::execute(&mut connection, &len).await?;
+    let count = match res {
+      kramer::Response::Item(kramer::ResponseValue::Integer(i)) => i,
+      other => {
+        return Err(io::Error::new(
+          io::ErrorKind::Other,
+          format!("invalid len response of render queue '{queue_id}'-  {other:?}"),
+        ))
+      }
+    };
+
+    if count <= 0 {
+      log::info!("queue '{queue_id} had {count} stale messages, ignoring");
+      return Ok(());
+    }
+
+    log::info!("queue '{queue_id}' has {count} stale messages, deleting");
+    let del = kramer::Command::<&str, &str>::Lists(kramer::ListCommand::Trim(queue_id, count, 0));
+
+    kramer::execute(connection, &del).await.map(|_| ()).map_err(|error| {
+      io::Error::new(
+        io::ErrorKind::Other,
+        format!("failed deletion of stale messages on '{queue_id}' - {error:?}"),
+      )
+    })
   }
 }
 

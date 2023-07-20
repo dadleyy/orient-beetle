@@ -271,12 +271,8 @@ pub(super) async fn render_current(
     })
     .unwrap_or(rendering::RenderLayout::Clear);
 
-  log::info!("device '{device_id}' attempting to render '{layout:?}'");
-
   let render_id = handle.render(device_id, layout).await?;
-
   log::info!("render '{render_id}' scheduled for device '{device_id}'");
-
   Ok(())
 }
 
@@ -285,9 +281,9 @@ pub(super) async fn attempt_transition(
   mut handle: super::worker::WorkerHandle<'_>,
   transition_request: &DeviceStateTransitionRequest,
 ) -> anyhow::Result<()> {
-  log::info!("attempting to transition {transition_request:?}");
   let states = handle.device_state_collection()?;
   let device_id = transition_request.device_id.clone();
+  log::info!("attempting to perform a state transition for device '{device_id}'");
 
   let current_state = states
     .find_one_and_update(
