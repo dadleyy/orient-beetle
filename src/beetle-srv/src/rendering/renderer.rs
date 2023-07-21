@@ -102,7 +102,11 @@ impl Worker {
       });
 
       if let Some(queued_render) = payload.map(|p| p.claims.job) {
-        log::info!("found render, rasterizing + publish to '{}'", queued_render.device_id);
+        log::info!(
+          "found render '{}', rasterizing + publish to '{}'",
+          queued_render.id,
+          queued_render.device_id
+        );
 
         let queue_id = crate::redis::device_message_queue_id(&queued_render.device_id);
 
@@ -149,6 +153,9 @@ impl Worker {
           log::warn!("unable to complete serialization of render result - {error}");
           io::Error::new(io::ErrorKind::Other, "result-failure")
         })?;
+
+        log::info!("setting job result for '{}' - '{serialized_result}'", queued_render.id);
+
         if let Err(error) = kramer::execute(
           &mut c,
           kramer::Command::Hashes(kramer::HashCommand::Set(
@@ -162,7 +169,7 @@ impl Worker {
           log::warn!("unable to update job result - {error}");
         }
 
-        log::info!("mongo diagnostics updated for '{}'", queued_render.device_id);
+        log::info!("job '{}' for '{}' complete", queued_render.id, queued_render.device_id);
       }
 
       self.connections.1 = Some(c);
@@ -269,13 +276,10 @@ impl Worker {
 /// The main entrypoint for our renderers.
 pub async fn run(config: crate::registrar::Configuration) -> io::Result<()> {
   let mut tick = 0u8;
-  let mut interval = async_std::stream::interval(std::time::Duration::from_secs(1));
   let mut worker = Worker::new(config).await?;
   log::info!("renderer running");
 
   loop {
-    async_std::stream::StreamExt::next(&mut interval).await;
-
     if let Err(error) = worker.tick().await {
       log::warn!("worker failed on tick {tick} - {error}");
     }
