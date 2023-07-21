@@ -286,14 +286,15 @@ pub async fn fetch_user(handle: &TokenHandle) -> anyhow::Result<Userinfo> {
   let mut res = surf::get(&url)
     .header("Authorization", format!("Bearer {}", handle.token.access_token))
     .await
-    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
-    .with_context(|| "profile request failed")?;
+    .map_err(|e| {
+      let error = format!("request for user info failed - {e:?}");
+      io::Error::new(io::ErrorKind::Other, error)
+    })?;
 
-  let userinfo = res
-    .body_json::<Userinfo>()
-    .await
-    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
-    .with_context(|| "body read failed")?;
+  let userinfo = res.body_json::<Userinfo>().await.map_err(|e| {
+    let error = format!("unable to parse user info payload - {e:?}");
+    io::Error::new(io::ErrorKind::Other, error)
+  })?;
 
   log::trace!("profile - '{}'", userinfo.id);
 

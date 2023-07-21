@@ -90,9 +90,9 @@ where
       .unwrap_or_else(chrono::Utc::now)
       .timestamp() as u32;
     let json = jsonwebtoken::encode(&header, &QueuedRenderEncrypted { exp, job: queued_item }, &secret)
-      .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("unable to encrypt job - {error}")))?;
+      .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("unable to encrypt job '{id}' - {error}")))?;
 
-    log::info!("pushing into render '{id}' iinto rendering queue");
+    log::info!("pushing into render '{id}' into rendering queue");
 
     let res = kramer::execute(
       &mut self.connection,
@@ -102,16 +102,20 @@ where
         kramer::Arity::One(&json),
       )),
     )
-    .await?;
+    .await
+    .map_err(|error| {
+      log::error!("unable to push render job '{id}' into queue - {error:?}");
+      error
+    })?;
 
     match res {
       kramer::Response::Item(kramer::ResponseValue::Integer(amount)) => {
-        log::info!("rendering request queued. current queue size {amount}");
+        log::info!("rendering request '{id}' queued. current queue size {amount}");
         Ok((id, amount))
       }
       other => Err(io::Error::new(
         io::ErrorKind::Other,
-        format!("strange response from queue attempt - {other:?}"),
+        format!("strange response from queue '{id}' attempt - {other:?}"),
       )),
     }
   }

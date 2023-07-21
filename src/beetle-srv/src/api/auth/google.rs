@@ -29,7 +29,7 @@ pub async fn redirect(request: tide::Request<crate::api::Worker>) -> tide::Resul
 pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Result {
   let query = request.query::<crate::vendor::google::CodeQuery>()?;
   let worker = request.state();
-  log::trace!("have code - '{}'", query.code);
+  log::debug!("have code - '{}'", query.code);
 
   let mut response = surf::post("https://oauth2.googleapis.com/token")
     .body_json(&crate::vendor::google::TokenRequest {
@@ -55,7 +55,11 @@ pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Resul
     created: chrono::Utc::now(),
     token: parsed,
   };
-  let userinfo = crate::vendor::google::fetch_user(&handle).await?;
+
+  let userinfo = crate::vendor::google::fetch_user(&handle).await.map_err(|error| {
+    log::error!("unable to fetch user info during oauth completion - {error}");
+    error
+  })?;
 
   let normalized_id = format!("{GOOGLE_ID_PREFIX}{}", userinfo.id);
   let query = bson::doc! { "oid": &normalized_id };
