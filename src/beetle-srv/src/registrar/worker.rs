@@ -308,6 +308,12 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
   if let Some(job_container) = next_job {
     let result = match &job_container.job {
       RegistrarJobKind::MutateDeviceState(transition) => {
+        log::info!(
+          "job[{}] processing render state transition for '{}'",
+          job_container.id,
+          transition.device_id
+        );
+
         device_state::attempt_transition(worker.handle(redis_connection), transition)
           .await
           .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
@@ -315,6 +321,11 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
       }
 
       RegistrarJobKind::Renders(super::jobs::RegistrarRenderKinds::CurrentDeviceState(device_id)) => {
+        log::debug!(
+          "job[{}] processing current device state render request for '{device_id}'",
+          job_container.id
+        );
+
         device_state::render_current(worker.handle(redis_connection), device_id)
           .await
           .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
@@ -331,7 +342,11 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
       // renderer jobs too, but is helpful for providing easier ergonomics into sending device
       // registration qr codes.
       RegistrarJobKind::Renders(jobs::RegistrarRenderKinds::RegistrationScannable(device_id)) => {
-        log::info!("sending initial scannable link to device '{device_id}'");
+        log::info!(
+          "job[{}] sending initial scannable link to device '{device_id}'",
+          job_container.id
+        );
+
         let mut initial_url = http_types::Url::parse(&worker.config.initial_scannable_addr).map_err(|error| {
           log::warn!("unable to create initial url for device - {error}");
           io::Error::new(io::ErrorKind::Other, format!("{error}"))
@@ -354,7 +369,10 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
       }
 
       RegistrarJobKind::RunDeviceSchedule(device_id) => {
-        log::info!("immediately executing device schedule for '{device_id}'");
+        log::info!(
+          "job[{}] immediately executing device schedule for '{device_id}'",
+          job_container.id
+        );
 
         super::device_schedule::execute(worker.handle(redis_connection), &device_id)
           .await
@@ -367,7 +385,10 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
         device_id,
         should_enable,
       } => {
-        log::info!("toggling default device schedule for device '{device_id}' to user '{user_id}' ({should_enable})");
+        log::info!(
+          "job[{}] toggling default device schedule for device '{device_id}' to user '{user_id}' ({should_enable})",
+          job_container.id
+        );
 
         super::device_schedule::toggle(worker.handle(redis_connection), device_id, user_id, *should_enable)
           .await

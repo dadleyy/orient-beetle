@@ -128,6 +128,33 @@ impl Worker {
           io::Error::new(io::ErrorKind::Other, "serialization error".to_string())
         })?;
 
+        match histories
+          .find_one_and_update(
+            bson::doc! { "device_id": &queued_render.device_id },
+            bson::doc! { "$push": { "render_history": { "$each": [ ], "$slice": -10 } } },
+            mongodb::options::FindOneAndUpdateOptions::builder()
+              .upsert(true)
+              .return_document(mongodb::options::ReturnDocument::After)
+              .build(),
+          )
+          .await
+        {
+          Err(error) => {
+            log::warn!(
+              "render[{}] unable to truncate device '{}' history - {error}",
+              queued_render.id,
+              queued_render.device_id
+            );
+          }
+          Ok(_) => {
+            log::warn!(
+              "render[{}] truncated history of device '{}' history successfully",
+              queued_render.id,
+              queued_render.device_id
+            );
+          }
+        }
+
         if let Err(error) = histories
           .find_one_and_update(
             bson::doc! { "device_id": &queued_render.device_id },
@@ -139,7 +166,11 @@ impl Worker {
           )
           .await
         {
-          log::warn!("unable to update device diagnostic total message count - {error}");
+          log::warn!(
+            "render[{}] unable to update device '{}' message history - {error}",
+            queued_render.id,
+            queued_render.device_id
+          );
         }
 
         // Lastly, update our job results hash with an entry for this render attempt. This is how
@@ -154,7 +185,11 @@ impl Worker {
           io::Error::new(io::ErrorKind::Other, "result-failure")
         })?;
 
-        log::info!("setting job result for '{}' - '{serialized_result}'", queued_render.id);
+        log::info!(
+          "render[{}] setting job result for device '{}' - '{serialized_result}'",
+          queued_render.id,
+          queued_render.device_id
+        );
 
         if let Err(error) = kramer::execute(
           &mut c,
