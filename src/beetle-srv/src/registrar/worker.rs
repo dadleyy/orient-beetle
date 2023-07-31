@@ -21,7 +21,7 @@ use std::io;
 const DEFAULT_POOL_MINIMUM: u8 = 3;
 
 /// The most amount of jobs to try working at once.
-const DEFAULT_JOB_BATCH_SIZE: u8 = 3;
+const DEFAULT_JOB_BATCH_SIZE: u8 = 50;
 
 /// A wrapping container for our mongo types that provides the api for accessing collection.
 pub(super) struct WorkerMongo {
