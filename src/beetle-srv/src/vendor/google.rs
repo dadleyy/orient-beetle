@@ -171,6 +171,7 @@ pub fn parse_event(event: &EventListEntry) -> anyhow::Result<ParsedEvent> {
   match (date_container, datetime_container) {
     (Some((start, end)), None) => {
       log::trace!("found whole-day event {start} - {end}");
+
       let start = parse_event_date(start)?;
       let end = parse_event_date(end)?;
 
@@ -183,6 +184,7 @@ pub fn parse_event(event: &EventListEntry) -> anyhow::Result<ParsedEvent> {
     }
     (None, Some((start, end))) => {
       log::trace!("found timed event {start} - {end}");
+
       let start = chrono::DateTime::parse_from_rfc3339(start.as_str()).with_context(|| "invalid date")?;
       let end = chrono::DateTime::parse_from_rfc3339(end.as_str()).with_context(|| "invalid date")?;
 
@@ -226,7 +228,7 @@ pub async fn fetch_primary(handle: &TokenHandle) -> anyhow::Result<Option<Calend
     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
     .with_context(|| "cannot parse")?;
 
-  log::debug!("found {} calendars", list.items.len());
+  log::trace!("found {} calendars", list.items.len());
 
   log::trace!("status: '{}'", res.status());
   log::trace!("list:   '{:?}'", list);
@@ -236,7 +238,7 @@ pub async fn fetch_primary(handle: &TokenHandle) -> anyhow::Result<Option<Calend
 
 /// Fetches calendar events associated with a token handle and calendar.
 pub async fn fetch_events(handle: &TokenHandle, calendar: &CalendarListEntry) -> anyhow::Result<Vec<EventListEntry>> {
-  log::debug!("fetching calendar '{}'", calendar.id);
+  log::trace!("fetching calendar '{}'", calendar.id);
   let mut uri = url::Url::parse(
     format!(
       " https://www.googleapis.com/calendar/v3/calendars/{}/events",
@@ -273,7 +275,7 @@ pub async fn fetch_events(handle: &TokenHandle, calendar: &CalendarListEntry) ->
 
   let events = serde_json::from_str::<EventList>(&body_string).with_context(|| "failed event list parse")?;
 
-  log::debug!("found {} items in calendar", events.items.len());
+  log::trace!("found {} items in calendar", events.items.len());
 
   Ok(events.items)
 }
