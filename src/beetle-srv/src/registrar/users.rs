@@ -32,6 +32,7 @@ where
   let day = chrono::Utc::now()
     .checked_add_signed(chrono::Duration::hours(24))
     .unwrap_or_else(chrono::Utc::now);
+
   let exp = day.timestamp() as usize;
 
   log::info!(

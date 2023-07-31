@@ -286,7 +286,7 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
         _ => None,
       })
       .and_then(|string| {
-        log::debug!("pulled encrypted job ({} chars)", string.len());
+        log::trace!("pulled encrypted job ({} chars)", string.len());
 
         // TODO(job_encryption): using jwt here for ease, not the fact that it is the best. The
         // original intent in doing this was to avoid having plaintext in our redis messages.
@@ -306,6 +306,11 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
   };
 
   if let Some(job_container) = next_job {
+    log::info!(
+      "jobType[{:?}] is now processing",
+      std::mem::discriminant(&job_container.job)
+    );
+
     let result = match &job_container.job {
       RegistrarJobKind::MutateDeviceState(transition) => {
         log::info!(
@@ -333,6 +338,11 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
       }
 
       RegistrarJobKind::UserAccessTokenRefresh { handle, user_id } => {
+        log::info!(
+          "job[{}] processing new token refresh for '{}'",
+          job_container.id,
+          user_id
+        );
         users::process_access_token(worker, handle, user_id)
           .await
           .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
