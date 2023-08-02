@@ -4,10 +4,21 @@
 use serde::Serialize;
 use std::io;
 
+/// The event name in newrelic for our queue health samples.
+const QUEUE_DIAGNOSTIC_SAMPLE_EVENT_NAME: &str = "registrarJobQueueSample";
+
+/// The event name in newrelic for our job processed counts.
+const BATCH_PROCESSED_EVENT_NAME: &str = "registrarJobBatchProcessed";
+
 /// This is the enumerated type that holds all things sent to our third party analytics platform
 /// for platform health monitoring.
 #[derive(Serialize, Debug)]
 pub enum Event {
+  /// When the registrar finishes working jobs up to the max batch amount, this event is sent.
+  JobBatchProcessed {
+    /// The amount of jobs processed.
+    job_count: u16,
+  },
   /// The length of our job queue.
   JobQueueLengthSample {
     /// The length of our job queue.
@@ -23,6 +34,18 @@ pub struct Worker {
 
   /// The receiving side of our event queue.
   receiver: async_std::channel::Receiver<Event>,
+}
+
+/// The container of our analytic event.
+#[derive(Debug, serde::Serialize)]
+struct BatchProcessedSample {
+  /// The amount of jobs processed.
+  #[serde(rename = "job_count")]
+  job_count: u16,
+
+  /// The constant event name for this payload.
+  #[serde(rename = "eventType")]
+  event_type: &'static str,
 }
 
 /// The container of our analytic event.
@@ -61,36 +84,62 @@ impl Worker {
       })?;
       log::info!("reporting has next event to send along - {event:?}");
 
-      match (event, &self.config) {
+      let result = match (event, &self.config) {
+        (
+          Event::JobBatchProcessed { job_count },
+          crate::config::RegistrarAnalyticsConfiguration::NewRelic { account_id, api_key },
+        ) => {
+          self
+            .send_newrelic(
+              BatchProcessedSample {
+                job_count,
+                event_type: BATCH_PROCESSED_EVENT_NAME,
+              },
+              account_id,
+              api_key,
+            )
+            .await
+        }
         (
           Event::JobQueueLengthSample { queue_length },
           crate::config::RegistrarAnalyticsConfiguration::NewRelic { account_id, api_key },
         ) => {
           let sample = QueueDiagnosticSample {
             queue_length,
-            event_type: "registrarJobQueueSample",
+            event_type: QUEUE_DIAGNOSTIC_SAMPLE_EVENT_NAME,
           };
 
-          let response = surf::post(format!(
-            "https://insights-collector.newrelic.com/v1/accounts/{account_id}/event"
-          ))
-          .header("Accept", "*/*")
-          .header("Api-Key", api_key)
-          .body_json(&sample)
-          .map_err(|error| {
-            io::Error::new(
-              io::ErrorKind::Other,
-              format!("Unable to serialize queue sample - {error}"),
-            )
-          })?
-          .await;
-
-          log::info!(
-            "analytics sample '{sample:?}' sent - {:?}",
-            response.map(|success| success.status())
-          );
+          self.send_newrelic(&sample, account_id, api_key).await
         }
+      };
+
+      if let Err(error) = result {
+        log::error!("reporting worker unable to send event - {error}");
       }
     }
+  }
+
+  /// Sends events along to the newrelic api.
+  async fn send_newrelic<T, S>(&self, data: T, account_id: S, api_key: S) -> io::Result<()>
+  where
+    T: serde::Serialize,
+    S: AsRef<str>,
+  {
+    surf::post(format!(
+      "https://insights-collector.newrelic.com/v1/accounts/{}/event",
+      account_id.as_ref()
+    ))
+    .header("Accept", "*/*")
+    .header("Api-Key", api_key.as_ref())
+    .body_json(&data)
+    .map_err(|error| {
+      io::Error::new(
+        io::ErrorKind::Other,
+        format!("Unable to serialize queue sample - {error}"),
+      )
+    })?
+    .await
+    .map(|_| ())
+    .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))
   }
 }

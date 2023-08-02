@@ -11,7 +11,7 @@
 //!   dumped into the `schedule` module adjacent to this.
 
 use super::{device_state, diagnostics, jobs, ownership, pool, rename, users, RegistrarJobKind};
-use crate::{config::RegistrarConfiguration, schema};
+use crate::{config::RegistrarConfiguration, reporting, schema};
 use serde::Serialize;
 use std::io;
 
@@ -176,7 +176,7 @@ pub struct Worker {
   pub(super) google: crate::config::GoogleConfiguration,
 
   /// The handle for our reporting worker.
-  pub(super) reporting: Option<async_std::channel::Sender<crate::reporting::Event>>,
+  pub(super) reporting: Option<async_std::channel::Sender<reporting::Event>>,
 }
 
 impl Worker {
@@ -188,6 +188,7 @@ impl Worker {
     self.connection = match stream {
       None => {
         log::info!("no previous connection, attempting to connect now");
+
         crate::redis::connect(&self.redis)
           .await
           .map_err(|error| {
@@ -199,7 +200,7 @@ impl Worker {
 
       Some(mut redis_connection) => {
         log::trace!("active redis connection, checking pool");
-        self.report(&mut redis_connection).await;
+        let pending_job_count = self.report(&mut redis_connection).await.unwrap_or(1);
 
         // Attempt to fill our id pool if necessary.
         let amount = pool::fill_pool(
@@ -228,18 +229,30 @@ impl Worker {
           log::error!("failed scheduled registrar workflow - {error}");
         }
 
-        let mut job_count = 0u8;
-        while job_count < DEFAULT_JOB_BATCH_SIZE {
-          log::info!("attempting to run job attempt #{job_count}");
+        let mut processed_job_count = 0u8;
 
-          job_count += match work_jobs(self, &mut redis_connection).await {
+        while pending_job_count > 0 && processed_job_count < DEFAULT_JOB_BATCH_SIZE {
+          log::trace!("attempting to run job attempt #{processed_job_count}");
+
+          processed_job_count += match work_jobs(self, &mut redis_connection).await {
             Err(error) => {
               log::error!("registar job worker failed - {error}");
-              DEFAULT_JOB_BATCH_SIZE
+              break;
             }
-            Ok(amt) if amt == 0 => DEFAULT_JOB_BATCH_SIZE,
+            Ok(amt) if amt == 0 => break,
             Ok(amt) => amt,
           };
+        }
+
+        if let Some(sink) = self.reporting.as_ref() {
+          if let Err(error) = sink
+            .send(reporting::Event::JobBatchProcessed {
+              job_count: processed_job_count as u16,
+            })
+            .await
+          {
+            log::error!("unable to send job batch processed event - {error}");
+          }
         }
 
         Some(redis_connection)
@@ -250,7 +263,7 @@ impl Worker {
   }
 
   /// Reports queue metrics to the analytics configuration, if any.
-  async fn report(&self, redis: &mut crate::redis::RedisConnection) -> Option<()> {
+  async fn report(&self, redis: &mut crate::redis::RedisConnection) -> Option<u16> {
     let sink = self.reporting.as_ref()?;
 
     let queue_length = match kramer::execute(
@@ -270,14 +283,11 @@ impl Worker {
       }
     };
 
-    if let Err(error) = sink
-      .send(crate::reporting::Event::JobQueueLengthSample { queue_length })
-      .await
-    {
+    if let Err(error) = sink.send(reporting::Event::JobQueueLengthSample { queue_length }).await {
       log::error!("failed sending event to reporting queue - {error}");
     }
 
-    Some(())
+    Some(queue_length)
   }
 
   /// Internally, this method is used to wrap our valid redis connection with other information
@@ -297,7 +307,7 @@ impl Worker {
 /// primary function of the `work` method.
 async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis::RedisConnection) -> io::Result<u8> {
   // Attempt to get the next job.
-  log::info!(
+  log::trace!(
     "attempting to pop next actual job from '{}'",
     crate::constants::REGISTRAR_JOB_QUEUE
   );
@@ -307,7 +317,7 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
     kramer::Command::Lists::<&str, &str>(kramer::ListCommand::Pop(
       kramer::Side::Left,
       crate::constants::REGISTRAR_JOB_QUEUE,
-      Some((None, 3)),
+      None,
     )),
   )
   .await?
@@ -340,152 +350,153 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
     _ => None,
   };
 
-  if let Some(job_container) = next_job {
-    log::info!(
-      "jobType[{:?}] is now processing",
-      std::mem::discriminant(&job_container.job)
-    );
+  let job_container = match next_job {
+    None => return Ok(0),
+    Some(job) => job,
+  };
 
-    let result = match &job_container.job {
-      RegistrarJobKind::MutateDeviceState(transition) => {
-        log::info!(
-          "job[{}] processing render state transition for '{}'",
-          job_container.id,
-          transition.device_id
-        );
+  log::info!(
+    "jobType[{:?}] is now processing",
+    std::mem::discriminant(&job_container.job)
+  );
 
-        device_state::attempt_transition(worker.handle(redis_connection), transition)
-          .await
-          .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
-          .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))
-      }
+  let result = match &job_container.job {
+    RegistrarJobKind::MutateDeviceState(transition) => {
+      log::info!(
+        "job[{}] processing render state transition for '{}'",
+        job_container.id,
+        transition.device_id
+      );
 
-      RegistrarJobKind::Renders(super::jobs::RegistrarRenderKinds::CurrentDeviceState(device_id)) => {
-        log::debug!(
-          "job[{}] processing current device state render request for '{device_id}'",
-          job_container.id
-        );
-
-        device_state::render_current(worker.handle(redis_connection), device_id)
-          .await
-          .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
-          .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))
-      }
-
-      RegistrarJobKind::UserAccessTokenRefresh { handle, user_id } => {
-        log::info!(
-          "job[{}] processing new token refresh for '{}'",
-          job_container.id,
-          user_id
-        );
-        users::process_access_token(worker, handle, user_id)
-          .await
-          .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
-      }
-
-      // Process requests-for-render-request jobs. This is a bit odd since we already have the
-      // renderer jobs too, but is helpful for providing easier ergonomics into sending device
-      // registration qr codes.
-      RegistrarJobKind::Renders(jobs::RegistrarRenderKinds::RegistrationScannable(device_id)) => {
-        log::info!(
-          "job[{}] sending initial scannable link to device '{device_id}'",
-          job_container.id
-        );
-
-        let mut initial_url = http_types::Url::parse(&worker.config.initial_scannable_addr).map_err(|error| {
-          log::warn!("unable to create initial url for device - {error}");
-          io::Error::new(io::ErrorKind::Other, format!("{error}"))
-        })?;
-
-        // scope our mutable borrow/mutation so it is dropped before we take ownship when we
-        // `to_string` it onto our layout.
-        {
-          let mut query = initial_url.query_pairs_mut();
-          query.append_pair("device_target_id", device_id);
-        }
-
-        let mut queue = crate::rendering::queue::Queue::new(redis_connection, &worker.config.vendor_api_secret);
-        let layout = crate::rendering::RenderVariant::scannable(initial_url.to_string());
-        let job_result = queue
-          .queue(&device_id, &crate::rendering::QueuedRenderAuthority::Registrar, layout)
-          .await;
-
-        job_result.map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
-      }
-
-      RegistrarJobKind::RunDeviceSchedule(device_id) => {
-        log::info!(
-          "job[{}] immediately executing device schedule for '{device_id}'",
-          job_container.id
-        );
-
-        super::device_schedule::execute(worker.handle(redis_connection), &device_id)
-          .await
-          .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))
-          .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
-      }
-
-      RegistrarJobKind::ToggleDefaultSchedule {
-        user_id,
-        device_id,
-        should_enable,
-      } => {
-        log::info!(
-          "job[{}] toggling default device schedule for device '{device_id}' to user '{user_id}' ({should_enable})",
-          job_container.id
-        );
-
-        super::device_schedule::toggle(worker.handle(redis_connection), device_id, user_id, *should_enable)
-          .await
-          .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
-      }
-
-      // Process device rename requests.
-      RegistrarJobKind::Rename(request) => {
-        log::info!("device rename request being processed - {request:?}");
-        let job_result = rename::rename(worker, request).await;
-        job_result.map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
-      }
-
-      // Process device ownership change requests.
-      RegistrarJobKind::OwnershipChange(request) => {
-        let job_result = ownership::process_change(worker, request).await;
-        job_result.map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
-      }
-
-      // Process device ownership claiming requests.
-      RegistrarJobKind::Ownership(ownership_request) => {
-        log::debug!("registrar found next ownership claims job - '{ownership_request:?}'");
-        let job_result = ownership::register_device(worker, ownership_request).await;
-        log::debug!("registration result - {job_result:?}");
-        job_result.map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
-      }
-    };
-
-    let serialized_result = match result {
-      Ok(job_result) => serde_json::to_string(&job_result),
-      Err(job_error) => {
-        log::error!("job failure - {job_error:?}, recording!");
-        serde_json::to_string(&schema::jobs::JobResult::Failure(job_error.to_string()))
-      }
+      device_state::attempt_transition(worker.handle(redis_connection), transition)
+        .await
+        .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))
     }
-    .map_err(|error| {
-      log::error!("Unable to serialize job result - {error}");
-      io::Error::new(io::ErrorKind::Other, format!("job-result-serialization - {error}"))
-    })?;
 
-    kramer::execute(
-      &mut redis_connection,
-      kramer::Command::Hashes(kramer::HashCommand::Set(
-        crate::constants::REGISTRAR_JOB_RESULTS,
-        kramer::Arity::One((&job_container.id, serialized_result)),
-        kramer::Insertion::Always,
-      )),
-    )
-    .await?;
+    RegistrarJobKind::Renders(super::jobs::RegistrarRenderKinds::CurrentDeviceState(device_id)) => {
+      log::debug!(
+        "job[{}] processing current device state render request for '{device_id}'",
+        job_container.id
+      );
 
-    return Ok(1);
+      device_state::render_current(worker.handle(redis_connection), device_id)
+        .await
+        .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))
+    }
+
+    RegistrarJobKind::UserAccessTokenRefresh { handle, user_id } => {
+      log::info!(
+        "job[{}] processing new token refresh for '{}'",
+        job_container.id,
+        user_id
+      );
+      users::process_access_token(worker, handle, user_id)
+        .await
+        .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
+    }
+
+    // Process requests-for-render-request jobs. This is a bit odd since we already have the
+    // renderer jobs too, but is helpful for providing easier ergonomics into sending device
+    // registration qr codes.
+    RegistrarJobKind::Renders(jobs::RegistrarRenderKinds::RegistrationScannable(device_id)) => {
+      log::info!(
+        "job[{}] sending initial scannable link to device '{device_id}'",
+        job_container.id
+      );
+
+      let mut initial_url = http_types::Url::parse(&worker.config.initial_scannable_addr).map_err(|error| {
+        log::warn!("unable to create initial url for device - {error}");
+        io::Error::new(io::ErrorKind::Other, format!("{error}"))
+      })?;
+
+      // scope our mutable borrow/mutation so it is dropped before we take ownship when we
+      // `to_string` it onto our layout.
+      {
+        let mut query = initial_url.query_pairs_mut();
+        query.append_pair("device_target_id", device_id);
+      }
+
+      let mut queue = crate::rendering::queue::Queue::new(redis_connection, &worker.config.vendor_api_secret);
+      let layout = crate::rendering::RenderVariant::scannable(initial_url.to_string());
+      let job_result = queue
+        .queue(&device_id, &crate::rendering::QueuedRenderAuthority::Registrar, layout)
+        .await;
+
+      job_result.map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
+    }
+
+    RegistrarJobKind::RunDeviceSchedule(device_id) => {
+      log::info!(
+        "job[{}] immediately executing device schedule for '{device_id}'",
+        job_container.id
+      );
+
+      super::device_schedule::execute(worker.handle(redis_connection), &device_id)
+        .await
+        .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))
+        .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
+    }
+
+    RegistrarJobKind::ToggleDefaultSchedule {
+      user_id,
+      device_id,
+      should_enable,
+    } => {
+      log::info!(
+        "job[{}] toggling default device schedule for device '{device_id}' to user '{user_id}' ({should_enable})",
+        job_container.id
+      );
+
+      super::device_schedule::toggle(worker.handle(redis_connection), device_id, user_id, *should_enable)
+        .await
+        .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
+    }
+
+    // Process device rename requests.
+    RegistrarJobKind::Rename(request) => {
+      log::info!("device rename request being processed - {request:?}");
+      let job_result = rename::rename(worker, request).await;
+      job_result.map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
+    }
+
+    // Process device ownership change requests.
+    RegistrarJobKind::OwnershipChange(request) => {
+      let job_result = ownership::process_change(worker, request).await;
+      job_result.map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
+    }
+
+    // Process device ownership claiming requests.
+    RegistrarJobKind::Ownership(ownership_request) => {
+      log::debug!("registrar found next ownership claims job - '{ownership_request:?}'");
+      let job_result = ownership::register_device(worker, ownership_request).await;
+      log::debug!("registration result - {job_result:?}");
+      job_result.map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
+    }
+  };
+
+  let serialized_result = match result {
+    Ok(job_result) => serde_json::to_string(&job_result),
+    Err(job_error) => {
+      log::error!("job failure - {job_error:?}, recording!");
+      serde_json::to_string(&schema::jobs::JobResult::Failure(job_error.to_string()))
+    }
   }
+  .map_err(|error| {
+    log::error!("Unable to serialize job result - {error}");
+    io::Error::new(io::ErrorKind::Other, format!("job-result-serialization - {error}"))
+  })?;
 
-  Ok(0)
+  kramer::execute(
+    &mut redis_connection,
+    kramer::Command::Hashes(kramer::HashCommand::Set(
+      crate::constants::REGISTRAR_JOB_RESULTS,
+      kramer::Arity::One((&job_container.id, serialized_result)),
+      kramer::Insertion::Always,
+    )),
+  )
+  .await?;
+
+  Ok(1)
 }

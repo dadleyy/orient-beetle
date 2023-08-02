@@ -220,7 +220,7 @@ async fn check_schedules(worker: &mut super::worker::WorkerHandle<'_>) -> anyhow
     )
     .await?;
 
-  log::debug!("queried device schedules with cutoff");
+  log::debug!("queried device schedules with cutoff - {cutoff}");
 
   while let Some(handle_result) = async_std::stream::StreamExt::next(&mut cursor).await {
     log::debug!("found schedule needing refresh - {handle_result:?}");
