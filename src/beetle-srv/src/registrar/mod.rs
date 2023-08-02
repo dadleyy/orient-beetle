@@ -69,7 +69,19 @@ impl Configuration {
   pub async fn worker(self) -> io::Result<Worker> {
     let mongo = worker::WorkerMongo::new(&self.mongo.url, self.mongo.clone()).await?;
 
+    let (reporting, sink) = self
+      .registrar
+      .analytics_configuration
+      .clone()
+      .map(crate::reporting::Worker::new)
+      .unzip();
+
+    if let Some(reporter) = reporting {
+      async_std::task::spawn(reporter.work());
+    }
+
     Ok(Worker {
+      reporting: sink,
       config: self.registrar,
       redis: self.redis,
       google: self.google,

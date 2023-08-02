@@ -2,3 +2,6 @@
 
 /// Google api functionality.
 pub mod google;
+
+/// Newrelic configuration.
+pub mod newrelic;

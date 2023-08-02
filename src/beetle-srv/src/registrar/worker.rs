@@ -174,6 +174,9 @@ pub struct Worker {
 
   /// Configuration for google apis.
   pub(super) google: crate::config::GoogleConfiguration,
+
+  /// The handle for our reporting worker.
+  pub(super) reporting: Option<async_std::channel::Sender<crate::reporting::Event>>,
 }
 
 impl Worker {
@@ -196,6 +199,7 @@ impl Worker {
 
       Some(mut redis_connection) => {
         log::trace!("active redis connection, checking pool");
+        self.report(&mut redis_connection).await;
 
         // Attempt to fill our id pool if necessary.
         let amount = pool::fill_pool(
@@ -243,6 +247,37 @@ impl Worker {
     };
 
     Ok(())
+  }
+
+  /// Reports queue metrics to the analytics configuration, if any.
+  async fn report(&self, redis: &mut crate::redis::RedisConnection) -> Option<()> {
+    let sink = self.reporting.as_ref()?;
+
+    let queue_length = match kramer::execute(
+      redis,
+      kramer::Command::<&str, &str>::Lists(kramer::ListCommand::Len(crate::constants::REGISTRAR_JOB_QUEUE)),
+    )
+    .await
+    .map_err(|error| {
+      log::error!("unable to take length of job queue - {error}");
+    })
+    .ok()?
+    {
+      kramer::Response::Item(kramer::ResponseValue::Integer(value)) => value as u16,
+      other => {
+        log::warn!("strange response from job queue length sample - {other:?}");
+        0
+      }
+    };
+
+    if let Err(error) = sink
+      .send(crate::reporting::Event::JobQueueLengthSample { queue_length })
+      .await
+    {
+      log::error!("failed sending event to reporting queue - {error}");
+    }
+
+    Some(())
   }
 
   /// Internally, this method is used to wrap our valid redis connection with other information

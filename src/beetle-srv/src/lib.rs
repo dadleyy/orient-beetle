@@ -51,3 +51,6 @@ pub mod vendor;
 /// Generally speaking, this module contains types stored in the mongo instance. It should be
 /// renamed to something better.
 pub mod schema;
+
+/// The reporting crate contains metrics gathering + publishing functionality.
+pub(crate) mod reporting;
