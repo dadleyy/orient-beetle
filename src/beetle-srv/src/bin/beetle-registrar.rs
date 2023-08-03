@@ -47,7 +47,7 @@ async fn run(config: beetle::registrar::Configuration) -> Result<()> {
     }
 
     if let Some(interval) = interval.as_mut() {
-      log::info!("explicit registrar execution delay - {:?}", interval_ms);
+      log::trace!("explicit registrar execution delay - {:?}", interval_ms);
       interval.next().await;
     }
   }

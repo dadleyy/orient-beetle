@@ -82,7 +82,8 @@ impl Worker {
           format!("failed taking next reporting event - {error}"),
         )
       })?;
-      log::info!("reporting has next event to send along - {event:?}");
+
+      log::trace!("reporting has next event to send along - {event:?}");
 
       let result = match (event, &self.config) {
         (

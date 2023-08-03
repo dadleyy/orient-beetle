@@ -107,6 +107,9 @@ pub struct RegistrarConfiguration {
   /// The secret used to encrypt vendor api access tokens.
   pub vendor_api_secret: String,
 
+  /// If provided, this is the amount of time between device schedule refreshing.
+  pub device_schedule_refresh_interval_seconds: Option<i64>,
+
   /// Optional analytics configuration, used for monitoring queue health.
   pub analytics_configuration: Option<RegistrarAnalyticsConfiguration>,
 }

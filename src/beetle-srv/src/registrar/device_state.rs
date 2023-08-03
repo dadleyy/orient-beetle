@@ -283,7 +283,7 @@ pub(super) async fn attempt_transition(
 ) -> anyhow::Result<()> {
   let states = handle.device_state_collection()?;
   let device_id = transition_request.device_id.clone();
-  log::info!("attempting to perform a state transition for device '{device_id}'");
+  log::trace!("attempting to perform a state transition for device '{device_id}'");
 
   let current_state = states
     .find_one_and_update(
@@ -313,7 +313,7 @@ pub(super) async fn attempt_transition(
     })?
     .ok_or_else(|| anyhow::Error::msg(format!("unable to find device '{}'", &device_id)))?;
 
-  log::debug!("loaded current state for transition - {current_state:?}");
+  log::trace!("loaded current state for transition - {current_state:?}");
 
   let next_state = match (current_state.rendering, &transition_request.transition) {
     // push a message onto nothing.
@@ -403,7 +403,7 @@ pub(super) async fn attempt_transition(
     )
     .await?;
 
-  log::debug!("final state - {updated_state:?}");
+  log::trace!("final state - {updated_state:?}");
 
   let percolated_render_id = handle
     .enqueue_kind(super::jobs::RegistrarJobKind::Renders(

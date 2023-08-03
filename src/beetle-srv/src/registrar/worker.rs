@@ -47,6 +47,14 @@ impl WorkerMongo {
 
     Ok(Self { client: mongo, config })
   }
+
+  /// Returns the `mongodb` collection associated with our device schedule schema object.
+  pub(super) fn schedules_collection(&self) -> mongodb::Collection<schema::DeviceSchedule> {
+    self
+      .client
+      .database(&self.config.database)
+      .collection(&self.config.collections.device_schedules)
+  }
 }
 
 /// This type provides the api that the worker "hands down" to the various functions it performs
@@ -199,7 +207,6 @@ impl Worker {
       }
 
       Some(mut redis_connection) => {
-        log::trace!("active redis connection, checking pool");
         let pending_job_count = self.report(&mut redis_connection).await.unwrap_or(1);
 
         // Attempt to fill our id pool if necessary.
@@ -220,7 +227,7 @@ impl Worker {
           let amount = diagnostics::mark_active(self, &mut redis_connection).await?;
 
           if amount == 0 {
-            log::info!("no remaining active devices heard from after {i}");
+            log::trace!("no remaining active devices heard from after {i}");
             break;
           }
         }
@@ -230,18 +237,24 @@ impl Worker {
         }
 
         let mut processed_job_count = 0u8;
+        if pending_job_count > 0 {
+          log::trace!("attempting to process {pending_job_count} job(s)");
+          while pending_job_count > 0 && processed_job_count < DEFAULT_JOB_BATCH_SIZE {
+            log::trace!("attempting to run job attempt #{processed_job_count}");
 
-        while pending_job_count > 0 && processed_job_count < DEFAULT_JOB_BATCH_SIZE {
-          log::trace!("attempting to run job attempt #{processed_job_count}");
+            processed_job_count += match work_jobs(self, &mut redis_connection).await {
+              Err(error) => {
+                log::error!("registar job worker failed - {error}");
+                break;
+              }
 
-          processed_job_count += match work_jobs(self, &mut redis_connection).await {
-            Err(error) => {
-              log::error!("registar job worker failed - {error}");
-              break;
-            }
-            Ok(amt) if amt == 0 => break,
-            Ok(amt) => amt,
-          };
+              // A none returned if there is nothing left for us to do,
+              Ok(None) => break,
+
+              // Otherwise, we still have jobs (this one may have been ignored).
+              Ok(Some(amt)) => amt,
+            };
+          }
         }
 
         if let Some(sink) = self.reporting.as_ref() {
@@ -302,10 +315,30 @@ impl Worker {
   }
 }
 
+/// This is abstracted from below so we can handle the first value in an array response, OR the
+/// only value in a string response the same way.
+fn decrypt_job<S>(worker: &mut Worker, value: S) -> io::Result<jobs::RegistrarJob>
+where
+  S: AsRef<str>,
+{
+  let key = jsonwebtoken::DecodingKey::from_secret(worker.config.vendor_api_secret.as_bytes());
+  let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
+
+  jsonwebtoken::decode::<super::jobs::RegistrarJobEncrypted>(value.as_ref(), &key, &validation)
+    .map_err(|error| {
+      log::error!("registrar worker unable to decode token - {}", error);
+      io::Error::new(io::ErrorKind::Other, "bad-jwt")
+    })
+    .map(|job_container| job_container.claims.job)
+}
+
 /// Attempts to pop and execute the next job available for us. This happens _outside_ our worker's
 /// `work` method so we can enforce that we have a valid redis connection to use, which is the
 /// primary function of the `work` method.
-async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis::RedisConnection) -> io::Result<u8> {
+async fn work_jobs(
+  worker: &mut Worker,
+  mut redis_connection: &mut crate::redis::RedisConnection,
+) -> io::Result<Option<u8>> {
   // Attempt to get the next job.
   log::trace!(
     "attempting to pop next actual job from '{}'",
@@ -328,37 +361,37 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
       .get(1)
       .and_then(|kind| match kind {
         kramer::ResponseValue::String(value) => Some(value),
-        _ => None,
+        other => {
+          log::error!("strange response from registrar job pop - {other:?}");
+          None
+        }
       })
       .and_then(|string| {
         log::trace!("pulled encrypted job ({} chars)", string.len());
-
-        // TODO(job_encryption): using jwt here for ease, not the fact that it is the best. The
-        // original intent in doing this was to avoid having plaintext in our redis messages.
-        // Leveraging and existing depedency like `aes-gcm` would be awesome.
-        let key = jsonwebtoken::DecodingKey::from_secret(worker.config.vendor_api_secret.as_bytes());
-        let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
-
-        jsonwebtoken::decode::<super::jobs::RegistrarJobEncrypted>(string, &key, &validation)
-          .map_err(|error| {
-            log::error!("registrar worker unable to decode token - {}", error);
-            io::Error::new(io::ErrorKind::Other, "bad-jwt")
-          })
-          .map(|job_container| job_container.claims.job)
-          .ok()
+        decrypt_job(worker, string).ok()
       }),
-    _ => None,
+    kramer::Response::Item(kramer::ResponseValue::String(value)) => decrypt_job(worker, value).ok(),
+
+    // Fortunately, the queue will tell us that we're empty without having to check ourselves.
+    kramer::Response::Item(kramer::ResponseValue::Empty) => return Ok(None),
+
+    other => {
+      log::error!("very strange response from registrar job pop - {other:?}");
+      None
+    }
   };
 
   let job_container = match next_job {
-    None => return Ok(0),
+    None => return Ok(Some(0)),
     Some(job) => job,
   };
 
-  log::info!(
+  log::trace!(
     "jobType[{:?}] is now processing",
     std::mem::discriminant(&job_container.job)
   );
+
+  let mut returned_state = Some(1);
 
   let result = match &job_container.job {
     RegistrarJobKind::MutateDeviceState(transition) => {
@@ -427,16 +460,28 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
       job_result.map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
     }
 
-    RegistrarJobKind::RunDeviceSchedule(device_id) => {
+    RegistrarJobKind::RunDeviceSchedule {
+      device_id,
+      refresh_nonce,
+    } => {
       log::info!(
         "job[{}] immediately executing device schedule for '{device_id}'",
         job_container.id
       );
 
-      super::device_schedule::execute(worker.handle(redis_connection), &device_id)
-        .await
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))
-        .map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
+      let execution_result =
+        super::device_schedule::execute(worker.handle(redis_connection), &device_id, refresh_nonce.as_ref())
+          .await
+          .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()));
+
+      // A bit of special casing here - since we have the opportunity to be dealing with stale
+      // attempts to run a device schedule, we want to return a `Some(0)` if this job was
+      // unprocessable.
+      if let Ok(None) = execution_result {
+        returned_state = Some(0);
+      }
+
+      execution_result.map(|_| schema::jobs::JobResult::Success(schema::jobs::SuccessfulJobResult::Terminal))
     }
 
     RegistrarJobKind::ToggleDefaultSchedule {
@@ -498,5 +543,5 @@ async fn work_jobs(worker: &mut Worker, mut redis_connection: &mut crate::redis:
   )
   .await?;
 
-  Ok(1)
+  Ok(returned_state)
 }

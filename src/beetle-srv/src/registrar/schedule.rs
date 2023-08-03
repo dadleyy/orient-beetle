@@ -111,7 +111,7 @@ async fn check_tokens(worker: &mut super::worker::WorkerHandle<'_>) -> io::Resul
     let diff = now.signed_duration_since(token_ref.created).num_seconds().abs_diff(0);
     let expiration_diff = token_ref.token.expires_in.checked_sub(diff).unwrap_or_default();
 
-    log::debug!(
+    log::trace!(
       "next user access token - '{}' (created {diff} seconds ago) (expires in {expiration_diff} seconds)",
       current_handle.oid
     );
@@ -161,7 +161,7 @@ async fn check_tokens(worker: &mut super::worker::WorkerHandle<'_>) -> io::Resul
           log::warn!("unable to refresh token for user '{}' ({error})", current_handle.oid);
         }
         Ok(mut updated_token) => {
-          log::info!(
+          log::trace!(
             "successfully updated token, queuing job to persist '{:?}'",
             updated_token.created
           );
@@ -208,8 +208,15 @@ async fn check_schedules(worker: &mut super::worker::WorkerHandle<'_>) -> anyhow
   log::trace!("registrar now checking for any schedules due for a refresh");
 
   let schedules_collection = worker.device_schedule_collection()?;
+  let interval_seconds = worker
+    .config
+    .device_schedule_refresh_interval_seconds
+    .as_ref()
+    .copied()
+    .unwrap_or(SCHEDULE_REFRESH_SECONDS);
+
   let cutoff = chrono::Utc::now()
-    .checked_sub_signed(chrono::Duration::seconds(SCHEDULE_REFRESH_SECONDS))
+    .checked_sub_signed(chrono::Duration::seconds(interval_seconds))
     .ok_or_else(|| anyhow::Error::msg("unable to create cutoff date for device schedule refresh"))?
     .timestamp_millis();
 
@@ -220,24 +227,66 @@ async fn check_schedules(worker: &mut super::worker::WorkerHandle<'_>) -> anyhow
     )
     .await?;
 
-  log::debug!("queried device schedules with cutoff - {cutoff}");
+  log::trace!("queried device schedules with cutoff - {cutoff}");
+  let mut nonce_updates = vec![];
 
   while let Some(handle_result) = async_std::stream::StreamExt::next(&mut cursor).await {
-    log::debug!("found schedule needing refresh - {handle_result:?}");
+    log::trace!("found schedule needing refresh - {handle_result:?}");
 
-    let device_id = match handle_result {
+    let schedule = match handle_result {
       Err(error) => {
-        log::warn!("strange device schedule problem - {error}");
+        log::error!("strange device schedule problem - {error}");
         continue;
       }
-      Ok(schedule) => schedule.device_id,
+      Ok(schedule) => schedule,
     };
 
+    let device_id = schedule.device_id;
+
+    match (schedule.refresh_nonce, schedule.latest_refresh_nonce) {
+      (Some(current), Some(latest)) if current == latest => {}
+      (None, None) => {
+        log::warn!("schedule['{device_id}'] no previous nonce, setting now");
+      }
+      _ => {
+        log::trace!("schedule['{device_id}'] will be handled by next execution job");
+        continue;
+      }
+    }
+
+    let new_nonce = uuid::Uuid::new_v4().to_string();
+    log::info!("schedule['{device_id}'] device is ready for refresh -> {new_nonce}");
+    nonce_updates.push((device_id.clone(), new_nonce.clone()));
+
     if let Err(error) = worker
-      .enqueue_kind(super::RegistrarJobKind::RunDeviceSchedule(device_id))
+      .enqueue_kind(super::RegistrarJobKind::RunDeviceSchedule {
+        device_id,
+        refresh_nonce: Some(new_nonce),
+      })
       .await
     {
       log::error!("unable to queue device schedule execution job - {error}");
+    }
+  }
+
+  let schedules = worker.mongo.schedules_collection();
+  for (device_id, new_nonce) in nonce_updates {
+    let result = schedules
+      .find_one_and_update(
+        bson::doc! { "device_id": &device_id },
+        bson::doc! { "$set": { "refresh_nonce": new_nonce } },
+        mongodb::options::FindOneAndUpdateOptions::builder()
+          .return_document(mongodb::options::ReturnDocument::After)
+          .build(),
+      )
+      .await;
+
+    match result {
+      Err(error) => {
+        log::error!("unable to update device '{device_id}' nonce - {error}");
+      }
+      Ok(None) => log::error!("unable to find device '{device_id}'"),
+      Ok(Some(_)) => log::trace!("successfully updated device '{device_id}'"),
     }
   }
 

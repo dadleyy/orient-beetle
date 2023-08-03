@@ -34,7 +34,13 @@ pub enum RegistrarJobKind {
   MutateDeviceState(device_state::DeviceStateTransitionRequest),
 
   /// An immediate attempt to run the schedule for a device.
-  RunDeviceSchedule(String),
+  RunDeviceSchedule {
+    /// The id of the device to refresh based on its schedule.
+    device_id: String,
+
+    /// The nonce associated with this attempt to run the schedule.
+    refresh_nonce: Option<String>,
+  },
 
   /// A job that will simply turn on or off the default schedule for a device, given a user whose
   /// calendar would be used.

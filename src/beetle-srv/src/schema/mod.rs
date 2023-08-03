@@ -146,6 +146,13 @@ pub struct DeviceSchedule {
   /// The timestamp of the last executed attempt.
   pub last_executed: Option<u64>,
 
+  /// A unique value that is updated when refreshes are queued and sent along with the job. If
+  /// multiple refresh jobs are queued in a row, ones that do not match are ignored.
+  pub refresh_nonce: Option<String>,
+
+  /// The latest refresh nonce. If this does not match a refresh job, it is ignored.
+  pub latest_refresh_nonce: Option<String>,
+
   /// The underlying schedule implementation.
   pub kind: Option<DeviceScheduleKind>,
 }
