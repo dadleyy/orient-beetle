@@ -222,14 +222,24 @@ impl Worker {
 
         // Attempt to mark all devices that have submitted an incoming ping since our last attempt
         // as active in our diagnostic collection.
+        let mut ingested_count = 0u16;
         for i in 0..self.config.active_device_chunk_size {
           log::trace!("checking active device queue");
           let amount = diagnostics::mark_active(self, &mut redis_connection).await?;
+          ingested_count += amount as u16;
 
           if amount == 0 {
             log::trace!("no remaining active devices heard from after {i}");
             break;
           }
+        }
+
+        if let Some(sink) = self.reporting.as_ref() {
+          let _ = sink
+            .send(reporting::Event::DeviceDiganosticBatchIngested {
+              device_count: ingested_count,
+            })
+            .await;
         }
 
         if let Err(error) = super::schedule::check_schedule(self.handle(&mut redis_connection)).await {

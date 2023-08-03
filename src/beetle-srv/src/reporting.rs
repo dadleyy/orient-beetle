@@ -8,12 +8,21 @@ use std::io;
 const QUEUE_DIAGNOSTIC_SAMPLE_EVENT_NAME: &str = "registrarJobQueueSample";
 
 /// The event name in newrelic for our job processed counts.
-const BATCH_PROCESSED_EVENT_NAME: &str = "registrarJobBatchProcessed";
+const JOB_BATCH_PROCESSED_EVENT_NAME: &str = "registrarJobBatchProcessed";
+
+/// The event name in newrelic for our device diganostic handled.
+const DEVICE_DIAGNOSTIC_INGESTION_BATCH: &str = "deviceDiagnosticIngestionBatch";
 
 /// This is the enumerated type that holds all things sent to our third party analytics platform
 /// for platform health monitoring.
 #[derive(Serialize, Debug)]
 pub enum Event {
+  /// This event is submitted by the registrar whenever it hears from devices on the incoming
+  /// queue.
+  DeviceDiganosticBatchIngested {
+    /// The amount of devices processed.
+    device_count: u16,
+  },
   /// When the registrar finishes working jobs up to the max batch amount, this event is sent.
   JobBatchProcessed {
     /// The amount of jobs processed.
@@ -34,6 +43,18 @@ pub struct Worker {
 
   /// The receiving side of our event queue.
   receiver: async_std::channel::Receiver<Event>,
+}
+
+/// The container of our analytic event.
+#[derive(Debug, serde::Serialize)]
+struct DeviceDiganosticBatchIngested {
+  /// The amount of jobs processed.
+  #[serde(rename = "device_count")]
+  device_count: u16,
+
+  /// The constant event name for this payload.
+  #[serde(rename = "eventType")]
+  event_type: &'static str,
 }
 
 /// The container of our analytic event.
@@ -87,6 +108,21 @@ impl Worker {
 
       let result = match (event, &self.config) {
         (
+          Event::DeviceDiganosticBatchIngested { device_count },
+          crate::config::RegistrarAnalyticsConfiguration::NewRelic { account_id, api_key },
+        ) => {
+          self
+            .send_newrelic(
+              DeviceDiganosticBatchIngested {
+                device_count,
+                event_type: DEVICE_DIAGNOSTIC_INGESTION_BATCH,
+              },
+              account_id,
+              api_key,
+            )
+            .await
+        }
+        (
           Event::JobBatchProcessed { job_count },
           crate::config::RegistrarAnalyticsConfiguration::NewRelic { account_id, api_key },
         ) => {
@@ -94,7 +130,7 @@ impl Worker {
             .send_newrelic(
               BatchProcessedSample {
                 job_count,
-                event_type: BATCH_PROCESSED_EVENT_NAME,
+                event_type: JOB_BATCH_PROCESSED_EVENT_NAME,
               },
               account_id,
               api_key,
