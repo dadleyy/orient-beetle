@@ -143,8 +143,9 @@ pub struct TokenHandle {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "beetle:kind", content = "beetle:content")]
 pub enum ParsedEventTimeMarker {
-  /// A whole-day event.
+  /// A whole-day event. YYYY-MM-DD
   Date(u32, u32, u32),
+
   /// An event with a specific time.
   DateTime(chrono::DateTime<chrono::offset::FixedOffset>),
 }

@@ -150,6 +150,18 @@ fn render_message_entry(
   }
 }
 
+/// Returns the "marker" for an event, where the marker is the event's stringified starting title.
+/// Note that this also doubles as the _key_ of our `BTreeMap` when iterating over eents, which is
+/// how the events are ultimately ordered.
+fn event_marker(event: &google::ParsedEvent) -> Option<String> {
+  match event.start {
+    google::ParsedEventTimeMarker::DateTime(datetime) => Some(datetime.format("%B %d").to_string()),
+    google::ParsedEventTimeMarker::Date(y, m, d) => {
+      chrono::NaiveDate::from_ymd_opt(y as i32, m, d).map(|d| d.format("%B %d").to_string())
+    }
+  }
+}
+
 /// This method will actually build the render layout based on the current device rendering state.
 /// It is possible that this would be better implemented as an associated method on the
 /// `DeviceRenderingState` type itself, but the goal is to avoid _any_ methods directly built in
@@ -160,12 +172,21 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
       events,
       messages: message_list,
     } => {
-      let mut left = vec![];
+      let mut events_by_date = std::collections::BTreeMap::new();
 
       for event in events.iter().take(MAX_DISPLAYED_EVENTS) {
         log::trace!("rendering event '{event:?}'");
+        let marker = match event_marker(event) {
+          Some(m) => m,
+          None => {
+            log::error!("event '{event:?}' is missing date");
+            continue;
+          }
+        };
+        let mut messages: Vec<rendering::components::StylizedMessage<String>> =
+          events_by_date.remove(&marker).unwrap_or_default();
 
-        left.push(rendering::components::StylizedMessage {
+        messages.push(rendering::components::StylizedMessage {
           message: event.summary.clone(),
           size: Some(PRIMARY_TEXT_SIZE),
 
@@ -191,7 +212,7 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
             let formatted_start = s.format("%H:%M").to_string();
             let formatted_end = e.format("%H:%M").to_string();
 
-            left.push(rendering::components::StylizedMessage {
+            messages.push(rendering::components::StylizedMessage {
               message: format!("{formatted_start} - {formatted_end}"),
               size: Some(SECONDARY_TEXT_SIZE),
 
@@ -215,6 +236,8 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
             log::warn!("event start/end combination not implemented yet - {s:?} {e:?}");
           }
         }
+
+        events_by_date.insert(marker, messages);
       }
 
       let messages = message_list
@@ -224,9 +247,28 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
           acc
         });
 
+      let ratio = if messages.is_empty() { 90 } else { 60 };
+
+      let mut left = vec![];
+      for (idx, (title, mut messages)) in events_by_date.into_iter().enumerate() {
+        let title_message = rendering::components::StylizedMessage {
+          message: title,
+          size: Some(SECONDARY_TEXT_SIZE),
+          margin: Some(rendering::OptionalBoundingBox {
+            top: (idx > 0).then_some(10),
+            left: Some(5),
+            ..Default::default()
+          }),
+          ..Default::default()
+        };
+        messages.insert(0, title_message);
+
+        left.append(&mut messages);
+      }
+
       let left = rendering::SplitContents::Messages(left);
       let right = rendering::SplitContents::Messages(messages);
-      let split = rendering::SplitLayout { left, right, ratio: 50 };
+      let split = rendering::SplitLayout { left, right, ratio };
       Ok(rendering::RenderLayout::Split(split))
     }
     schema::DeviceRenderingState::MessageList { messages: list } => {
