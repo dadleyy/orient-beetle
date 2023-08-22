@@ -22,8 +22,11 @@ module Environment exposing
 import Browser.Navigation as Nav
 import Dict
 import Html
+import Html.Attributes as A
 import Http
+import Iso8601 as Date
 import Json.Decode
+import Time
 import Url
 
 
@@ -43,6 +46,7 @@ type alias Configuration =
     { api : String
     , apiDocsUrl : String
     , root : String
+    , version : String
     , loginUrl : String
     , logoutUrl : String
     , localization : List ( String, String )
@@ -164,6 +168,39 @@ statusDecoder =
         (Json.Decode.field "timestamp" Json.Decode.string)
 
 
+formatVersionTime : Time.Posix -> String
+formatVersionTime stamp =
+    let
+        zone =
+            Time.utc
+    in
+    String.join ":"
+        [ String.fromInt (Time.toHour zone stamp) |> String.padLeft 2 '0'
+        , String.fromInt (Time.toMinute zone stamp) |> String.padLeft 2 '0'
+        ]
+        ++ "UTC"
+
+
+versionInfo : Environment -> StatusResponse -> Html.Html Message
+versionInfo env response =
+    let
+        parsed =
+            Date.toTime response.timestamp
+
+        timeString =
+            Result.map formatVersionTime parsed |> Result.withDefault response.timestamp
+
+        apiVersion =
+            "api: " ++ String.slice 0 7 response.version
+
+        uiVersion =
+            "ui: " ++ String.slice 0 7 env.configuration.version
+    in
+    Html.div
+        [ A.class "flex items-center" ]
+        (List.map (\t -> Html.span [ A.class "px-2 mx-1 block bg-neutral-900 rounded" ] [ Html.text t ]) [ apiVersion, uiVersion, timeString ])
+
+
 statusFooter : Environment -> Html.Html Message
 statusFooter env =
     case env.status of
@@ -173,7 +210,7 @@ statusFooter env =
                     Html.div [] [ Html.text (String.concat [ "failed: ", error ]) ]
 
                 Ok response ->
-                    Html.div [] [ Html.text (String.concat [ String.slice 0 7 response.version, " @ ", response.timestamp ]) ]
+                    Html.div [] [ versionInfo env response ]
 
         Nothing ->
             Html.div [] [ Html.text "Connecting..." ]

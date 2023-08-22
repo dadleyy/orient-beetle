@@ -101,17 +101,7 @@ where
       }
 
       Self::Split(SplitLayout { left, right, ratio }) => {
-        let left_max = match ratio {
-          25 => dimensions.0 / 4,
-          33 => dimensions.0 / 3,
-          50 => dimensions.0 / 2,
-          66 => dimensions.0 - (dimensions.0 / 3),
-          75 => dimensions.0 - (dimensions.0 / 4),
-          80 => dimensions.0 - (dimensions.0 / 5),
-          // TODO: support more breakpoints, or do actual math. This is just implemented this way
-          // for quick, strict support.
-          _ => dimensions.0 / 2,
-        };
+        let left_max = (dimensions.0 as f32 * (ratio as f32 / 100f32)).round() as u32;
 
         match left {
           SplitContents::Messages(messages) => {

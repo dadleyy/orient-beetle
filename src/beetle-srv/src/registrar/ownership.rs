@@ -25,10 +25,10 @@ pub enum DeviceOwnershipChangeRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DeviceOwnershipRequest {
   /// The id of the device in question.
-  pub(super) device_id: String,
+  pub device_id: String,
 
   /// The id of the user in question.
-  pub(super) user_id: String,
+  pub user_id: String,
 }
 
 /// This is the real worker for this "ownership" kind of job.
@@ -54,17 +54,23 @@ pub(super) async fn process_change(worker: &mut super::Worker, job: &DeviceOwner
 
       // Attempt to determine the next state based on the requested
       let new_state = match (&model.authority_model, state) {
-        (Some(schema::DeviceAuthorityModel::Exclusive(owner)), PublicAvailabilityChange::ToPublic) => {
+        (Some(schema::DeviceAuthorityModel::Exclusive { owner }), PublicAvailabilityChange::ToPublic) => {
           log::info!("moving from private, exclusive to public");
-          schema::DeviceAuthorityModel::Public(owner.clone(), vec![])
+          schema::DeviceAuthorityModel::Public {
+            owner: owner.clone(),
+            guests: vec![],
+          }
         }
-        (Some(schema::DeviceAuthorityModel::Public(owner, members)), PublicAvailabilityChange::ToPrivate) => {
+        (Some(schema::DeviceAuthorityModel::Public { owner, guests }), PublicAvailabilityChange::ToPrivate) => {
           log::info!("moving from public to shared");
-          schema::DeviceAuthorityModel::Shared(owner.clone(), members.clone())
+          schema::DeviceAuthorityModel::Shared {
+            owner: owner.clone(),
+            guests: guests.clone(),
+          }
         }
-        (Some(schema::DeviceAuthorityModel::Shared(owner, _)), PublicAvailabilityChange::ToPrivate) => {
+        (Some(schema::DeviceAuthorityModel::Shared { owner, .. }), PublicAvailabilityChange::ToPrivate) => {
           log::info!("moving from shared to exclusive");
-          schema::DeviceAuthorityModel::Exclusive(owner.clone())
+          schema::DeviceAuthorityModel::Exclusive { owner: owner.clone() }
         }
         other => {
           log::warn!("toggling public availability means nothing in combination with '{other:?}'");
@@ -77,10 +83,7 @@ pub(super) async fn process_change(worker: &mut super::Worker, job: &DeviceOwner
         device_id: id.clone(),
         authority_model: Some(new_state),
       };
-      // let updates = bson::to_document(&new_model).map_err(|error| {
-      //   log::warn!("unable to serialize - {error}");
-      //   io::Error::new(io::ErrorKind::Other, "serialization failure (auth model)")
-      // })?;
+
       let result = models
         .find_one_and_replace(
           bson::doc! { "device_id": &id },
@@ -93,6 +96,7 @@ pub(super) async fn process_change(worker: &mut super::Worker, job: &DeviceOwner
         )
         .await
         .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("unable to update model - {error}")))?;
+
       log::info!("matched update count - '{:?}'", result);
     }
   }
@@ -182,14 +186,22 @@ pub(super) async fn register_device(worker: &mut super::Worker, job: &DeviceOwne
 
   if let Some(schema::DeviceAuthorityRecord {
     device_id,
-    authority_model: Some(schema::DeviceAuthorityModel::Public(original, mut public_users)),
+    authority_model:
+      Some(schema::DeviceAuthorityModel::Public {
+        owner: original,
+        guests: mut public_users,
+      }),
   }) = authority_model
   {
     log::info!("adding user to the public authority model tracking for device '{device_id}'");
     public_users.push(job.user_id.clone());
+
     let new_model = schema::DeviceAuthorityRecord {
       device_id: device_id.clone(),
-      authority_model: Some(schema::DeviceAuthorityModel::Public(original, public_users)),
+      authority_model: Some(schema::DeviceAuthorityModel::Public {
+        owner: original,
+        guests: vec![],
+      }),
     };
 
     let models = mongo

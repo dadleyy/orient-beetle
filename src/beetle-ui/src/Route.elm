@@ -230,15 +230,14 @@ routeLoadedEnv env url maybeId =
                             Redirect (Environment.buildRoutePath env "home")
 
 
-
--- Given a URL, try to match on the route. The first thing this will do is try to find an id
--- associated with the session/environment and match on "authenticated" routes.
-
-
 fromUrl : Environment.Environment -> Url.Url -> RouteInitialization
 fromUrl env url =
-    Environment.getLoadedId env
-        |> Maybe.map (routeLoadedEnv env url)
+    -- This is a maybe of a maybe. We don't want to redirect if there is no session _yet_.
+    let
+        maybeLoadedId =
+            Environment.getLoadedId env
+    in
+    Maybe.map (routeLoadedEnv env url) maybeLoadedId
         |> Maybe.withDefault (Matched ( Nothing, Cmd.none ))
 
 

@@ -94,13 +94,14 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
     return Err(tide::Error::from_str(400, "not-found"));
   }
 
+  let device_id = queue_payload.device_id.clone();
+
   log::info!(
-    "user '{}' creating message for device - {:?}",
+    "user '{}' creating message for device '{device_id}' - {:?}",
     user.oid,
     queue_payload.kind
   );
 
-  let device_id = queue_payload.device_id.clone();
   let layout = match queue_payload.kind {
     kind @ QueuePayloadKind::MakePublic | kind @ QueuePayloadKind::MakePrivate => {
       let privacy = match kind {
@@ -109,8 +110,10 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
         _ => return Ok(tide::Error::from_str(422, "bad transition").into()),
       };
 
-      let job = registrar::RegistrarJob::set_public_availability(device_id, privacy);
-      let id = worker.queue_job(job).await?;
+      let job = registrar::RegistrarJobKind::OwnershipChange(
+        registrar::ownership::DeviceOwnershipChangeRequest::SetPublicAvailability(device_id, privacy),
+      );
+      let id = worker.queue_job_kind(job).await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
@@ -130,6 +133,7 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
     }
 
     QueuePayloadKind::Refresh => {
+      log::debug!("refreshing device state for '{device_id}'");
       let job =
         registrar::RegistrarJobKind::Renders(registrar::jobs::RegistrarRenderKinds::CurrentDeviceState(device_id));
       let id = worker.queue_job_kind(job).await?;
@@ -138,8 +142,9 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
 
     // Attempt to queue the large, scannable QR code for registering this define.
     QueuePayloadKind::Registration => {
-      let job = registrar::RegistrarJob::registration_scannable(device_id);
-      let id = worker.queue_job(job).await?;
+      let job =
+        registrar::RegistrarJobKind::Renders(registrar::jobs::RegistrarRenderKinds::RegistrationScannable(device_id));
+      let id = worker.queue_job_kind(job).await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
@@ -158,8 +163,12 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
     QueuePayloadKind::Rename(new_name) => {
-      let job = registrar::RegistrarJob::rename_device(device_id, new_name.clone());
-      let id = worker.queue_job(job).await?;
+      let id = worker
+        .queue_job_kind(registrar::RegistrarJobKind::Rename(registrar::DeviceRenameRequest {
+          device_id,
+          new_name,
+        }))
+        .await?;
 
       return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
     }
@@ -169,7 +178,7 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
       let origin = user
         .nickname
         .or(user.name)
-        .map(schema::DeviceStateMessageOrigin::User)
+        .map(|name| schema::DeviceStateMessageOrigin::User { nickname: name })
         .unwrap_or_else(|| schema::DeviceStateMessageOrigin::Unknown);
 
       let id = worker
@@ -190,6 +199,8 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
     QueuePayloadKind::Lights(false) => crate::rendering::RenderVariant::off(),
     QueuePayloadKind::Link(scannable_link) => crate::rendering::RenderVariant::scannable(scannable_link),
   };
+
+  log::debug!("immediately requesting render for '{device_id}' from api");
 
   let request_id = worker
     .queue_render(&device_id, &user.oid, layout)

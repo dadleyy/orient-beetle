@@ -16,8 +16,9 @@ const SCHEDULE_REFRESH_SECONDS: i64 = 60 * 5;
 struct UserTokenInfo {
   #[allow(clippy::missing_docs_in_private_items)]
   oid: String,
-  #[allow(clippy::missing_docs_in_private_items)]
-  latest_token: crate::vendor::google::TokenHandle,
+
+  /// The latest refresh + access tokens embedded in the user document.
+  latest_token: Option<crate::vendor::google::TokenHandle>,
 }
 
 /// Performs a token refresh.
@@ -98,20 +99,19 @@ async fn check_tokens(worker: &mut super::worker::WorkerHandle<'_>) -> io::Resul
       Ok(c) => c,
     };
 
+    let token_ref = match current_handle.latest_token.as_mut() {
+      None => {
+        log::warn!("user '{}' is missing a 'latest_token'", current_handle.oid);
+        continue;
+      }
+      Some(token) => token,
+    };
+
     let now = chrono::Utc::now();
-    let diff = now
-      .signed_duration_since(current_handle.latest_token.created)
-      .num_seconds()
-      .abs_diff(0);
+    let diff = now.signed_duration_since(token_ref.created).num_seconds().abs_diff(0);
+    let expiration_diff = token_ref.token.expires_in.checked_sub(diff).unwrap_or_default();
 
-    let expiration_diff = current_handle
-      .latest_token
-      .token
-      .expires_in
-      .checked_sub(diff)
-      .unwrap_or_default();
-
-    log::debug!(
+    log::trace!(
       "next user access token - '{}' (created {diff} seconds ago) (expires in {expiration_diff} seconds)",
       current_handle.oid
     );
@@ -121,11 +121,7 @@ async fn check_tokens(worker: &mut super::worker::WorkerHandle<'_>) -> io::Resul
       let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
       let mut replaced_tokens = false;
 
-      match jsonwebtoken::decode::<EncodedUserAccessToken>(
-        &current_handle.latest_token.token.access_token,
-        &key,
-        &validation,
-      ) {
+      match jsonwebtoken::decode::<EncodedUserAccessToken>(&token_ref.token.access_token, &key, &validation) {
         Err(error) => {
           log::warn!("unable to decode acccess token - {error}, scheduling cleanup");
           expired_user_ids.push(current_handle.oid);
@@ -133,25 +129,19 @@ async fn check_tokens(worker: &mut super::worker::WorkerHandle<'_>) -> io::Resul
         }
         Ok(current_token) => {
           log::trace!("decoded original access token - '{}'", current_token.claims.token);
-          current_handle.latest_token.token.access_token = current_token.claims.token;
+          token_ref.token.access_token = current_token.claims.token;
         }
       }
 
-      if let Some(refresh) = &current_handle
-        .latest_token
-        .token
-        .refresh_token
-        .as_ref()
-        .and_then(|refresh| {
-          jsonwebtoken::decode::<EncodedUserAccessToken>(refresh.as_str(), &key, &validation)
-            .map_err(|error| {
-              log::warn!("unable to decode peristed access token - {error}");
-            })
-            .ok()
-        })
-      {
+      if let Some(refresh) = token_ref.token.refresh_token.as_ref().and_then(|refresh| {
+        jsonwebtoken::decode::<EncodedUserAccessToken>(refresh.as_str(), &key, &validation)
+          .map_err(|error| {
+            log::warn!("unable to decode peristed access token - {error}");
+          })
+          .ok()
+      }) {
         log::trace!("decoded refresh token - '{:?}'", refresh.claims);
-        current_handle.latest_token.token.refresh_token = Some(refresh.claims.token.clone());
+        token_ref.token.refresh_token = Some(refresh.claims.token.clone());
         replaced_tokens = true;
       }
 
@@ -166,21 +156,24 @@ async fn check_tokens(worker: &mut super::worker::WorkerHandle<'_>) -> io::Resul
       // Now we can actually attempt to make our api request for a new token. If it succeeds, we
       // will enqueue a job to persist it onto the user document, which will take care of
       // performing the encryption for us.
-      match refresh_token(worker.google, &current_handle.latest_token).await {
+      match refresh_token(worker.google, token_ref).await {
         Err(error) => {
           log::warn!("unable to refresh token for user '{}' ({error})", current_handle.oid);
         }
         Ok(mut updated_token) => {
-          log::info!(
+          log::trace!(
             "successfully updated token, queuing job to persist '{:?}'",
             updated_token.created
           );
 
           // Be sure to persist the refresh token itself across updates.
-          updated_token.token.refresh_token = current_handle.latest_token.token.refresh_token;
-          let job = super::RegistrarJob::access_token_refresh(updated_token, current_handle.oid);
+          updated_token.token.refresh_token = token_ref.token.refresh_token.clone();
+          let job = super::RegistrarJobKind::UserAccessTokenRefresh {
+            handle: updated_token,
+            user_id: current_handle.oid,
+          };
 
-          if let Err(error) = worker.enqueue(job).await {
+          if let Err(error) = worker.enqueue_kind(job).await {
             log::warn!("failed access token refresh percolation - {error}");
           }
         }
@@ -212,10 +205,18 @@ async fn check_tokens(worker: &mut super::worker::WorkerHandle<'_>) -> io::Resul
 /// that have not been run in some time. For these, the worker will queue an execution job and move
 /// onto the next one.
 async fn check_schedules(worker: &mut super::worker::WorkerHandle<'_>) -> anyhow::Result<()> {
-  log::info!("registrar now checking for any schedules due for a refresh");
+  log::trace!("registrar now checking for any schedules due for a refresh");
+
   let schedules_collection = worker.device_schedule_collection()?;
+  let interval_seconds = worker
+    .config
+    .device_schedule_refresh_interval_seconds
+    .as_ref()
+    .copied()
+    .unwrap_or(SCHEDULE_REFRESH_SECONDS);
+
   let cutoff = chrono::Utc::now()
-    .checked_sub_signed(chrono::Duration::seconds(SCHEDULE_REFRESH_SECONDS))
+    .checked_sub_signed(chrono::Duration::seconds(interval_seconds))
     .ok_or_else(|| anyhow::Error::msg("unable to create cutoff date for device schedule refresh"))?
     .timestamp_millis();
 
@@ -226,22 +227,66 @@ async fn check_schedules(worker: &mut super::worker::WorkerHandle<'_>) -> anyhow
     )
     .await?;
 
-  log::debug!("queried device schedules with cutoff");
+  log::trace!("queried device schedules with cutoff - {cutoff}");
+  let mut nonce_updates = vec![];
+
   while let Some(handle_result) = async_std::stream::StreamExt::next(&mut cursor).await {
-    log::debug!("found schedule needing refresh - {handle_result:?}");
-    let device_id = match handle_result {
+    log::trace!("found schedule needing refresh - {handle_result:?}");
+
+    let schedule = match handle_result {
       Err(error) => {
-        log::warn!("strange device schedule problem - {error}");
+        log::error!("strange device schedule problem - {error}");
         continue;
       }
-      Ok(schedule) => schedule.device_id,
+      Ok(schedule) => schedule,
     };
 
+    let device_id = schedule.device_id;
+
+    match (schedule.refresh_nonce, schedule.latest_refresh_nonce) {
+      (Some(current), Some(latest)) if current == latest => {}
+      (None, None) => {
+        log::warn!("schedule['{device_id}'] no previous nonce, setting now");
+      }
+      _ => {
+        log::trace!("schedule['{device_id}'] will be handled by next execution job");
+        continue;
+      }
+    }
+
+    let new_nonce = uuid::Uuid::new_v4().to_string();
+    log::info!("schedule['{device_id}'] device is ready for refresh -> {new_nonce}");
+    nonce_updates.push((device_id.clone(), new_nonce.clone()));
+
     if let Err(error) = worker
-      .enqueue_kind(super::RegistrarJobKind::RunDeviceSchedule(device_id))
+      .enqueue_kind(super::RegistrarJobKind::RunDeviceSchedule {
+        device_id,
+        refresh_nonce: Some(new_nonce),
+      })
       .await
     {
       log::error!("unable to queue device schedule execution job - {error}");
+    }
+  }
+
+  let schedules = worker.mongo.schedules_collection();
+  for (device_id, new_nonce) in nonce_updates {
+    let result = schedules
+      .find_one_and_update(
+        bson::doc! { "device_id": &device_id },
+        bson::doc! { "$set": { "refresh_nonce": new_nonce } },
+        mongodb::options::FindOneAndUpdateOptions::builder()
+          .return_document(mongodb::options::ReturnDocument::After)
+          .build(),
+      )
+      .await;
+
+    match result {
+      Err(error) => {
+        log::error!("unable to update device '{device_id}' nonce - {error}");
+      }
+      Ok(None) => log::error!("unable to find device '{device_id}'"),
+      Ok(Some(_)) => log::trace!("successfully updated device '{device_id}'"),
     }
   }
 

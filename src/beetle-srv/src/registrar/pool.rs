@@ -16,7 +16,7 @@ pub(super) async fn fill_pool(mut stream: &mut crate::redis::RedisConnection, mi
       true
     }
     kramer::Response::Item(kramer::ResponseValue::Integer(amount)) => {
-      log::info!("nothing to do, plenty of ids ('{amount}' vs min of '{min}')");
+      log::trace!("nothing to do, plenty of ids ('{amount}' vs min of '{min}')");
       false
     }
     other => {

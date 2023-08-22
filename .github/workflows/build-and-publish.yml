@@ -42,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BEETLE_GPG_KEY: "${{ secrets.BEETLE_CI_GPG }}"
+      BEETLE_GPG_KEY_ID: "${{ secrets.BEETLE_CI_GPG_KEY_ID }}"
       REDIS_HOST: "${{ secrets.PIO_REDIS_HOST }}"
       REDIS_PORT: "${{ secrets.PIO_REDIS_PORT }}"
       REDIS_AUTH_USERNAME: "${{ secrets.PIO_REDIS_AUTH_USERNAME }}"
@@ -84,25 +85,25 @@ jobs:
 
       - name: "bundle(firebeetle): copy-bin"
         run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
             $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/firmware.bin.pgp \
             .pio/build/firebeetle/firmware.bin
 
       - name: "bundle(firebeetle): copy-map"
         run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
             $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/firmware.map.pgp \
             .pio/build/firebeetle/firmware.map
 
       - name: "bundle(firebeetle): copy-elf"
         run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
             $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/firmware.elf.pgp \
             .pio/build/firebeetle/firmware.elf
 
       - name: "bundle(firebeetle): copy-partitions"
         run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
             $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/partitions.bin.pgp \
             .pio/build/firebeetle/partitions.bin
 
@@ -120,25 +121,25 @@ jobs:
 
       - name: "bundle(xiao): copy-bin"
         run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
             $DISTRIBUTABLE_DIRECTORY_NAME/xiao/firmware.bin.pgp \
             .pio/build/xiao/firmware.bin
 
       - name: "bundle(xiao): copy-map"
         run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
             $DISTRIBUTABLE_DIRECTORY_NAME/xiao/firmware.map.pgp \
             .pio/build/xiao/firmware.map
 
       - name: "bundle(xiao): copy-elf"
         run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
             $DISTRIBUTABLE_DIRECTORY_NAME/xiao/firmware.elf.pgp \
             .pio/build/xiao/firmware.elf
 
       - name: "bundle(xiao): copy-partitions"
         run: |
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
             $DISTRIBUTABLE_DIRECTORY_NAME/xiao/partitions.bin.pgp \
             .pio/build/xiao/partitions.bin
 
@@ -149,7 +150,7 @@ jobs:
           ls -lah $HOME/.platformio/packages/framework-arduinoespressif32
           ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools
           ls -lah $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions
-          gpg --trust-model always -e -r 99D22D47AA5053FC -o \
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
             $DISTRIBUTABLE_DIRECTORY_NAME/xiao/boot_app0.bin.pgp \
             $HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
 

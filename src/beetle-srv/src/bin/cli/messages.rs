@@ -89,7 +89,7 @@ pub async fn send_layout(config: &super::CommandLineConfig, command: SendLayoutC
 
   if let Some(device_id) = &command.id {
     let mut stream = beetle::redis::connect(&config.redis).await?;
-    let mut queue = beetle::rendering::Queue::new(&mut stream);
+    let mut queue = beetle::rendering::Queue::new(&mut stream, &config.registrar.vendor_api_secret);
     let (request_id, pending) = queue
       .queue(
         device_id,
@@ -135,7 +135,7 @@ pub async fn send_scannable(config: &super::CommandLineConfig, command: SendScan
   }
 
   let request = beetle::rendering::RenderVariant::scannable(&command.content);
-  let mut queue = beetle::rendering::Queue::new(&mut stream);
+  let mut queue = beetle::rendering::Queue::new(&mut stream, &config.registrar.vendor_api_secret);
   let (request_id, pending) = queue
     .queue(
       &command.id,
@@ -195,7 +195,7 @@ pub async fn send_image(config: &super::CommandLineConfig, command: SendImageCom
 
   if let Some(device_id) = &command.id {
     let mut stream = beetle::redis::connect(&config.redis).await?;
-    let mut queue = beetle::rendering::Queue::new(&mut stream);
+    let mut queue = beetle::rendering::Queue::new(&mut stream, &config.registrar.vendor_api_secret);
     let (request_id, pending) = queue
       .queue(
         device_id,

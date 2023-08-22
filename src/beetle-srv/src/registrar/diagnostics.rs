@@ -103,7 +103,7 @@ where
           device_diagnostic.id
         );
 
-        let mut queue = crate::rendering::queue::Queue::new(stream);
+        let mut queue = crate::rendering::queue::Queue::new(stream, &worker.config.vendor_api_secret);
         let mut initial_url = http_types::Url::parse(&worker.config.initial_scannable_addr).map_err(|error| {
           log::warn!("unable to create initial url for device - {error}");
           io::Error::new(io::ErrorKind::Other, format!("{error}"))

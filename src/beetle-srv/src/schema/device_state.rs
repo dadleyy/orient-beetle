@@ -18,10 +18,19 @@ pub struct DeviceRenderingStateMessageEntry {
 #[serde(rename_all = "snake_case", tag = "beetle:kind", content = "beetle:content")]
 pub enum DeviceRenderingState {
   /// The layout of our state for rendering a calendar.
-  ScheduleLayout(Vec<google::ParsedEvent>, Vec<DeviceRenderingStateMessageEntry>),
+  ScheduleLayout {
+    /// The latest list of events that will be rendered.
+    events: Vec<google::ParsedEvent>,
+
+    /// The latest list of messages that will be rendered.
+    messages: Vec<DeviceRenderingStateMessageEntry>,
+  },
 
   /// Just a list of messages.
-  MessageList(Vec<DeviceRenderingStateMessageEntry>),
+  MessageList {
+    /// The list of messages.
+    messages: Vec<DeviceRenderingStateMessageEntry>,
+  },
 }
 
 /// This schema is the long-lived representation of what is being rendered to a device.
@@ -46,5 +55,8 @@ pub enum DeviceStateMessageOrigin {
   Unknown,
 
   /// This message came from a user. The string is their nickname.
-  User(String),
+  User {
+    /// The nickname of the user.
+    nickname: String,
+  },
 }

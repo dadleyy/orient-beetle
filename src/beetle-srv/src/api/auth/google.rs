@@ -1,7 +1,7 @@
 //! This module is currently in the process of replacing the Auth0-based module defined in the
 //! parent directory. Some of the code in here is repetetive while that is being phases out.
 
-use crate::schema;
+use crate::{registrar, schema};
 use anyhow::Context;
 
 /// This value is how auth0 "tags" ids during its oauth handshake. It will be added for all users
@@ -29,7 +29,7 @@ pub async fn redirect(request: tide::Request<crate::api::Worker>) -> tide::Resul
 pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Result {
   let query = request.query::<crate::vendor::google::CodeQuery>()?;
   let worker = request.state();
-  log::trace!("have code - '{}'", query.code);
+  log::debug!("have code - '{}'", query.code);
 
   let mut response = surf::post("https://oauth2.googleapis.com/token")
     .body_json(&crate::vendor::google::TokenRequest {
@@ -55,7 +55,11 @@ pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Resul
     created: chrono::Utc::now(),
     token: parsed,
   };
-  let userinfo = crate::vendor::google::fetch_user(&handle).await?;
+
+  let userinfo = crate::vendor::google::fetch_user(&handle).await.map_err(|error| {
+    log::error!("unable to fetch user info during oauth completion - {error}");
+    error
+  })?;
 
   let normalized_id = format!("{GOOGLE_ID_PREFIX}{}", userinfo.id);
   let query = bson::doc! { "oid": &normalized_id };
@@ -101,7 +105,10 @@ pub async fn complete(request: tide::Request<crate::api::Worker>) -> tide::Resul
   let jwt = crate::api::claims::Claims::for_user(&user.oid).encode(&worker.web_configuration.session_secret)?;
 
   if let Err(error) = worker
-    .queue_job(crate::registrar::RegistrarJob::access_token_refresh(handle, user.oid))
+    .queue_job_kind(registrar::RegistrarJobKind::UserAccessTokenRefresh {
+      handle,
+      user_id: user.oid,
+    })
     .await
   {
     log::warn!("unable to queued refresh token request - {error}");

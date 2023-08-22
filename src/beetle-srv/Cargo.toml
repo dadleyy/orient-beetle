@@ -50,6 +50,3 @@ url = { version = "^2.3.1" }
 # Enabling this feature will allow developers to use a "naked" tcp stream for redis connections, instead of
 # the default, which is to use `async_tls`.
 redis-insecure = []
-
-[patch.crates-io]
-kramer = { git = "https://github.com/sizethree/kramer.git", branch = "async-read" }

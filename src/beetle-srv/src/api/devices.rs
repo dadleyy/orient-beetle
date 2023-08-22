@@ -1,4 +1,4 @@
-use crate::schema;
+use crate::{registrar, schema};
 use serde::{Deserialize, Serialize};
 
 /// The payload for looking up a device by id.
@@ -148,7 +148,7 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
   let worker = request.state();
   let users = worker.users_collection()?;
 
-  let mut user = worker.request_authority(&request).await?.ok_or_else(|| {
+  let user = worker.request_authority(&request).await?.ok_or_else(|| {
     log::warn!("device unregister -> no user found");
     tide::Error::from_str(404, "missing-user")
   })?;
@@ -158,50 +158,52 @@ pub async fn unregister(mut request: tide::Request<super::worker::Worker>) -> ti
     tide::Error::from_str(422, "bad-payload")
   })?;
 
-  match user.devices.take() {
-    Some(mut device_map) => {
-      log::trace!("device unregister -> found device map - {device_map:?}");
+  let mut device_map = user.devices.ok_or_else(|| {
+    log::warn!("user '{}' had no device map", user.oid);
+    tide::Error::from_str(404, "missing-user")
+  })?;
 
-      if device_map.remove(&payload.device_id).is_none() {
-        return Ok(tide::Response::builder(422).build());
-      }
+  log::trace!("device unregister -> found device map - {device_map:?}");
 
-      // Update our user handle
-      let oid = user.oid.clone();
-      let query = bson::doc! { "oid": &oid };
-      let updated = schema::User {
-        devices: Some(device_map),
-        ..user
-      };
-      let options = mongodb::options::FindOneAndUpdateOptions::builder()
-        .upsert(true)
-        .return_document(mongodb::options::ReturnDocument::After)
-        .build();
-
-      // Persist update into mongo
-      users
-        .find_one_and_update(
-          query,
-          bson::doc! { "$set": bson::to_bson(&updated).map_err(|error| {
-            log::warn!("unable to serialize user update - {error}");
-            tide::Error::from_str(500, "user-failure")
-          })? },
-          options,
-        )
-        .await
-        .map_err(|error| {
-          log::warn!("unable to create new user - {:?}", error);
-          tide::Error::from_str(500, "user-failure")
-        })?;
-
-      log::info!("user '{}' unregistered device '{}'", oid, payload.device_id);
-      Ok(tide::Response::builder(200).build())
-    }
-    None => {
-      log::warn!("user has no devices, not found");
-      Ok(tide::Response::builder(422).build())
-    }
+  if device_map.remove(&payload.device_id).is_none() {
+    log::warn!(
+      "was unable to remove device '{}' from user '{}'",
+      payload.device_id,
+      user.oid
+    );
+    return Ok(tide::Response::builder(422).build());
   }
+
+  // Update our user handle
+  let oid = user.oid.clone();
+  let query = bson::doc! { "oid": &oid };
+  let updated = schema::User {
+    devices: Some(device_map),
+    ..user
+  };
+  let options = mongodb::options::FindOneAndUpdateOptions::builder()
+    .upsert(true)
+    .return_document(mongodb::options::ReturnDocument::After)
+    .build();
+
+  // Persist update into mongo
+  users
+    .find_one_and_update(
+      query,
+      bson::doc! { "$set": bson::to_bson(&updated).map_err(|error| {
+        log::warn!("unable to serialize user update - {error}");
+        tide::Error::from_str(500, "user-failure")
+      })? },
+      options,
+    )
+    .await
+    .map_err(|error| {
+      log::warn!("unable to create new user - {:?}", error);
+      tide::Error::from_str(500, "user-failure")
+    })?;
+
+  log::info!("user '{}' unregistered device '{}'", oid, payload.device_id);
+  Ok(tide::Response::builder(200).build())
 }
 
 /// Route: register
@@ -222,10 +224,13 @@ pub async fn register(mut request: tide::Request<super::worker::Worker>) -> tide
   })?;
 
   let job_id = worker
-    .queue_job(crate::registrar::RegistrarJob::device_ownership(
-      &user.oid,
-      &payload.device_id,
+    .queue_job_kind(registrar::RegistrarJobKind::Ownership(
+      registrar::ownership::DeviceOwnershipRequest {
+        device_id: payload.device_id.clone(),
+        user_id: user.oid.clone(),
+      },
     ))
+    // registrar::RegistrarJob::device_ownership(&user.oid, &payload.device_id))
     .await?;
 
   log::info!(

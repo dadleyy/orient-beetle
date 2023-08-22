@@ -34,7 +34,13 @@ pub enum RegistrarJobKind {
   MutateDeviceState(device_state::DeviceStateTransitionRequest),
 
   /// An immediate attempt to run the schedule for a device.
-  RunDeviceSchedule(String),
+  RunDeviceSchedule {
+    /// The id of the device to refresh based on its schedule.
+    device_id: String,
+
+    /// The nonce associated with this attempt to run the schedule.
+    refresh_nonce: Option<String>,
+  },
 
   /// A job that will simply turn on or off the default schedule for a device, given a user whose
   /// calendar would be used.
@@ -86,8 +92,12 @@ pub struct RegistrarJob {
 impl RegistrarJob {
   /// Serializes and encrypts a job.
   pub fn encrypt(self, config: &crate::config::RegistrarConfiguration) -> io::Result<String> {
+    // TODO(job_encryption): using jwt here for ease, not the fact that it is the best. The
+    // original intent in doing this was to avoid having plaintext in our redis messages.
+    // Leveraging and existing depedency like `aes-gcm` would be awesome.
     let header = &jsonwebtoken::Header::default();
     let secret = jsonwebtoken::EncodingKey::from_secret(config.vendor_api_secret.as_bytes());
+
     let exp = chrono::Utc::now()
       .checked_add_signed(chrono::Duration::minutes(1440))
       .unwrap_or_else(chrono::Utc::now)
@@ -95,71 +105,5 @@ impl RegistrarJob {
 
     jsonwebtoken::encode(header, &RegistrarJobEncrypted { exp, job: self }, &secret)
       .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("unable to encrypt job - {error}")))
-  }
-
-  /// Type Constructor. Will attempt to store an access token for a user.
-  pub fn access_token_refresh(handle: crate::vendor::google::TokenHandle, user_id: String) -> Self {
-    let id = uuid::Uuid::new_v4().to_string();
-    Self {
-      id,
-      job: RegistrarJobKind::UserAccessTokenRefresh { handle, user_id },
-    }
-  }
-
-  /// Type constructor. Builds a request for toggling ownership record model type.
-  pub fn set_public_availability<S>(device_id: S, transition: ownership::PublicAvailabilityChange) -> Self
-  where
-    S: std::convert::AsRef<str>,
-  {
-    let id = uuid::Uuid::new_v4().to_string();
-    let device_id = device_id.as_ref().to_string();
-
-    Self {
-      id,
-      job: RegistrarJobKind::OwnershipChange(ownership::DeviceOwnershipChangeRequest::SetPublicAvailability(
-        device_id, transition,
-      )),
-    }
-  }
-
-  /// Type constructor. Builds a request for taking device ownership.
-  pub fn registration_scannable<S>(device_id: S) -> Self
-  where
-    S: std::convert::AsRef<str>,
-  {
-    let id = uuid::Uuid::new_v4().to_string();
-    let device_id = device_id.as_ref().to_string();
-    Self {
-      id,
-      job: RegistrarJobKind::Renders(RegistrarRenderKinds::RegistrationScannable(device_id)),
-    }
-  }
-
-  /// Type constructor. Builds a request for taking device ownership.
-  pub fn rename_device<S>(device_id: S, new_name: S) -> Self
-  where
-    S: std::convert::AsRef<str>,
-  {
-    let id = uuid::Uuid::new_v4().to_string();
-    let new_name = new_name.as_ref().to_string();
-    let device_id = device_id.as_ref().to_string();
-    Self {
-      id,
-      job: RegistrarJobKind::Rename(DeviceRenameRequest { device_id, new_name }),
-    }
-  }
-
-  /// Type constructor. Builds a request for taking device ownership.
-  pub fn device_ownership<S>(user_id: S, device_id: S) -> Self
-  where
-    S: std::convert::AsRef<str>,
-  {
-    let id = uuid::Uuid::new_v4().to_string();
-    let user_id = user_id.as_ref().to_string();
-    let device_id = device_id.as_ref().to_string();
-    Self {
-      id,
-      job: RegistrarJobKind::Ownership(ownership::DeviceOwnershipRequest { user_id, device_id }),
-    }
   }
 }

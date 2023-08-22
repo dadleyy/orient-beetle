@@ -53,13 +53,13 @@ where
 
   schedule.kind = match (should_enable, schedule.kind.take()) {
     (true, Some(kind)) => Some(kind),
-    (true, None) => Some(schema::DeviceScheduleKind::UserEventsBasic(
-      user_id.as_ref().to_string(),
-    )),
+    (true, None) => Some(schema::DeviceScheduleKind::UserEventsBasic {
+      user_oid: user_id.as_ref().to_string(),
+    }),
     (false, _) => None,
   };
 
-  log::info!("applying new schedule - '{schedule:?}'");
+  log::trace!("applying new schedule - '{schedule:?}'");
 
   let result = collection
     .find_one_and_replace(
@@ -78,21 +78,27 @@ where
     })?;
 
   worker
-    .enqueue_kind(super::RegistrarJobKind::RunDeviceSchedule(
-      device_id.as_ref().to_string(),
-    ))
+    .enqueue_kind(super::RegistrarJobKind::RunDeviceSchedule {
+      device_id: device_id.as_ref().to_string(),
+      refresh_nonce: None,
+    })
     .await?;
 
-  log::info!("schedule update result - '{result:?}'");
+  log::trace!("schedule update result - '{result:?}'");
 
   Ok(())
 }
 
 /// This method is responsible for immediately running any schedule associated with the device id
 /// provded in the job.
-pub(super) async fn execute<S>(mut worker: super::worker::WorkerHandle<'_>, device_id: S) -> anyhow::Result<()>
+pub(super) async fn execute<S, N>(
+  mut worker: super::worker::WorkerHandle<'_>,
+  device_id: S,
+  nonce: Option<N>,
+) -> anyhow::Result<Option<()>>
 where
   S: AsRef<str>,
+  N: AsRef<str>,
 {
   let db = worker.mongo.client.database(&worker.mongo.config.database);
   let schedules_collection = worker.device_schedule_collection()?;
@@ -113,12 +119,19 @@ where
       )
     })?;
 
+  match (nonce, schedule.refresh_nonce.as_ref()) {
+    (Some(job_nonce), Some(stored_nonce)) if job_nonce.as_ref() != stored_nonce.as_str() => {
+      return Ok(None);
+    }
+    _ => log::trace!("valid refresh being executed"),
+  }
+
   match schedule.kind {
     None => {
       log::info!("nothing to do for device '{}' schedule", device_id.as_ref());
     }
-    Some(schema::DeviceScheduleKind::UserEventsBasic(user_id)) => {
-      log::info!(
+    Some(schema::DeviceScheduleKind::UserEventsBasic { user_oid: user_id }) => {
+      log::trace!(
         "querying events for device '{}' and user '{}'",
         device_id.as_ref(),
         user_id
@@ -153,7 +166,7 @@ where
       )?;
       partial_user.latest_token.token.access_token = decoded_token.claims.token;
 
-      log::info!(
+      log::trace!(
         "querying calendars for token - '{:?}'",
         partial_user.latest_token.created
       );
@@ -163,7 +176,7 @@ where
         .ok_or_else(|| {
           io::Error::new(
             io::ErrorKind::Other,
-            format!("no priamry calendar found for user '{user_id}'"),
+            format!("no primary calendar found for user '{user_id}'"),
           )
         })?;
 
@@ -173,7 +186,7 @@ where
         .filter_map(|raw_event| google::parse_event(&raw_event).ok())
         .collect();
 
-      log::info!(
+      log::trace!(
         "found {} events for user '{user_id}' ({:?})",
         events.len(),
         partial_user.name
@@ -191,14 +204,20 @@ where
   }
 
   let now = chrono::Utc::now().timestamp_millis();
-  log::debug!("setting last executed timestamp for '{}' to {now}", device_id.as_ref());
+
+  log::debug!(
+    "setting last executed timestamp for '{}' to {now} (nonce {:?})",
+    device_id.as_ref(),
+    schedule.refresh_nonce
+  );
+
   schedules_collection
     .find_one_and_update(
       bson::doc! { "device_id": device_id.as_ref() },
-      bson::doc! { "$set": { "last_executed": now } },
+      bson::doc! { "$set": { "last_executed": now, "latest_refresh_nonce": schedule.refresh_nonce } },
       None,
     )
     .await
-    .map(|_| ())
+    .map(|_| Some(()))
     .with_context(|| format!("unable to update device schedule for '{}'", device_id.as_ref()))
 }

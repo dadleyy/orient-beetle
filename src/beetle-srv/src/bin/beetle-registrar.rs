@@ -15,18 +15,21 @@ async fn run(config: beetle::registrar::Configuration) -> Result<()> {
     option_env!("BEETLE_VERSION").unwrap_or_else(|| "dev")
   );
 
-  let mut worker = config.worker().await?;
   let mut failures = Vec::with_capacity(3);
-  let mut interval = async_std::stream::interval(std::time::Duration::from_millis(1000));
+  let interval_ms = config.registrar.interval_delay_ms.as_ref().copied();
+  let mut interval = interval_ms
+    .map(std::time::Duration::from_millis)
+    .map(async_std::stream::interval);
+
   let mut last_debug = std::time::Instant::now();
   let mut frames = 0u8;
+  let mut worker = config.worker().await?;
 
   while failures.len() < 10 {
-    interval.next().await;
     log::trace!("attempting worker frame");
 
     let now = std::time::Instant::now();
-    if now.duration_since(last_debug).as_secs() > 4 || frames == 255 {
+    if now.duration_since(last_debug).as_secs() > 4 || frames == u8::MAX {
       last_debug = now;
       log::info!("registar still working ({frames} frames since last interval)...");
       frames = 0;
@@ -41,6 +44,11 @@ async fn run(config: beetle::registrar::Configuration) -> Result<()> {
           log::info!("recovered from failures: {}", failures.drain(0..).collect::<String>());
         }
       }
+    }
+
+    if let Some(interval) = interval.as_mut() {
+      log::trace!("explicit registrar execution delay - {:?}", interval_ms);
+      interval.next().await;
     }
   }
 

@@ -143,8 +143,9 @@ pub struct TokenHandle {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "beetle:kind", content = "beetle:content")]
 pub enum ParsedEventTimeMarker {
-  /// A whole-day event.
+  /// A whole-day event. YYYY-MM-DD
   Date(u32, u32, u32),
+
   /// An event with a specific time.
   DateTime(chrono::DateTime<chrono::offset::FixedOffset>),
 }
@@ -171,6 +172,7 @@ pub fn parse_event(event: &EventListEntry) -> anyhow::Result<ParsedEvent> {
   match (date_container, datetime_container) {
     (Some((start, end)), None) => {
       log::trace!("found whole-day event {start} - {end}");
+
       let start = parse_event_date(start)?;
       let end = parse_event_date(end)?;
 
@@ -183,6 +185,7 @@ pub fn parse_event(event: &EventListEntry) -> anyhow::Result<ParsedEvent> {
     }
     (None, Some((start, end))) => {
       log::trace!("found timed event {start} - {end}");
+
       let start = chrono::DateTime::parse_from_rfc3339(start.as_str()).with_context(|| "invalid date")?;
       let end = chrono::DateTime::parse_from_rfc3339(end.as_str()).with_context(|| "invalid date")?;
 
@@ -226,7 +229,7 @@ pub async fn fetch_primary(handle: &TokenHandle) -> anyhow::Result<Option<Calend
     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
     .with_context(|| "cannot parse")?;
 
-  log::debug!("found {} calendars", list.items.len());
+  log::trace!("found {} calendars", list.items.len());
 
   log::trace!("status: '{}'", res.status());
   log::trace!("list:   '{:?}'", list);
@@ -236,7 +239,7 @@ pub async fn fetch_primary(handle: &TokenHandle) -> anyhow::Result<Option<Calend
 
 /// Fetches calendar events associated with a token handle and calendar.
 pub async fn fetch_events(handle: &TokenHandle, calendar: &CalendarListEntry) -> anyhow::Result<Vec<EventListEntry>> {
-  log::debug!("fetching calendar '{}'", calendar.id);
+  log::trace!("fetching calendar '{}'", calendar.id);
   let mut uri = url::Url::parse(
     format!(
       " https://www.googleapis.com/calendar/v3/calendars/{}/events",
@@ -273,7 +276,7 @@ pub async fn fetch_events(handle: &TokenHandle, calendar: &CalendarListEntry) ->
 
   let events = serde_json::from_str::<EventList>(&body_string).with_context(|| "failed event list parse")?;
 
-  log::debug!("found {} items in calendar", events.items.len());
+  log::trace!("found {} items in calendar", events.items.len());
 
   Ok(events.items)
 }
@@ -286,14 +289,15 @@ pub async fn fetch_user(handle: &TokenHandle) -> anyhow::Result<Userinfo> {
   let mut res = surf::get(&url)
     .header("Authorization", format!("Bearer {}", handle.token.access_token))
     .await
-    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
-    .with_context(|| "profile request failed")?;
+    .map_err(|e| {
+      let error = format!("request for user info failed - {e:?}");
+      io::Error::new(io::ErrorKind::Other, error)
+    })?;
 
-  let userinfo = res
-    .body_json::<Userinfo>()
-    .await
-    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
-    .with_context(|| "body read failed")?;
+  let userinfo = res.body_json::<Userinfo>().await.map_err(|e| {
+    let error = format!("unable to parse user info payload - {e:?}");
+    io::Error::new(io::ErrorKind::Other, error)
+  })?;
 
   log::trace!("profile - '{}'", userinfo.id);
 

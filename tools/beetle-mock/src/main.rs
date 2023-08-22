@@ -421,6 +421,7 @@ impl iced::Application for BeetleMock {
   }
 
   fn update(&mut self, message: Self::Message) -> iced::Command<Self::Message> {
+    #[allow(clippy::single_match)]
     match message {
       Self::Message::SetImage(buffer) => self.latest_image = Some(buffer),
       _ => (),

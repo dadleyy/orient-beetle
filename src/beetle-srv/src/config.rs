@@ -33,6 +33,9 @@ pub struct GoogleConfiguration {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct MongoCollectionsConfiguration {
+  /// The collection of migration info.
+  pub migrations: String,
+
   /// The collection name which holds our list of users (which includes their device access).
   pub users: String,
 
@@ -67,11 +70,25 @@ pub struct MongoConfiguration {
 
 /// The configuration specific to maintaining a registration of available ids.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "content")]
+pub enum RegistrarAnalyticsConfiguration {
+  /// Configuration for amplitude.com api usage.
+  NewRelic {
+    /// The newrelic account id.
+    account_id: String,
+    /// The newrelic license key.
+    api_key: String,
+  },
+}
+
+/// The configuration specific to maintaining a registration of available ids.
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct RegistrarConfiguration {
   // TODO: the cli's registar configuration uses these fields, and we may as well.
   /// The auth username that will be given on burn-in to devices.
   pub id_consumer_username: Option<String>,
+
   /// The auth password that will be given on burn-in to devices.
   pub id_consumer_password: Option<String>,
 
@@ -84,6 +101,15 @@ pub struct RegistrarConfiguration {
   /// Where to send devices on their initial connection
   pub initial_scannable_addr: String,
 
+  /// The amount of time between executions to explicitly wait.
+  pub interval_delay_ms: Option<u64>,
+
   /// The secret used to encrypt vendor api access tokens.
   pub vendor_api_secret: String,
+
+  /// If provided, this is the amount of time between device schedule refreshing.
+  pub device_schedule_refresh_interval_seconds: Option<i64>,
+
+  /// Optional analytics configuration, used for monitoring queue health.
+  pub analytics_configuration: Option<RegistrarAnalyticsConfiguration>,
 }

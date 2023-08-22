@@ -80,13 +80,15 @@ fn render_message_entry(
   entry: &schema::DeviceRenderingStateMessageEntry,
   acc: &mut Vec<rendering::StylizedMessage<String>>,
   layout: MessageEntryLayout,
-) -> () {
+) {
   let is_first = acc.is_empty();
 
   // Render the main content.
-  let mut message_component = rendering::components::StylizedMessage::default();
-  message_component.message = entry.content.clone();
-  message_component.size = Some(PRIMARY_TEXT_SIZE);
+  let mut message_component = rendering::components::StylizedMessage {
+    message: entry.content.clone(),
+    size: Some(PRIMARY_TEXT_SIZE),
+    ..Default::default()
+  };
   apply_padding(&mut message_component);
   if is_first {
     message_component.margin = Some(rendering::OptionalBoundingBox {
@@ -96,8 +98,10 @@ fn render_message_entry(
   }
   acc.push(message_component);
 
-  let mut origin_component = rendering::components::StylizedMessage::default();
-  origin_component.size = Some(SECONDARY_TEXT_SIZE);
+  let mut origin_component = rendering::components::StylizedMessage {
+    size: Some(SECONDARY_TEXT_SIZE),
+    ..Default::default()
+  };
   apply_padding(&mut origin_component);
   origin_component.margin = Some(rendering::OptionalBoundingBox {
     bottom: Some(10),
@@ -109,7 +113,7 @@ fn render_message_entry(
     MessageEntryLayout::Separate => {
       origin_component.message = match &entry.origin {
         schema::DeviceStateMessageOrigin::Unknown => "unknown".to_string(),
-        schema::DeviceStateMessageOrigin::User(value) => value.clone(),
+        schema::DeviceStateMessageOrigin::User { nickname: value } => value.clone(),
       };
 
       if let Some(ts) = entry.timestamp {
@@ -127,7 +131,7 @@ fn render_message_entry(
         apply_padding(&mut time_component);
         acc.push(origin_component);
         acc.push(time_component);
-        return ();
+        return;
       }
 
       acc.push(origin_component);
@@ -135,7 +139,7 @@ fn render_message_entry(
     MessageEntryLayout::Together => {
       let from_addr = match &entry.origin {
         schema::DeviceStateMessageOrigin::Unknown => "unknown".to_string(),
-        schema::DeviceStateMessageOrigin::User(value) => value.clone(),
+        schema::DeviceStateMessageOrigin::User { nickname: value } => value.clone(),
       };
       origin_component.message = entry
         .timestamp
@@ -146,19 +150,43 @@ fn render_message_entry(
   }
 }
 
+/// Returns the "marker" for an event, where the marker is the event's stringified starting title.
+/// Note that this also doubles as the _key_ of our `BTreeMap` when iterating over eents, which is
+/// how the events are ultimately ordered.
+fn event_marker(event: &google::ParsedEvent) -> Option<String> {
+  match event.start {
+    google::ParsedEventTimeMarker::DateTime(datetime) => Some(datetime.format("%B %d").to_string()),
+    google::ParsedEventTimeMarker::Date(y, m, d) => {
+      chrono::NaiveDate::from_ymd_opt(y as i32, m, d).map(|d| d.format("%B %d").to_string())
+    }
+  }
+}
+
 /// This method will actually build the render layout based on the current device rendering state.
 /// It is possible that this would be better implemented as an associated method on the
 /// `DeviceRenderingState` type itself, but the goal is to avoid _any_ methods directly built in
 /// the `schema` module (though it is tempting).
 fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<rendering::RenderLayout<String>> {
   match state {
-    schema::DeviceRenderingState::ScheduleLayout(events, message_list) => {
-      let mut left = vec![];
+    schema::DeviceRenderingState::ScheduleLayout {
+      events,
+      messages: message_list,
+    } => {
+      let mut events_by_date = std::collections::BTreeMap::new();
 
       for event in events.iter().take(MAX_DISPLAYED_EVENTS) {
-        log::info!("rendering event '{event:?}'");
+        log::trace!("rendering event '{event:?}'");
+        let marker = match event_marker(event) {
+          Some(m) => m,
+          None => {
+            log::error!("event '{event:?}' is missing date");
+            continue;
+          }
+        };
+        let mut messages: Vec<rendering::components::StylizedMessage<String>> =
+          events_by_date.remove(&marker).unwrap_or_default();
 
-        left.push(rendering::components::StylizedMessage {
+        messages.push(rendering::components::StylizedMessage {
           message: event.summary.clone(),
           size: Some(PRIMARY_TEXT_SIZE),
 
@@ -184,7 +212,7 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
             let formatted_start = s.format("%H:%M").to_string();
             let formatted_end = e.format("%H:%M").to_string();
 
-            left.push(rendering::components::StylizedMessage {
+            messages.push(rendering::components::StylizedMessage {
               message: format!("{formatted_start} - {formatted_end}"),
               size: Some(SECONDARY_TEXT_SIZE),
 
@@ -208,23 +236,44 @@ fn render_state(state: &schema::DeviceRenderingState) -> anyhow::Result<renderin
             log::warn!("event start/end combination not implemented yet - {s:?} {e:?}");
           }
         }
+
+        events_by_date.insert(marker, messages);
       }
 
       let messages = message_list
         .iter()
         .fold(Vec::with_capacity(message_list.len() * 2), |mut acc, entry| {
-          render_message_entry(&entry, &mut acc, MessageEntryLayout::Separate);
+          render_message_entry(entry, &mut acc, MessageEntryLayout::Separate);
           acc
         });
 
+      let ratio = if messages.is_empty() { 90 } else { 60 };
+
+      let mut left = vec![];
+      for (idx, (title, mut messages)) in events_by_date.into_iter().enumerate() {
+        let title_message = rendering::components::StylizedMessage {
+          message: title,
+          size: Some(SECONDARY_TEXT_SIZE),
+          margin: Some(rendering::OptionalBoundingBox {
+            top: (idx > 0).then_some(10),
+            left: Some(5),
+            ..Default::default()
+          }),
+          ..Default::default()
+        };
+        messages.insert(0, title_message);
+
+        left.append(&mut messages);
+      }
+
       let left = rendering::SplitContents::Messages(left);
       let right = rendering::SplitContents::Messages(messages);
-      let split = rendering::SplitLayout { left, right, ratio: 50 };
+      let split = rendering::SplitLayout { left, right, ratio };
       Ok(rendering::RenderLayout::Split(split))
     }
-    schema::DeviceRenderingState::MessageList(list) => {
+    schema::DeviceRenderingState::MessageList { messages: list } => {
       let messages = list.iter().fold(Vec::with_capacity(list.len() * 2), |mut acc, entry| {
-        render_message_entry(&entry, &mut acc, MessageEntryLayout::Together);
+        render_message_entry(entry, &mut acc, MessageEntryLayout::Together);
         acc
       });
       let left = rendering::SplitContents::Messages(messages);
@@ -249,7 +298,7 @@ pub(super) async fn render_current(
     .with_context(|| format!("unable to load current device state for '{device_id}'"))?
     .ok_or_else(|| anyhow::Error::msg(format!("no device state found for '{device_id}'")))?;
 
-  log::info!("current render state for '{device_id}': {current_state:?}");
+  log::info!("rendering current state for '{device_id}'");
 
   let layout = current_state
     .rendering
@@ -264,12 +313,8 @@ pub(super) async fn render_current(
     })
     .unwrap_or(rendering::RenderLayout::Clear);
 
-  log::info!("device '{device_id}' attempting to render '{layout:?}'");
-
   let render_id = handle.render(device_id, layout).await?;
-
   log::info!("render '{render_id}' scheduled for device '{device_id}'");
-
   Ok(())
 }
 
@@ -278,9 +323,9 @@ pub(super) async fn attempt_transition(
   mut handle: super::worker::WorkerHandle<'_>,
   transition_request: &DeviceStateTransitionRequest,
 ) -> anyhow::Result<()> {
-  log::info!("attempting to transition {transition_request:?}");
   let states = handle.device_state_collection()?;
   let device_id = transition_request.device_id.clone();
+  log::trace!("attempting to perform a state transition for device '{device_id}'");
 
   let current_state = states
     .find_one_and_update(
@@ -310,23 +355,23 @@ pub(super) async fn attempt_transition(
     })?
     .ok_or_else(|| anyhow::Error::msg(format!("unable to find device '{}'", &device_id)))?;
 
-  log::debug!("loaded current state for transition - {current_state:?}");
+  log::trace!("loaded current state for transition - {current_state:?}");
 
   let next_state = match (current_state.rendering, &transition_request.transition) {
     // push a message onto nothing.
-    (None, DeviceStateTransition::PushMessage(content, origin)) => {
-      Some(schema::DeviceRenderingState::MessageList(vec![
-        schema::DeviceRenderingStateMessageEntry {
-          content: content.clone(),
-          origin: origin.clone(),
-          timestamp: Some(chrono::Utc::now()),
-        },
-      ]))
-    }
+    (None, DeviceStateTransition::PushMessage(content, origin)) => Some(schema::DeviceRenderingState::MessageList {
+      messages: vec![schema::DeviceRenderingStateMessageEntry {
+        content: content.clone(),
+        origin: origin.clone(),
+        timestamp: Some(chrono::Utc::now()),
+      }],
+    }),
 
     // push a message onto a message list.
     (
-      Some(schema::DeviceRenderingState::MessageList(mut current_list)),
+      Some(schema::DeviceRenderingState::MessageList {
+        messages: mut current_list,
+      }),
       DeviceStateTransition::PushMessage(content, origin),
     ) => {
       while current_list.len() > MAX_MESSAGE_LIST_LEN {
@@ -337,12 +382,15 @@ pub(super) async fn attempt_transition(
         origin: origin.clone(),
         timestamp: Some(chrono::Utc::now()),
       });
-      Some(schema::DeviceRenderingState::MessageList(current_list))
+      Some(schema::DeviceRenderingState::MessageList { messages: current_list })
     }
 
     // push a message onto a schedule.
     (
-      Some(schema::DeviceRenderingState::ScheduleLayout(events, mut current_list)),
+      Some(schema::DeviceRenderingState::ScheduleLayout {
+        events,
+        messages: mut current_list,
+      }),
       DeviceStateTransition::PushMessage(content, origin),
     ) => {
       while current_list.len() > MAX_MESSAGE_LIST_LEN {
@@ -354,7 +402,10 @@ pub(super) async fn attempt_transition(
         timestamp: Some(chrono::Utc::now()),
       });
 
-      Some(schema::DeviceRenderingState::ScheduleLayout(events, current_list))
+      Some(schema::DeviceRenderingState::ScheduleLayout {
+        events,
+        messages: current_list,
+      })
     }
 
     (_, DeviceStateTransition::Clear) => {
@@ -363,14 +414,19 @@ pub(super) async fn attempt_transition(
     }
 
     // set schedule onto an existing schedule.
-    (Some(schema::DeviceRenderingState::ScheduleLayout(_, messages)), DeviceStateTransition::SetSchedule(events)) => {
-      Some(schema::DeviceRenderingState::ScheduleLayout(events.clone(), messages))
-    }
+    (
+      Some(schema::DeviceRenderingState::ScheduleLayout { messages, .. }),
+      DeviceStateTransition::SetSchedule(events),
+    ) => Some(schema::DeviceRenderingState::ScheduleLayout {
+      events: events.clone(),
+      messages,
+    }),
 
     // set schedule onto anything (loss of messages).
-    (_, DeviceStateTransition::SetSchedule(events)) => {
-      Some(schema::DeviceRenderingState::ScheduleLayout(events.clone(), vec![]))
-    }
+    (_, DeviceStateTransition::SetSchedule(events)) => Some(schema::DeviceRenderingState::ScheduleLayout {
+      events: events.clone(),
+      messages: vec![],
+    }),
   };
 
   let update = bson::to_document(&PartialStateUpdate {
@@ -389,7 +445,7 @@ pub(super) async fn attempt_transition(
     )
     .await?;
 
-  log::debug!("final state - {updated_state:?}");
+  log::trace!("final state - {updated_state:?}");
 
   let percolated_render_id = handle
     .enqueue_kind(super::jobs::RegistrarJobKind::Renders(

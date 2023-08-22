@@ -1,3 +1,4 @@
+use super::queue;
 use crate::{registrar, schema};
 use std::io;
 
@@ -59,6 +60,12 @@ impl Worker {
         Some((None, 5)),
       ));
 
+      // TODO(job_encryption): using jwt here for ease, not the fact that it is the best. The
+      // original intent in doing this was to avoid having plaintext in our redis messages.
+      // Leveraging and existing depedency like `aes-gcm` would be awesome.
+      let key = jsonwebtoken::DecodingKey::from_secret(self.config.0.registrar.vendor_api_secret.as_bytes());
+      let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
+
       let payload = match kramer::execute(&mut c, cmd).await {
         Err(error) => {
           log::warn!("nuking redis connection; failed pop execution - {error}");
@@ -71,22 +78,10 @@ impl Worker {
         Ok(kramer::Response::Item(kramer::ResponseValue::String(payload))) => {
           log::debug!("found payload - '{payload}'");
 
-          serde_json::from_str::<super::queue::QueuedRender<String>>(payload.as_str())
-            .map_err(|error| {
-              log::warn!("unable to deserialize queued item - {error}");
-              error
-            })
-            .ok()
+          Some(payload)
         }
         Ok(kramer::Response::Array(contents)) => match contents.get(1) {
-          Some(kramer::ResponseValue::String(payload)) => {
-            serde_json::from_str::<super::queue::QueuedRender<String>>(payload.as_str())
-              .map_err(|error| {
-                log::warn!("unable to deserialize queued item - {error}");
-                error
-              })
-              .ok()
-          }
+          Some(kramer::ResponseValue::String(payload)) => Some(payload.clone()),
           other => {
             log::warn!("strange response from rendering queue pop - {other:?}");
             None
@@ -96,12 +91,28 @@ impl Worker {
           log::warn!("strange response from rendering queue pop - {other:?}");
           None
         }
-      };
+      }
+      .and_then(|response_string| {
+        jsonwebtoken::decode::<queue::QueuedRenderEncrypted<String>>(&response_string, &key, &validation)
+          .map_err(|error| {
+            log::error!("registrar worker unable to decode token - {}", error);
+            io::Error::new(io::ErrorKind::Other, "bad-jwt")
+          })
+          .ok()
+      });
 
-      if let Some(queued_render) = payload {
-        log::info!("found render, rasterizing + publish to '{}'", queued_render.device_id);
+      if let Some(queued_render) = payload.map(|p| p.claims.job) {
+        log::info!(
+          "found render '{}', rasterizing + publish to '{}'",
+          queued_render.id,
+          queued_render.device_id
+        );
 
         let queue_id = crate::redis::device_message_queue_id(&queued_render.device_id);
+
+        if let Err(error) = self.clear_pending(&mut c, &queue_id).await {
+          log::error!("unable to clear stale renders for '{queue_id}' - {error:?}");
+        }
 
         // Actually attempt to rasterize the layout into bytes and send it along to the device via
         // the device redis queue.
@@ -117,6 +128,33 @@ impl Worker {
           io::Error::new(io::ErrorKind::Other, "serialization error".to_string())
         })?;
 
+        match histories
+          .find_one_and_update(
+            bson::doc! { "device_id": &queued_render.device_id },
+            bson::doc! { "$push": { "render_history": { "$each": [ ], "$slice": -10 } } },
+            mongodb::options::FindOneAndUpdateOptions::builder()
+              .upsert(true)
+              .return_document(mongodb::options::ReturnDocument::After)
+              .build(),
+          )
+          .await
+        {
+          Err(error) => {
+            log::warn!(
+              "render[{}] unable to truncate device '{}' history - {error}",
+              queued_render.id,
+              queued_render.device_id
+            );
+          }
+          Ok(_) => {
+            log::warn!(
+              "render[{}] truncated history of device '{}' history successfully",
+              queued_render.id,
+              queued_render.device_id
+            );
+          }
+        }
+
         if let Err(error) = histories
           .find_one_and_update(
             bson::doc! { "device_id": &queued_render.device_id },
@@ -128,7 +166,11 @@ impl Worker {
           )
           .await
         {
-          log::warn!("unable to update device diagnostic total message count - {error}");
+          log::warn!(
+            "render[{}] unable to update device '{}' message history - {error}",
+            queued_render.id,
+            queued_render.device_id
+          );
         }
 
         // Lastly, update our job results hash with an entry for this render attempt. This is how
@@ -142,6 +184,13 @@ impl Worker {
           log::warn!("unable to complete serialization of render result - {error}");
           io::Error::new(io::ErrorKind::Other, "result-failure")
         })?;
+
+        log::info!(
+          "render[{}] setting job result for device '{}' - '{serialized_result}'",
+          queued_render.id,
+          queued_render.device_id
+        );
+
         if let Err(error) = kramer::execute(
           &mut c,
           kramer::Command::Hashes(kramer::HashCommand::Set(
@@ -155,7 +204,7 @@ impl Worker {
           log::warn!("unable to update job result - {error}");
         }
 
-        log::info!("mongo diagnostics updated for '{}'", queued_render.device_id);
+        log::info!("job '{}' for '{}' complete", queued_render.id, queued_render.device_id);
       }
 
       self.connections.1 = Some(c);
@@ -221,18 +270,51 @@ impl Worker {
 
     Ok(())
   }
+
+  /// Given a queue id, the goal of this method is to remove all things in it. This does check the
+  /// length before doing so, which is nice for logging purposes.
+  async fn clear_pending(
+    &mut self,
+    mut connection: &mut crate::redis::RedisConnection,
+    queue_id: &str,
+  ) -> io::Result<()> {
+    log::info!("clearing all pending renders for '{queue_id}'");
+    let len = kramer::Command::<&str, &str>::Lists(kramer::ListCommand::Len(queue_id));
+    let res = kramer::execute(&mut connection, &len).await?;
+    let count = match res {
+      kramer::Response::Item(kramer::ResponseValue::Integer(i)) => i,
+      other => {
+        return Err(io::Error::new(
+          io::ErrorKind::Other,
+          format!("invalid len response of render queue '{queue_id}'-  {other:?}"),
+        ))
+      }
+    };
+
+    if count <= 0 {
+      log::info!("queue '{queue_id} had {count} stale messages, ignoring");
+      return Ok(());
+    }
+
+    log::info!("queue '{queue_id}' has {count} stale messages, deleting");
+    let del = kramer::Command::<&str, &str>::Lists(kramer::ListCommand::Trim(queue_id, count, 0));
+
+    kramer::execute(connection, &del).await.map(|_| ()).map_err(|error| {
+      io::Error::new(
+        io::ErrorKind::Other,
+        format!("failed deletion of stale messages on '{queue_id}' - {error:?}"),
+      )
+    })
+  }
 }
 
 /// The main entrypoint for our renderers.
 pub async fn run(config: crate::registrar::Configuration) -> io::Result<()> {
   let mut tick = 0u8;
-  let mut interval = async_std::stream::interval(std::time::Duration::from_secs(1));
   let mut worker = Worker::new(config).await?;
   log::info!("renderer running");
 
   loop {
-    async_std::stream::StreamExt::next(&mut interval).await;
-
     if let Err(error) = worker.tick().await {
       log::warn!("worker failed on tick {tick} - {error}");
     }
