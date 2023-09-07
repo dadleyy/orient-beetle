@@ -92,8 +92,11 @@ impl Worker {
   /// just taking the next item from a channel and doing something with it based on our
   /// configuration.
   pub async fn work(self) -> io::Result<()> {
+    let mut failed = false;
+
     loop {
       if self.receiver.is_closed() {
+        log::warn!("reporting channel was closed, no more events will be published");
         return Err(io::Error::new(io::ErrorKind::Other, "reporting queue closed"));
       }
 
@@ -103,6 +106,10 @@ impl Worker {
           format!("failed taking next reporting event - {error}"),
         )
       })?;
+
+      if failed {
+        continue;
+      }
 
       log::trace!("reporting has next event to send along - {event:?}");
 
@@ -151,6 +158,10 @@ impl Worker {
       };
 
       if let Err(error) = result {
+        if matches!(error.kind(), io::ErrorKind::PermissionDenied) {
+          log::error!("reporting is mis-configured, no events will be sent");
+          failed = true;
+        }
         log::error!("reporting worker unable to send event - {error}");
       }
     }
@@ -162,21 +173,39 @@ impl Worker {
     T: serde::Serialize,
     S: AsRef<str>,
   {
-    surf::post(format!(
+    let url = format!(
       "https://insights-collector.newrelic.com/v1/accounts/{}/event",
       account_id.as_ref()
-    ))
-    .header("Accept", "*/*")
-    .header("Api-Key", api_key.as_ref())
-    .body_json(&data)
-    .map_err(|error| {
-      io::Error::new(
+    );
+    log::trace!("sending event to '{url}'");
+
+    let mut response = surf::post(&url)
+      .header("Accept", "*/*")
+      .header("Api-Key", api_key.as_ref())
+      .body_json(&data)
+      .map_err(|error| {
+        io::Error::new(
+          io::ErrorKind::Other,
+          format!("Unable to serialize queue sample - {error}"),
+        )
+      })?
+      .await
+      .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+
+    match response.status() {
+      surf::StatusCode::Ok => Ok(()),
+      surf::StatusCode::Forbidden => {
+        let body = response.body_string().await;
+        log::warn!("forbidden error from newrelic reporting - {body:?}");
+        Err(io::Error::new(
+          io::ErrorKind::PermissionDenied,
+          response.status().canonical_reason().to_string(),
+        ))
+      }
+      value => Err(io::Error::new(
         io::ErrorKind::Other,
-        format!("Unable to serialize queue sample - {error}"),
-      )
-    })?
-    .await
-    .map(|_| ())
-    .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))
+        format!("bad response from newrelic - '{value:?}'"),
+      )),
+    }
   }
 }
