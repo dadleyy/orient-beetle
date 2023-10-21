@@ -7,6 +7,7 @@ import DeviceQueue as DQ
 import DeviceSchedule as DS
 import Dropdown
 import Environment
+import File
 import Html
 import Html.Attributes as ATT
 import Html.Events as EV
@@ -33,6 +34,7 @@ type alias DeviceInfoResponse =
 type SettingsMenuMessage
     = StartRename
     | QueueWelcomeScannable
+    | StartFileUpload
     | MakePublic
     | MakePrivate
 
@@ -56,6 +58,7 @@ type Message
     | ToggleSchedule Bool
     | ClearAlert
     | MainInputKey Int
+    | ReceivedFiles (List File.File)
     | UpdateInput InputKinds
     | SettingsMenuUpdate Dropdown.Dropdown (Maybe SettingsMenuMessage)
     | LoadedTime Time.Posix
@@ -65,11 +68,18 @@ type InputKinds
     = Message String
     | Link String
     | DeviceName String
+    | FileInput
+
+
+type alias ActiveInput =
+    { inputKind : InputKinds
+    , pendingAction : Maybe (Maybe (Result Http.Error String))
+    }
 
 
 type alias Model =
     { id : String
-    , activeInput : ( InputKinds, Maybe (Maybe (Result Http.Error String)) )
+    , activeInput : ActiveInput
     , alert : Maybe Alert.Alert
     , loadedDevice : Maybe (Result Http.Error DeviceInfoResponse)
     , loadedAuthority : Maybe (Result Http.Error DA.DeviceAuthorityResponse)
@@ -92,7 +102,7 @@ isBusy : Model -> Bool
 isBusy model =
     let
         isSending =
-            Tuple.second model.activeInput |> Maybe.map (always True) |> Maybe.withDefault False
+            model.activeInput.pendingAction |> Maybe.map (always True) |> Maybe.withDefault False
 
         isPolling =
             List.length model.pendingMessageJobs > 0
@@ -111,6 +121,9 @@ isBusy model =
 resetInput : InputKinds -> InputKinds
 resetInput kind =
     case kind of
+        FileInput ->
+            FileInput
+
         DeviceName _ ->
             Message ""
 
@@ -161,15 +174,35 @@ view model env =
         -- mode we are currently in. it is likely there is a cleaner way to do this.
         activeInputTextbox str =
             Html.input
-                [ EV.onInput SetMessage, ATT.value str, ATT.disabled isDisabled, EV.on "keydown" enterDecoder ]
+                [ EV.onInput SetMessage
+                , ATT.value str
+                , ATT.disabled isDisabled
+                , EV.on "keydown" enterDecoder
+                ]
                 []
 
         ( inputNode, inputToggles ) =
-            case ( model.activeInput, isDisabled ) of
-                ( _, True ) ->
+            case ( model.activeInput.inputKind, model.activeInput.pendingAction, isDisabled ) of
+                ( _, _, True ) ->
                     ( activeInputTextbox "", disabledToggles )
 
-                ( ( DeviceName current, _ ), _ ) ->
+                ( FileInput, Just _, _ ) ->
+                    let
+                        uploadingNode =
+                            Html.div [] [ Html.text "uploading..." ]
+                    in
+                    ( uploadingNode, [] )
+
+                ( FileInput, _, _ ) ->
+                    let
+                        fileInputNode =
+                            Html.input
+                                [ ATT.type_ "file", EV.on "change" (D.map ReceivedFiles filesDecoder) ]
+                                []
+                    in
+                    ( fileInputNode, [] )
+
+                ( DeviceName current, _, _ ) ->
                     let
                         back =
                             Button.view (Button.PrimaryIcon Icon.Cancel (UpdateInput (Message "")))
@@ -182,24 +215,29 @@ view model env =
                     in
                     ( wrapped, [ back ] )
 
-                ( ( Link current, _ ), _ ) ->
+                ( Link current, _, _ ) ->
                     ( activeInputTextbox current, activeLinkToggles )
 
-                ( ( Message current, _ ), _ ) ->
+                ( Message current, _, _ ) ->
                     ( activeInputTextbox current, activeMessageToggles )
 
         sendButton =
-            if isBusy model then
-                Button.DisabledIcon Icon.Send
+            case ( isBusy model, model.activeInput.inputKind ) of
+                ( _, FileInput ) ->
+                    Html.div [] []
 
-            else
-                Button.PrimaryIcon Icon.Send AttemptMessage
+                ( True, _ ) ->
+                    Button.DisabledIcon Icon.Send |> Button.view
+
+                ( False, _ ) ->
+                    Button.PrimaryIcon Icon.Send AttemptMessage |> Button.view
 
         settingsMenu =
             [ ( StartRename, Html.div [] [ Html.text "Rename Device" ] )
             , ( QueueWelcomeScannable, Html.div [] [ Html.text "Send Registration Scannable" ] )
             , ( MakePublic, Html.div [] [ Html.text "Make Public" ] )
             , ( MakePrivate, Html.div [] [ Html.text "Make Private" ] )
+            , ( StartFileUpload, Html.div [] [ Html.text "Send Image" ] )
             ]
     in
     Html.div [ ATT.class "px-4 py-3" ]
@@ -212,7 +250,7 @@ view model env =
             ]
         , Html.div [ ATT.class "flex items-center" ]
             [ inputNode
-            , Html.div [ ATT.class "ml-2" ] [ Button.view sendButton ]
+            , Html.div [ ATT.class "ml-2" ] [ sendButton ]
             , Html.div [ ATT.class "hidden lg:flex ml-8 items-center" ] inputToggles
             ]
         , bottom model env
@@ -381,6 +419,9 @@ fetchDevice env id =
 setActiveInputText : String -> InputKinds -> InputKinds
 setActiveInputText newValue kind =
     case kind of
+        FileInput ->
+            FileInput
+
         DeviceName _ ->
             DeviceName newValue
 
@@ -394,13 +435,30 @@ setActiveInputText newValue kind =
 update : Environment.Environment -> Message -> Model -> ( Model, Cmd Message )
 update env message model =
     case message of
+        ReceivedFiles files ->
+            let
+                cmd =
+                    List.head files
+                        |> Maybe.map DQ.SendImage
+                        |> Maybe.map (DQ.postMessage env QueuedMessageJob model.id)
+
+                nextInput =
+                    case cmd of
+                        Just _ ->
+                            { inputKind = FileInput, pendingAction = Just Nothing }
+
+                        Nothing ->
+                            model.activeInput
+            in
+            ( { model | activeInput = nextInput }, Maybe.withDefault Cmd.none cmd )
+
         MainInputKey 13 ->
             let
                 cmd =
                     commandForCurrentInput env model
 
                 newInput =
-                    ( Tuple.first model.activeInput, Just Nothing )
+                    { inputKind = model.activeInput.inputKind, pendingAction = Just Nothing }
             in
             ( { model | activeInput = newInput, alert = Nothing }, Maybe.withDefault Cmd.none cmd )
 
@@ -411,19 +469,44 @@ update env message model =
             ( { model | alert = Nothing }, Cmd.none )
 
         SettingsMenuUpdate dropdown (Just StartRename) ->
-            ( { model | settingsMenu = dropdown, activeInput = ( DeviceName "", Nothing ) }, Cmd.none )
+            let
+                activeInput =
+                    { inputKind = DeviceName "", pendingAction = Nothing }
+            in
+            ( { model | settingsMenu = dropdown, activeInput = activeInput }
+            , Cmd.none
+            )
 
         SettingsMenuUpdate dropdown (Just QueueWelcomeScannable) ->
-            ( { model | settingsMenu = dropdown }, DQ.postMessage env QueuedMessageJob model.id DQ.WelcomeMessage )
+            let
+                cmd =
+                    DQ.postMessage env QueuedMessageJob model.id DQ.WelcomeMessage
+            in
+            ( { model | settingsMenu = dropdown }, cmd )
 
         SettingsMenuUpdate dropdown (Just MakePublic) ->
-            ( { model | settingsMenu = dropdown }, DQ.postMessage env QueuedMessageJob model.id (DQ.PublicAccessChange True) )
+            let
+                cmd =
+                    DQ.postMessage env QueuedMessageJob model.id (DQ.PublicAccessChange True)
+            in
+            ( { model | settingsMenu = dropdown }, cmd )
 
         SettingsMenuUpdate dropdown (Just MakePrivate) ->
-            ( { model | settingsMenu = dropdown }, DQ.postMessage env QueuedMessageJob model.id (DQ.PublicAccessChange False) )
+            let
+                cmd =
+                    DQ.postMessage env QueuedMessageJob model.id (DQ.PublicAccessChange False)
+            in
+            ( { model | settingsMenu = dropdown }, cmd )
 
         SettingsMenuUpdate dropdown Nothing ->
             ( { model | settingsMenu = dropdown }, Cmd.none )
+
+        SettingsMenuUpdate dropdown (Just StartFileUpload) ->
+            let
+                activeInput =
+                    { inputKind = FileInput, pendingAction = Nothing }
+            in
+            ( { model | activeInput = activeInput }, Cmd.none )
 
         Tick time ->
             let
@@ -465,22 +548,34 @@ update env message model =
                 -- TODO(job-polling): this clears out the job being polled whenever it reaches a terminal
                 --                    state. eventually we will want to handle failures much better.
                 _ ->
-                    ( { model | pendingMessageJobs = [] }, DA.fetchDeviceAuthority env model.id LoadedDeviceAuthority )
+                    ( { model | pendingMessageJobs = [] }
+                    , DA.fetchDeviceAuthority env model.id LoadedDeviceAuthority
+                    )
 
         LoadedJobHandle handle (Err _) ->
             ( { model | pendingMessageJobs = [] }, Cmd.none )
 
         UpdateInput newInput ->
-            ( { model | activeInput = ( newInput, Tuple.second model.activeInput ) }, Cmd.none )
+            let
+                current =
+                    model.activeInput
+
+                nextInput =
+                    { current | inputKind = newInput }
+            in
+            ( { model | activeInput = nextInput }, Cmd.none )
 
         SetMessage messageText ->
             let
                 nextInput =
-                    Tuple.first model.activeInput
+                    model.activeInput.inputKind
                         |> setActiveInputText messageText
+
+                next =
+                    { inputKind = nextInput, pendingAction = model.activeInput.pendingAction }
             in
             -- ( setMessage model messageText, Cmd.none )
-            ( { model | activeInput = ( nextInput, Tuple.second model.activeInput ) }, Cmd.none )
+            ( { model | activeInput = next }, Cmd.none )
 
         LoadedDeviceInfo infoResult ->
             let
@@ -492,12 +587,20 @@ update env message model =
         Loaded _ ->
             let
                 emptiedInput =
-                    Tuple.first model.activeInput |> resetInput
+                    model.activeInput.inputKind |> resetInput
             in
-            ( { model | activeInput = ( emptiedInput, Nothing ) }, Cmd.none )
+            ( { model | activeInput = { inputKind = emptiedInput, pendingAction = Nothing } }
+            , Cmd.none
+            )
 
         ToggleSchedule state ->
-            ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }
+            let
+                activeInput =
+                    { inputKind = model.activeInput.inputKind
+                    , pendingAction = Just Nothing
+                    }
+            in
+            ( { model | activeInput = activeInput }
             , DQ.postMessage env QueuedMessageJob model.id (DQ.SchedulePayload state)
             )
 
@@ -514,7 +617,13 @@ update env message model =
             ( model, cmd )
 
         ToggleLights state ->
-            ( { model | activeInput = ( Tuple.first model.activeInput, Just Nothing ) }
+            let
+                activeInput =
+                    { inputKind = model.activeInput.inputKind
+                    , pendingAction = Just Nothing
+                    }
+            in
+            ( { model | activeInput = activeInput }
             , DQ.postMessage env QueuedMessageJob model.id (DQ.LightPayload state)
             )
 
@@ -525,19 +634,21 @@ update env message model =
                     jobHandle :: model.pendingMessageJobs
 
                 activeInput =
-                    Tuple.first model.activeInput |> resetInput
+                    { inputKind = model.activeInput.inputKind |> resetInput
+                    , pendingAction = Nothing
+                    }
             in
-            ( { model | pendingMessageJobs = jobList, activeInput = ( activeInput, Nothing ) }, Cmd.none )
+            ( { model | pendingMessageJobs = jobList, activeInput = activeInput }, Cmd.none )
 
         QueuedMessageJob (Err e) ->
             let
                 activeInput =
-                    Tuple.first model.activeInput |> resetInput
+                    { inputKind = model.activeInput.inputKind |> resetInput, pendingAction = Nothing }
 
                 alert =
                     Just (Alert.Warning "Unable to queue")
             in
-            ( { model | alert = alert, activeInput = ( activeInput, Nothing ) }, Cmd.none )
+            ( { model | alert = alert, activeInput = activeInput }, Cmd.none )
 
         AttemptMessage ->
             let
@@ -545,7 +656,7 @@ update env message model =
                     commandForCurrentInput env model
 
                 newInput =
-                    ( Tuple.first model.activeInput, Just Nothing )
+                    { inputKind = model.activeInput.inputKind, pendingAction = Just Nothing }
             in
             ( { model | activeInput = newInput }, Maybe.withDefault Cmd.none cmd )
 
@@ -567,7 +678,10 @@ commandForCurrentInput : Environment.Environment -> Model -> Maybe (Cmd Message)
 commandForCurrentInput env model =
     let
         payload =
-            case Tuple.first model.activeInput of
+            case model.activeInput.inputKind of
+                FileInput ->
+                    Nothing
+
                 DeviceName str ->
                     notEmptyString str |> Maybe.map DQ.DeviceRenamePayload
 
@@ -599,7 +713,7 @@ viewAlert model =
 default : Environment.Environment -> String -> ( Model, Cmd Message )
 default env id =
     ( { id = id
-      , activeInput = ( Message "", Nothing )
+      , activeInput = { inputKind = Message "", pendingAction = Nothing }
       , loadedDevice = Nothing
       , loadedAuthority = Nothing
       , pendingMessageJobs = []
@@ -620,3 +734,8 @@ default env id =
             Loaded
         ]
     )
+
+
+filesDecoder : D.Decoder (List File.File)
+filesDecoder =
+    D.at [ "target", "files" ] (D.list File.decoder)

@@ -417,6 +417,11 @@ async fn work_jobs(
         .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))
     }
 
+    RegistrarJobKind::Renders(super::jobs::RegistrarRenderKinds::SendImage { location, device_id }) => {
+      log::debug!("attempting to send '{location:?}' to device {device_id}");
+      send_image(worker.handle(redis_connection), device_id, location).await
+    }
+
     RegistrarJobKind::Renders(super::jobs::RegistrarRenderKinds::CurrentDeviceState(device_id)) => {
       log::debug!(
         "job[{}] processing current device state render request for '{device_id}'",
@@ -554,4 +559,39 @@ async fn work_jobs(
   .await?;
 
   Ok(returned_state)
+}
+
+/// TODO[image-uploads]: once this idea is stable, this should be handled elsewhere, probably in
+/// the same way device state mutation jobs work. It is also unclear if we should be dealing with
+/// the raw bytes in the job or if passing around the path is the way to go. For the time being, we
+/// will at least validate the image data here before sending it along.
+async fn send_image(
+  mut handle: WorkerHandle<'_>,
+  device_id: &String,
+  location: &String,
+) -> io::Result<schema::jobs::JobResult> {
+  let image = image::io::Reader::open(location)
+    .map_err(|error| {
+      log::warn!("unable to open '{location}' - {error}");
+      io::Error::new(io::ErrorKind::Other, "invalid-image-location")
+    })?
+    .decode()
+    .map_err(|error| {
+      log::warn!("unable to parse '{location}' as an image - {error}");
+      io::Error::new(io::ErrorKind::Other, "invalid-image-location")
+    })?;
+
+  log::info!(
+    "sending image of dimensions ({}x{}) to '{device_id}'",
+    image.width(),
+    image.height()
+  );
+
+  handle
+    .render(device_id, crate::rendering::RenderLayout::Raw(location.clone()))
+    .await?;
+
+  Ok(schema::jobs::JobResult::Success(
+    schema::jobs::SuccessfulJobResult::Terminal,
+  ))
 }

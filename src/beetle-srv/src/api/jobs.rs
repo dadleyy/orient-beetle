@@ -69,30 +69,101 @@ enum QueuePayloadKind {
 ///
 /// Sends a message to the device.
 pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::Result {
+  // TODO: we're scoping this to make the immutable borrow of the worker only last while we load
+  // the user. The borrow cannot live longer than this because we need a mutable borrow to read the
+  // body.
+  let user = {
+    let worker = request.state();
+    worker
+      .request_authority(&request)
+      .await?
+      .ok_or_else(|| {
+        log::warn!("no user found");
+        tide::Error::from_str(404, "missing-user")
+      })
+      .map_err(|error| {
+        log::warn!("unable to determine request authority - {error}");
+        error
+      })?
+  };
+
+  let content_type = request
+    .content_type()
+    .ok_or_else(|| tide::Error::from_str(422, "missing content-type"))?;
+
+  // TODO[image-upload]: we will circle back to this and make it more graceful:
+  // 1. handle the parameterization of `device_id` better
+  // 2. add support for multiple image types & verify the mime "essense" is correct.
+  if content_type.essence() == "image/jpeg" && request.param("device_id").is_ok() {
+    let device_id = request.param("device_id").unwrap().to_string();
+
+    // TODO: borrow scoping...
+    {
+      let worker = request.state();
+      if worker.user_access(&user.oid, &device_id).await?.is_none() {
+        return Err(tide::Error::from_str(404, "not-found"));
+      }
+    }
+
+    let size = request
+      .len()
+      .ok_or_else(|| tide::Error::from_str(422, "missing image upload size"))?;
+
+    if size > 800000usize {
+      return Err(tide::Error::from_str(422, "image too large"));
+    }
+
+    log::debug!("has image upload for device queue '{device_id}' of {size} bytes");
+    let mut bytes = request.take_body();
+    let mut storage_dest = std::path::PathBuf::new();
+    storage_dest.push(&request.state().web_configuration.temp_file_storage);
+    async_std::fs::create_dir_all(&storage_dest).await.map_err(|error| {
+      log::error!("unable to ensure temporary file storage dir exists - {error}");
+      tide::Error::from_str(500, "bad")
+    })?;
+    let file_name = uuid::Uuid::new_v4().to_string();
+
+    storage_dest.push(&file_name);
+    storage_dest.set_extension("jpg");
+
+    log::info!("writing temporary file to '{storage_dest:?}");
+    let mut file = async_std::fs::OpenOptions::new()
+      .write(true)
+      .create(true)
+      .open(&storage_dest)
+      .await
+      .map_err(|error| {
+        log::error!("unable to create temporary file for upload - {error}");
+        tide::Error::from_str(500, "bad")
+      })?;
+
+    async_std::io::copy(&mut bytes, &mut file).await.map_err(|error| {
+      log::error!("unable to copy file upload - {error}");
+      tide::Error::from_str(500, "bad")
+    })?;
+
+    let job = registrar::RegistrarJobKind::Renders(registrar::jobs::RegistrarRenderKinds::SendImage {
+      location: storage_dest.to_string_lossy().to_string(),
+      device_id,
+    });
+    let worker = request.state();
+    let id = worker.queue_job_kind(job).await?;
+
+    return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
+  }
+
   let queue_payload = request.body_json::<QueuePayload>().await.map_err(|error| {
     log::warn!("bad device message payload - {error}");
     tide::Error::from_str(422, "bad-request")
   })?;
-  log::info!("queue payload request received - {queue_payload:?}");
 
   let worker = request.state();
-
-  let user = worker
-    .request_authority(&request)
-    .await?
-    .ok_or_else(|| {
-      log::warn!("no user found");
-      tide::Error::from_str(404, "missing-user")
-    })
-    .map_err(|error| {
-      log::warn!("unable to determine request authority - {error}");
-      error
-    })?;
-
   if worker.user_access(&user.oid, &queue_payload.device_id).await?.is_none() {
     log::warn!("'{}' has no access to device '{}'", user.oid, queue_payload.device_id);
     return Err(tide::Error::from_str(400, "not-found"));
   }
+
+  log::info!("queue payload request received - {queue_payload:?}");
 
   let device_id = queue_payload.device_id.clone();
 

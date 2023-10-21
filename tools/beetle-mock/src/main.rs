@@ -154,7 +154,7 @@ async fn get_device_id(
         other => {
           return Err(io::Error::new(
             io::ErrorKind::Other,
-            format!("unable to authenticate with redis - {other:?}"),
+            format!("unable to authenticate with redis - {other:?} (as {id_user})"),
           ))
         }
       };
@@ -228,13 +228,17 @@ async fn run_background(args: CommandLineArguments, s: async_std::channel::Sende
   log::info!("mock starting with config - '{config:?}'");
 
   let mut connection = beetle::redis::connect(&config.redis).await.map_err(|error| {
+    log::error!("unable to connect to redis broker - {error:?}");
     io::Error::new(
       io::ErrorKind::Other,
       format!("failed redis connection '{:?}' - {error}", config.redis),
     )
   })?;
 
-  let mock_device_id = get_device_id(&args, &config, &mut connection).await?;
+  let mock_device_id = get_device_id(&args, &config, &mut connection).await.map_err(|error| {
+    log::error!("unable to get device id - {error:?}");
+    error
+  })?;
 
   let mut interval = async_std::stream::interval(std::time::Duration::from_millis(500));
 
@@ -264,7 +268,7 @@ async fn run_background(args: CommandLineArguments, s: async_std::channel::Sende
     // TODO: this does not seem very structurally sound; the goal is to read from the redis
     // connection, attempting to parse our pop messages as a payload of image data.
     'response_read: loop {
-      let mut frame_buffer = [0u8; 1024 * 50];
+      let mut frame_buffer = [0u8; 1024 * 80];
 
       match async_std::io::timeout(
         std::time::Duration::from_secs(6),
@@ -272,20 +276,21 @@ async fn run_background(args: CommandLineArguments, s: async_std::channel::Sende
       )
       .await
       {
-        Ok(amount) => {
-          log::info!("has {amount} bytes");
+        Ok(read_amount) => {
+          log::info!("has {read_amount} bytes");
+          let parsed = std::str::from_utf8(&frame_buffer[0..read_amount]);
 
-          if amount == 5 && matches!(std::str::from_utf8(&frame_buffer[0..amount]), Ok("*-1\r\n")) {
+          if read_amount == 5 && matches!(parsed, Ok("*-1\r\n")) {
             log::info!("empty read from redis, moving on immediately");
             break 'response_read;
           }
 
           // Try to parse _something_ - this will normally be the `*2\r\n...` bit that contains our
           // array size followed by two entries for the key + actual image data.
-          let (message_header, header_size) = match std::str::from_utf8(&frame_buffer) {
+          let (message_header, header_size) = match parsed {
             Ok(inner) => {
               log::info!("parsed whole buffer as utf-8 - '{inner}'");
-              (Ok(inner), amount)
+              (Ok(inner), read_amount)
             }
             Err(error) if error.valid_up_to() > 0 => {
               log::warn!("parially read buffer as utf8 - {error:?}");
@@ -312,12 +317,17 @@ async fn run_background(args: CommandLineArguments, s: async_std::channel::Sende
             MessageState::BulkString(BulkStringLocation::Reading(remainder, _, _), _) => {
               if header_size > 0 {
                 let terminal = header_size + remainder;
-                log::info!("image located @ {header_size} -> {terminal}");
+                log::info!(
+                  "image located @ {header_size} -> {terminal}, currently have {} bytes",
+                  read_amount,
+                );
+
                 if frame_buffer.len() < terminal {
                   log::warn!("confused - header: '{header_size}' remainder: '{remainder}'");
                 } else {
                   image_buffer.extend_from_slice(&frame_buffer[header_size..terminal]);
                 }
+
                 break 'response_read;
               }
             }
@@ -431,6 +441,9 @@ impl iced::Application for BeetleMock {
 
   fn view(&self) -> iced::Element<Self::Message> {
     if let Some(buffer) = self.latest_image.as_ref() {
+      let loaded_image = image::guess_format(buffer.as_slice());
+      log::info!("has buffer from latest - {}: {loaded_image:?}", buffer.len());
+
       let handle = iced::widget::image::Handle::from_memory(buffer.clone());
       let img = iced::widget::image::viewer(handle);
       return iced::widget::column![img].into();

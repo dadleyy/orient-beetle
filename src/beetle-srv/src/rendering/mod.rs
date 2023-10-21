@@ -60,6 +60,9 @@ pub enum RenderLayout<S> {
   /// Clears the screen.
   Clear,
 
+  /// Holds a location on disc to raw image data.
+  Raw(S),
+
   /// A single styleized message. Will be rendered in the middle of the display being rasterized
   /// to.
   StylizedMessage(components::StylizedMessage<S>),
@@ -94,6 +97,22 @@ where
     );
 
     match self {
+      Self::Raw(location) => {
+        log::info!("attempting to ctop and take grayscale of '{}'", location.as_ref());
+        let mut raw_image = image::io::Reader::open(location.as_ref())
+          .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?
+          .decode()
+          .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
+
+        raw_image = raw_image.resize(dimensions.0, dimensions.1, image::imageops::FilterType::CatmullRom);
+        image = raw_image
+          .grayscale()
+          .as_luma8()
+          .cloned()
+          .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "unable to create grayscale"))?;
+        log::info!("grayscale of '{}' successful", location.as_ref());
+      }
+
       Self::Clear => (),
       // Scannables will replace the image buffer with one provided from the qr crate.
       Self::Scannable(scannable) => {
@@ -153,8 +172,13 @@ where
 
     // Create our output buffer and write the image into it.
     let mut formatted_buffer = std::io::Cursor::new(Vec::with_capacity((dimensions.0 * dimensions.1) as usize));
+    let encoder = image::codecs::png::PngEncoder::new_with_quality(
+      &mut formatted_buffer,
+      image::codecs::png::CompressionType::Best,
+      image::codecs::png::FilterType::Avg,
+    );
     image
-      .write_to(&mut formatted_buffer, image::ImageOutputFormat::Png)
+      .write_with_encoder(encoder)
       .map_err(|error| io::Error::new(io::ErrorKind::Other, format!("unable to build image: {error}")))?;
     Ok(formatted_buffer.into_inner())
   }

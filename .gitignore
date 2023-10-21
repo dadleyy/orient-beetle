@@ -1,7 +1,9 @@
 /target
+/.tmp
 *.DS_Store
 orient-beetle-ci.key
 .env
 env.toml
+local-env.toml
 .storage
 *.png

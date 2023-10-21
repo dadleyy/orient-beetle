@@ -275,12 +275,19 @@ impl Worker {
   }
 
   /// Attempts to return the access level for a user given a device id.
-  pub async fn user_access(
+  pub async fn user_access<U, D>(
     &self,
-    user_id: &String,
-    device_id: &String,
-  ) -> Result<Option<(crate::registrar::AccessLevel, Option<schema::DeviceAuthorityRecord>)>> {
-    crate::registrar::user_access(&self.mongo.0, &self.mongo.1, user_id, device_id).await
+    user_id: U,
+    device_id: D,
+  ) -> Result<Option<(crate::registrar::AccessLevel, Option<schema::DeviceAuthorityRecord>)>>
+  where
+    U: AsRef<str>,
+    D: AsRef<str>,
+  {
+    // TODO: pipe the `AsRef<str>` generic down further to avoid cloning here.
+    let user_id = user_id.as_ref().to_string();
+    let device_id = device_id.as_ref().to_string();
+    crate::registrar::user_access(&self.mongo.0, &self.mongo.1, &user_id, &device_id).await
   }
 
   /// Attempts to aquire a lock, filling the contents with either a new connection, or just
