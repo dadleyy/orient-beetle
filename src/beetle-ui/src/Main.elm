@@ -24,11 +24,6 @@ main =
         }
 
 
-type Route
-    = Login
-    | Home
-
-
 type alias Model =
     { key : Nav.Key
     , url : Url.Url
@@ -178,13 +173,13 @@ header model =
 body : Model -> Html.Html Msg
 body model =
     case ( Environment.getId model.env, model.route ) of
-        -- If we don't have a user id + matched the login route, render the login page.
-        ( Nothing, Just Route.Login ) ->
+        -- TODO: figure out where this pattern should actually go; it is the rendering of the login screen
+        -- even if we have no session.
+        ( Nothing, Just (Route.Login info) ) ->
             Html.div
                 [ A.class "flex-1 main" ]
-                [ Route.view model.env Route.Login |> Html.map RouteMessage ]
+                [ Route.view model.env (Route.Login info) |> Html.map RouteMessage ]
 
-        -- If we have a session _and_ we matched some route, render the route.
         ( Just _, Just route ) ->
             Html.div
                 [ A.class "flex-1 main" ]

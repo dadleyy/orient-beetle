@@ -10,6 +10,7 @@ import Route.Device
 import Route.DeviceRegistration
 import Route.Home
 import Url
+import Url.Builder as UrlBuilder
 import Url.Parser as UrlParser exposing ((</>))
 import Url.Parser.Query as QueryParser
 
@@ -25,7 +26,7 @@ type RouteInitialization
 
 
 type Route
-    = Login
+    = Login (Maybe String)
     | Account Route.Account.Model
     | Home Route.Home.Model
     | Device Route.Device.Model
@@ -63,9 +64,9 @@ subscriptions route =
 view : Environment.Environment -> Route -> Html.Html Message
 view env route =
     case route of
-        Login ->
+        Login returnState ->
             Html.div [ Html.Attributes.class "px-4 py-3 h-full w-full relative" ]
-                [ renderLogin env ]
+                [ renderLogin env returnState ]
 
         Home inner ->
             Route.Home.view inner env |> Html.map HomeMessage
@@ -212,17 +213,48 @@ routeLoadedEnv env url maybeId =
 
                 ifLoaded =
                     Matched ( Just (DeviceRegistration initialModel), Cmd.none )
+
+                returnParameters =
+                    parsedQuery
+                        |> Maybe.andThen identity
+                        |> Maybe.map List.singleton
+                        |> Maybe.withDefault []
+                        |> List.map (UrlBuilder.string "return")
+
+                redirect =
+                    Environment.buildLoginFlashPath env returnParameters
+                        |> Redirect
             in
             Maybe.map (always ifLoaded) maybeId
-                |> Maybe.withDefault (Redirect (Environment.buildRoutePath env "login"))
+                |> Maybe.withDefault redirect
 
         Just LoginUrl ->
             let
+                parser =
+                    UrlParser.query (QueryParser.string "return")
+
+                parsedQuery =
+                    UrlParser.parse parser { url | path = "" }
+
                 ifLoaded =
                     Redirect (Environment.buildRoutePath env "home")
+
+                loginReturn =
+                    parsedQuery
+                        |> Maybe.andThen identity
+
+                loginRoute =
+                    Login loginReturn
+                        |> Just
+
+                matched =
+                    Matched ( loginRoute, Cmd.none )
+
+                _ =
+                    Debug.log "parsed" matched
             in
             Maybe.map (always ifLoaded) maybeId
-                |> Maybe.withDefault (Matched ( Just Login, Cmd.none ))
+                |> Maybe.withDefault matched
 
         Nothing ->
             Redirect (Environment.buildRoutePath env "home")
@@ -234,9 +266,12 @@ fromUrl env url =
     let
         maybeLoadedId =
             Environment.getLoadedId env
+
+        out =
+            Maybe.map (routeLoadedEnv env url) maybeLoadedId
+                |> Maybe.withDefault (Matched ( Nothing, Cmd.none ))
     in
-    Maybe.map (routeLoadedEnv env url) maybeLoadedId
-        |> Maybe.withDefault (Matched ( Nothing, Cmd.none ))
+    out
 
 
 targetDeviceIdQueryParser : QueryParser.Parser (Maybe String)
@@ -244,8 +279,8 @@ targetDeviceIdQueryParser =
     QueryParser.string "device_target_id"
 
 
-renderLogin : Environment.Environment -> Html.Html Message
-renderLogin env =
+renderLogin : Environment.Environment -> Maybe String -> Html.Html Message
+renderLogin env returnState =
     let
         loginContentText =
             Maybe.withDefault "" (Environment.getLocalizedContent env "login_page")

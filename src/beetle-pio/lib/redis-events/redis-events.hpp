@@ -1,273 +1,319 @@
-#ifndef _REDIS_EVENTS_H
-#define _REDIS_EVENTS_H 1
+#pragma once
 
-#include <variant>
-#include <optional>
 #include <WiFiClientSecure.h>
-#include <Preferences.h>
-
+#include "redis-config.hpp"
+#include "redis-event.hpp"
+#include "redis-reader.hpp"
 #include "wifi-events.hpp"
-#include "microtim.hpp"
 
 namespace redisevents {
-  
-  class Events final {
-    public:
-      explicit Events(std::tuple<const char *, const uint32_t, std::pair<const char *, const char *>>);
-      ~Events() = default;
+extern const uint8_t redis_root_ca[] asm(
+    "_binary_embeds_redis_host_root_ca_pem_start");
 
-      // Disable Copy
-      Events(const Events &) = delete;
-      Events & operator=(const Events &) = delete;
+constexpr static const uint32_t MAX_ID_SIZE = 36;
+constexpr static const uint8_t OUTBOUND_BUFFER_SIZE = 200;
 
-      // Disable Move
-      Events(Events &&) = delete;
-      Events& operator=(Events &&) = delete;
+template <std::size_t T>
+class Events final {
+ public:
+  explicit Events(std::shared_ptr<RedisConfig> config)
+      : _context(std::make_shared<Context>(config)),
+        _state(Disconnected{}),
+        _reader(std::make_shared<RedisReader<T>>()) {}
 
-      enum EMessage {
-        FailedConnection,
-        ConnectionLost,
-        EstablishedConnection,
-        IdentificationReceived,
-        ReceivedMessage,
-      };
+  Events(const Events &) = delete;
+  Events &operator=(const Events &) = delete;
+  Events(Events &&) = delete;
+  Events &operator=(Events &&) = delete;
 
+  void begin(void) { _context->preferences.begin("beetle-redis", false); }
 
-      // Initialization - prepare our internal state
-      void begin(void);
+  std::optional<RedisEvent> update(
+      std::optional<wifievents::Events::EMessage> &wifi,
+      std::shared_ptr<std::array<uint8_t, T>> buffer, uint32_t time) {
+    auto visitor = StateVisitor{_context, &wifi, buffer, time, _reader};
+    auto[next, message] = std::visit(visitor, _state);
+    _state = next;
+    return message;
+  }
 
-      // Update - given a message from the wifi manager and the current time, perform logic
-      // based on our current state.
-      std::optional<EMessage> update(std::optional<wifievents::Events::EMessage>&, uint32_t);
+  // Return the size of our id.
+  uint8_t id_size(void) { return _context->device_id_len; }
 
-      // Copy the latest message (if any) into the destination.
-      uint16_t copy(char *, uint16_t);
+  uint8_t copy_id(char *out, uint8_t max) { return max; }
 
-      // Return the size of our id.
-      uint8_t id_size(void);
-      uint8_t copy_id(char *, uint8_t);
+ private:
+  struct Context;
+  struct Disconnected;
+  struct Connected;
 
-    private:
-      // These two amounts are the size of memory allocations used for receiving data from our redis
-      // client, and storing the parsed value.
-      constexpr static const uint32_t FRAMEBUFFER_SIZE = 1024 * 20;
-      constexpr static const uint32_t PARSED_MESSAGE_SIZE = 1024 * 20;
-
-      constexpr static const uint32_t MAX_ID_SIZE = 36;
-
-      // The amount of attempts to read from our tls connection that return no data
-      // before we attempt to reconnect.
-      constexpr static const uint32_t MAX_EMPTY_READ_RESET = 100;
-
-      // The messages we send back are pretty small.
-      constexpr static const uint8_t OUTBOUND_BUFFER_SIZE = 200;
-
-      // The amount of times we reset our connection before we will re-request a new device id.
-      constexpr static const uint8_t MAX_RESETS_RECREDENTIALIZE = 5;
-
-      constexpr static const char * EMPTY_STRING_RESPONSE = "$-1\r\n";
-      constexpr static const char * EMPTY_ARRAY_RESPONSE = "*-1\r\n";
-      constexpr static const char * OK = "+OK\r\n";
-      constexpr static const char * PUSH_OK = ":1\r\n";
-      constexpr static const char * WRONG_PASS_ERR = "-WRONGPASS invalid username-password pair or user is disabled\r\n";
-      constexpr static const char * NO_PERM_ERR = "-NOPERM this user has no permissions to run the 'rpush' command or its subcommand\r\n";
-
-      // registration queues:
-      // - `ob:r` -> device pulls its id down
-      // - `ob:i` -> device notifies it is online
-      constexpr static const char REDIS_REGISTRATION_POP [] = "*2\r\n$4\r\nLPOP\r\n$4\r\nob:r\r\n";
-
-      enum EAuthorizationStage {
-        NotRequested,             // <- connects + writes auth
-        AuthorizationRequested,   // <- reads `+OK` (skipped if id is in preferences).
-        AuthorizationReceived,    // <- writes registrar-pop
-        IdentificationRequested,  // <- reads id (skipped if id is in preferences).
-        AuthorizationAttempted,   // <- waiting for response from `AUTH`
-        FullyAuthorized,          // <- reads messages
-      };
-
-      enum EResponseParserTransition {
-        Noop,
-        Failure,
-        HasArray,
-        Done,
-        StartString,
-        EndString,
-      };
-
-      enum EParseResult {
-        ParsedFailure,
-        ParsedMessage,
-        ParsedOk,
-        ParsedNothing,
-      };
-
-      struct ParserVisitor;
-
-      // Initially, we will _either_ be parsing the length of an array to follow, or the length
-      // of a bulk string.
-      struct InitialParser final {
-        InitialParser(): _kind(0), _running_total(0), _delim(0) {}
-        ~InitialParser() = default;
-
-        InitialParser(const InitialParser&) = delete;
-        InitialParser& operator=(const InitialParser&) = delete;
-
-        InitialParser(const InitialParser&& other):
-          _kind(other._kind), _running_total(other._running_total), _delim(other._delim) {}
-        const InitialParser& operator=(const InitialParser&& other) {
-          this->_kind = other._kind;
-          this->_running_total = other._running_total;
-          this->_delim = other._delim;
-          return *this;
-        };
-
-        mutable uint8_t _kind;
-        mutable uint32_t _running_total;
-        mutable uint32_t _delim;
-
-        friend class ParserVisitor;
-      };
-
-      struct BulkStringParser final {
-        explicit BulkStringParser(uint32_t size): _size(size), _seen(0), _terminating(false) {}
-        ~BulkStringParser() = default;
-
-        BulkStringParser(const BulkStringParser&) = delete;
-        BulkStringParser& operator=(const BulkStringParser&) = delete;
-
-        BulkStringParser(const BulkStringParser&& other):
-          _size(other._size), _seen(other._seen), _terminating(other._terminating) {}
-        const BulkStringParser& operator=(const BulkStringParser&& other) {
-          this->_terminating = other._terminating;
-          this->_size = other._size;
-          this->_seen = other._seen;
-          return *this;
-        };
-
-        uint32_t _size;
-        mutable uint32_t _seen;
-        mutable bool _terminating;
-
-        friend class ParserVisitor;
-      };
-
-      using ParserStates = std::variant<InitialParser, BulkStringParser>;
-
-      struct ResponseParser final {
-        ResponseParser(): _state(InitialParser()) {}
-        EResponseParserTransition consume(char);
-        ParserStates _state;
-      };
-
-      struct ParserVisitor final {
-        explicit ParserVisitor(char token): _token(token) {}
-
-        std::tuple<ParserStates, EResponseParserTransition> operator()(const BulkStringParser&& initial) const;
-        std::tuple<ParserStates, EResponseParserTransition> operator()(const InitialParser&& initial) const;
-
-        char _token;
-      };
-
-
-      // Internal State Variant: Connected
-      //
-      // Once our wifi manager has established connection, we will open up a tls-backed tcp
-      // connection with our redis host and attempt authentication + "streaming".
-      struct Connected final {
-        public:
-          explicit Connected(Preferences*);
-          ~Connected();
-
-          Connected(const Connected &) = delete;
-          Connected & operator=(const Connected &) = delete;
-
-          Connected(Connected &&) = delete;
-
-          uint16_t copy(char *, uint16_t);
-          std::optional<EMessage> update(
-            const char *,
-            const std::pair<const char *, const char *>&,
-            uint32_t,
-            uint32_t
-          );
-
-          void reset(void);
-
-        private:
-          std::optional<EMessage> connect(
-            const char *,
-            const std::pair<const char *, const char *>&,
-            uint32_t
-          );
-          inline uint16_t write_message(uint32_t);
-          inline EParseResult parse_framebuffer(void);
-
-          EAuthorizationStage _authorization_stage;
-
-          // The `_framebuffer_size` represents the last index of our framebuffer we have pushed into.
-          // It is _also_ truncated down to the value of successfully parsed messages.
-          uint16_t _framebuffer_size;
-
-          ResponseParser _parser;
-
-          // This memory is filled every update with the contents of our tcp connection.
-          char * _framebuffer;
-          char * _outbound_buffer;
-          char * _parse_buffer;
-
-          // Credential storage.
-          char * _device_id;
-          uint8_t _device_id_len;
-
-          // The tcp connection.
-          WiFiClientSecure _client;
-
-          // Every time we try to read from our tcp connection that comes back without data,
-          // or a response that looks bad, we will increment our count here. If the amount
-          // passes the threshold specified by `MAX_EMPTY_READ_RESET`, we will attempt to
-          // close and start our tcp connection over.
-          uint8_t _empty_identified_reads;
-          uint8_t _cached_reset_count;
-
-          // Remember whether or not we connected with a catched id.
-          bool _connected_with_cached_id;
-
-          Preferences* _preferences;
-
-          uint8_t _strange_thing_count = 0;
-
-          microtim::MicroTimer _timer = microtim::MicroTimer(100);
-          microtim::MicroTimer _write_timer = microtim::MicroTimer(2000);
-          bool _pending_response = false;
-          bool _last_written_pop = false;
-
-          friend class Events;
-      };
-
-      // Internal State Variant: Disconnected
-      //
-      // Until our wifi manager is connected, this state represents doing nothing.
-      struct Disconnected final {
-        bool update(std::optional<wifievents::Events::EMessage> &message);
-      };
-
-      // Redis configuration values.
-      const char * _redis_host;
-      const uint32_t _redis_port;
-
-      // A tuple containing the ACL information that will be used for our connection.
-      std::pair<const char *, const char *> _redis_auth;
-
-      // When our wifi experiences a disconnect, we will pause all behaviors.
-      bool _paused;
-
-      Preferences _preferences;
-
-      // The underlying state machine of this redis manager.
-      std::variant<Disconnected, Connected> _state;
+  enum AuthorizationStage {
+    NotRequested,             // <- connects + writes auth
+    AuthorizationRequested,   // <- reads `+OK` (skipped if id is in
+                              // preferences).
+    AuthorizationReceived,    // <- writes registrar-pop
+    IdentificationRequested,  // <- reads id (skipped if id is in preferences).
+    AuthorizationAttempted,   // <- waiting for response from `AUTH`
+    FullyAuthorized,          // <- reads messages
   };
 
-}
+  struct Context final {
+    explicit Context(std::shared_ptr<RedisConfig> config)
+        : config(config),
+          device_id((char *)malloc(sizeof(char) * MAX_ID_SIZE)),
+          outbound((char *)malloc(sizeof(char) * OUTBOUND_BUFFER_SIZE)),
+          device_id_len(0) {
+      memset(device_id, '\0', MAX_ID_SIZE);
+    }
 
-#endif
+    ~Context() {
+      if (outbound != nullptr) {
+        free(outbound);
+      }
+      outbound = nullptr;
+      if (device_id != nullptr) {
+        free(device_id);
+      }
+      device_id = nullptr;
+    }
+
+    Context(Context &) = delete;
+    Context(const Context &) = delete;
+    Context &operator=(Context &) = delete;
+    Context &operator=(const Context &) = delete;
+
+    WiFiClientSecure client;
+    std::shared_ptr<RedisConfig> config;
+    Preferences preferences;
+
+    char *device_id;
+    char *outbound;
+
+    uint8_t device_id_len;
+  };
+
+  struct StateVisitor final {
+    std::shared_ptr<Context> context;
+    std::optional<wifievents::Events::EMessage> *wifi_message;
+    std::shared_ptr<std::array<uint8_t, T>> buffer;
+    uint32_t time;
+    std::shared_ptr<RedisReader<T>> reader;
+
+    std::pair<std::variant<Disconnected, Connected>, std::optional<RedisEvent>>
+    operator()(Connected c) {
+      if (*wifi_message == wifievents::Events::EMessage::Disconnected) {
+        return std::make_pair(Disconnected{}, std::nullopt);
+      }
+
+      if (*wifi_message ==
+          wifievents::Events::EMessage::ConnectionInterruption) {
+        c.paused = true;
+        return std::make_pair(c, std::nullopt);
+      }
+
+      if (c.paused) {
+        if (*wifi_message == wifievents::Events::EMessage::ConnectionResumed) {
+          return std::make_pair(Disconnected{}, std::nullopt);
+        }
+
+        return std::make_pair(c, std::nullopt);
+      }
+
+      switch (c.authorization_stage) {
+        case AuthorizationStage::IdentificationRequested:
+        case AuthorizationStage::AuthorizationRequested:
+        case AuthorizationStage::AuthorizationReceived:
+          return std::make_pair(c, std::nullopt);
+
+        case AuthorizationStage::FullyAuthorized: {
+          // If we're waiting for a response, read the message.
+          if (std::holds_alternative<ReceivingPop>(c.state) ||
+              std::holds_alternative<ReceivingHeartbeatAck>(c.state)) {
+            uint32_t bytes_read = 0;
+
+            while (context->client.available()) {
+              auto token = (char)context->client.read();
+              auto event = reader->fill(token, buffer);
+              bytes_read += 1;
+
+              if (std::holds_alternative<RedisInt>(event) &&
+                  std::holds_alternative<ReceivingHeartbeatAck>(c.state)) {
+                log_i("heartbeat ACK received");
+                c.state = NotReceiving{false};
+              }
+
+              if (std::holds_alternative<RedisArray>(event) &&
+                  std::holds_alternative<ReceivingPop>(c.state)) {
+                auto array_read = std::get<RedisArray>(event);
+
+                // If we ready an array response but the length is -1 or 0,
+                // we're no longer expecting any messages
+                if (array_read.size == -1 || array_read.size == 0) {
+                  c.state = NotReceiving{true};
+                  return std::make_pair(c, std::nullopt);
+                }
+
+                log_i("expecting %d messages to follow initial array read",
+                      array_read.size);
+
+                c.state = ReceivingPop{array_read.size, 0};
+              }
+
+              if (std::holds_alternative<RedisRead>(event) &&
+                  std::holds_alternative<ReceivingPop>(c.state)) {
+                auto payload_count =
+                    std::get_if<ReceivingPop>(&c.state)->payload_count;
+                bool had_payload = payload_count > 0;
+                auto position =
+                    std::get_if<ReceivingPop>(&c.state)->payload_position;
+
+                auto read_result = std::get<RedisRead>(event);
+
+                c.state = ReceivingPop{payload_count, position + 1};
+
+                log_i("received read event of size %d on payload item %d",
+                      read_result.size, payload_count);
+
+                if (had_payload && position + 1 == payload_count) {
+                  c.state = NotReceiving{true};
+                  log_i("finished all array elements, last size: %d (of %d)",
+                        read_result.size, T);
+                  RedisEvent e = PayloadReceived{(uint32_t)read_result.size};
+                  return std::make_pair(c, e);
+                }
+              }
+            }
+
+            return std::make_pair(c, std::nullopt);
+          }
+
+          if (time - c.last_write < 2000) {
+            return std::make_pair(c, std::nullopt);
+          }
+
+          buffer->fill('\0');
+
+          if (std::holds_alternative<NotReceiving>(c.state)) {
+            auto sending_heartbeat =
+                std::get_if<NotReceiving>(&c.state)->heartbeat_next;
+
+            c.last_write = time;
+            memset(context->outbound, '\0', OUTBOUND_BUFFER_SIZE);
+
+            if (sending_heartbeat) {
+              c.state = ReceivingHeartbeatAck{};
+              sprintf(context->outbound,
+                      "*3\r\n$5\r\nRPUSH\r\n$4\r\nob:i\r\n$%d\r\n%s\r\n",
+                      context->device_id_len, context->device_id);
+            } else {
+              c.state = ReceivingPop{};
+              sprintf(context->outbound,
+                      "*3\r\n$5\r\nBLPOP\r\n$%d\r\nob:%s\r\n$1\r\n5\r\n",
+                      context->device_id_len + 3, context->device_id);
+            }
+
+            log_i("writing message (heartbeat? %d)", sending_heartbeat);
+            context->client.print(context->outbound);
+          }
+
+          return std::make_pair(c, std::nullopt);
+        }
+
+        case AuthorizationStage::AuthorizationAttempted: {
+          buffer->fill('\0');
+
+          while (context->client.available()) {
+            auto token = (char)context->client.read();
+            auto event = reader->fill(token, buffer);
+
+            if (std::holds_alternative<RedisRead>(event)) {
+              auto read_len = std::get<RedisRead>(event);
+
+              if (strcmp((char *)buffer->data(), "OK") == 0) {
+                log_i("auth success of %d bytes, moving into pulling",
+                      read_len.size);
+                c.authorization_stage = AuthorizationStage::FullyAuthorized;
+              }
+            }
+          }
+
+          return std::make_pair(c, std::nullopt);
+        }
+
+        case AuthorizationStage::NotRequested: {
+          log_i("redis not yet requested any auth");
+          c.authorization_stage = AuthorizationStage::AuthorizationRequested;
+          context->client.setCACert((char *)redis_root_ca);
+          int result = context->client.connect(context->config->host,
+                                               context->config->port);
+
+          if (result != 1) {
+            log_e("unable to establish connection - %d", result);
+            return std::make_pair(Disconnected{}, FailedConnection{});
+          }
+
+          log_i("redis connection established successfully");
+
+          size_t stored_id_len =
+              context->preferences.isKey("device-id")
+                  ? context->preferences.getString(
+                        "device-id", context->device_id, MAX_ID_SIZE)
+                  : 0;
+
+          if (stored_id_len > 0) {
+            log_i("device id loaded from non-volatile memory: '%s'",
+                  context->device_id);
+            context->device_id_len = stored_id_len - 1;
+            memset(context->outbound, '\0', OUTBOUND_BUFFER_SIZE);
+            sprintf(context->outbound,
+                    "*3\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n",
+                    context->device_id_len, context->device_id,
+                    context->device_id_len, context->device_id);
+            context->client.print(context->outbound);
+            log_i("wrote auth: '%s'", context->outbound);
+            c.authorization_stage = AuthorizationStage::AuthorizationAttempted;
+            return std::make_pair(c, IdentificationReceived{});
+          }
+        }
+      }
+
+      return std::make_pair(c, std::nullopt);
+    }
+
+    std::pair<std::variant<Disconnected, Connected>, std::optional<RedisEvent>>
+    operator()(Disconnected d) {
+      if (*wifi_message == wifievents::Events::EMessage::Connected) {
+        log_i("redis events moving into connection attempt");
+        return std::make_pair(Connected{false}, std::nullopt);
+      }
+
+      return std::make_pair(Disconnected{}, std::nullopt);
+    }
+  };
+
+  struct Disconnected final {};
+
+  struct ReceivingHeartbeatAck final {};
+
+  struct ReceivingPop final {
+    int32_t payload_count = 0;
+    int32_t payload_position = 0;
+  };
+
+  struct NotReceiving final {
+    bool heartbeat_next;
+  };
+
+  struct Connected final {
+    bool paused = false;
+    uint32_t last_write = 0;
+    AuthorizationStage authorization_stage = AuthorizationStage::NotRequested;
+    std::variant<ReceivingHeartbeatAck, ReceivingPop, NotReceiving> state =
+        NotReceiving{true};
+  };
+
+  std::shared_ptr<Context> _context;
+  std::variant<Disconnected, Connected> _state;
+  std::shared_ptr<RedisReader<T>> _reader;
+};
+}
