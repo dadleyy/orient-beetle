@@ -249,9 +249,6 @@ routeLoadedEnv env url maybeId =
 
                 matched =
                     Matched ( loginRoute, Cmd.none )
-
-                _ =
-                    Debug.log "parsed" matched
             in
             Maybe.map (always ifLoaded) maybeId
                 |> Maybe.withDefault matched
