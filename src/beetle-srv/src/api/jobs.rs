@@ -3,6 +3,9 @@
 use crate::{registrar, schema};
 use serde::{Deserialize, Serialize};
 
+/// The max allowed file upload size, in bytes
+const MAX_FILE_SIZE: u32 = 1_000_000 * 5;
+
 /// The payload for looking up a device by id.
 #[derive(Debug, Deserialize)]
 struct LookupQuery {
@@ -111,7 +114,7 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
         tide::Error::from_str(422, "missing image upload size")
       })?;
 
-      if size > 800000usize {
+      if (size as u32) > MAX_FILE_SIZE {
         log::warn!("invalid image upload size: '{size}'");
         return Err(tide::Error::from_str(422, "image too large"));
       }

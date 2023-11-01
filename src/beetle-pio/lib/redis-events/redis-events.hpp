@@ -186,12 +186,14 @@ class Events final {
             }
 
             if (std::holds_alternative<ReceivingPop>(c.state)) {
-              ReceivingPop *popping = std::get_if<ReceivingPop>(&c.state);
-              uint32_t time_diff = time - popping->timeout_start;
+              ReceivingPop *receiver = std::get_if<ReceivingPop>(&c.state);
+              uint32_t time_diff = time - receiver->timeout_start;
 
               if (time_diff > 1000) {
-                log_i("timeout!");
-                popping->timeout_start = time;
+                log_i("still waiting for redis reponse data after %d reads",
+                      receiver->pending_reads);
+                receiver->timeout_start = time;
+                receiver->pending_reads += 1;
               }
             }
 
@@ -285,6 +287,8 @@ class Events final {
             c.authorization_stage = AuthorizationStage::AuthorizationAttempted;
             return std::make_pair(c, IdentificationReceived{});
           }
+
+          log_i("no stored device id, attempting to request one");
         }
       }
 
@@ -310,6 +314,7 @@ class Events final {
     int32_t payload_count = 0;
     int32_t payload_position = 0;
     uint32_t timeout_start = 0;
+    uint32_t pending_reads = 0;
   };
 
   struct NotReceiving final {
