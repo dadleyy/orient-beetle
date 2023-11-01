@@ -106,11 +106,13 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
         }
       }
 
-      let size = request
-        .len()
-        .ok_or_else(|| tide::Error::from_str(422, "missing image upload size"))?;
+      let size = request.len().ok_or_else(|| {
+        log::warn!("unable to determine image size from upload");
+        tide::Error::from_str(422, "missing image upload size")
+      })?;
 
       if size > 800000usize {
+        log::warn!("invalid image upload size: '{size}'");
         return Err(tide::Error::from_str(422, "image too large"));
       }
 
