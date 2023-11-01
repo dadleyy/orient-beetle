@@ -91,65 +91,70 @@ pub async fn queue(mut request: tide::Request<super::worker::Worker>) -> tide::R
     .content_type()
     .ok_or_else(|| tide::Error::from_str(422, "missing content-type"))?;
 
-  // TODO[image-upload]: we will circle back to this and make it more graceful:
-  // 1. handle the parameterization of `device_id` better
-  // 2. add support for multiple image types & verify the mime "essense" is correct.
-  if content_type.essence() == "image/jpeg" && request.param("device_id").is_ok() {
-    let device_id = request.param("device_id").unwrap().to_string();
+  match content_type.essence() {
+    image_kind @ "image/jpeg" | image_kind @ "image/png" => {
+      let device_id = request
+        .param("device_id")?
+        // .ok_or_else(|| tide::Error::from_str(422, "bad-id"))
+        .to_string();
 
-    // TODO: borrow scoping...
-    {
-      let worker = request.state();
-      if worker.user_access(&user.oid, &device_id).await?.is_none() {
-        return Err(tide::Error::from_str(404, "not-found"));
+      // TODO: borrow scoping...
+      {
+        let worker = request.state();
+        if worker.user_access(&user.oid, &device_id).await?.is_none() {
+          return Err(tide::Error::from_str(404, "not-found"));
+        }
       }
-    }
 
-    let size = request
-      .len()
-      .ok_or_else(|| tide::Error::from_str(422, "missing image upload size"))?;
+      let size = request
+        .len()
+        .ok_or_else(|| tide::Error::from_str(422, "missing image upload size"))?;
 
-    if size > 800000usize {
-      return Err(tide::Error::from_str(422, "image too large"));
-    }
+      if size > 800000usize {
+        return Err(tide::Error::from_str(422, "image too large"));
+      }
 
-    log::debug!("has image upload for device queue '{device_id}' of {size} bytes");
-    let mut bytes = request.take_body();
-    let mut storage_dest = std::path::PathBuf::new();
-    storage_dest.push(&request.state().web_configuration.temp_file_storage);
-    async_std::fs::create_dir_all(&storage_dest).await.map_err(|error| {
-      log::error!("unable to ensure temporary file storage dir exists - {error}");
-      tide::Error::from_str(500, "bad")
-    })?;
-    let file_name = uuid::Uuid::new_v4().to_string();
+      log::debug!("has image upload for device queue '{device_id}' of {size} bytes");
+      let mut bytes = request.take_body();
+      let mut storage_dest = std::path::PathBuf::new();
+      storage_dest.push(&request.state().web_configuration.temp_file_storage);
+      async_std::fs::create_dir_all(&storage_dest).await.map_err(|error| {
+        log::error!("unable to ensure temporary file storage dir exists - {error}");
+        tide::Error::from_str(500, "bad")
+      })?;
+      let file_name = uuid::Uuid::new_v4().to_string();
 
-    storage_dest.push(&file_name);
-    storage_dest.set_extension("jpg");
+      storage_dest.push(&file_name);
+      storage_dest.set_extension(if image_kind == "image/jpeg" { "jpg" } else { "png" });
 
-    log::info!("writing temporary file to '{storage_dest:?}");
-    let mut file = async_std::fs::OpenOptions::new()
-      .write(true)
-      .create(true)
-      .open(&storage_dest)
-      .await
-      .map_err(|error| {
-        log::error!("unable to create temporary file for upload - {error}");
+      log::info!("writing temporary file to '{storage_dest:?}");
+      let mut file = async_std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(&storage_dest)
+        .await
+        .map_err(|error| {
+          log::error!("unable to create temporary file for upload - {error}");
+          tide::Error::from_str(500, "bad")
+        })?;
+
+      async_std::io::copy(&mut bytes, &mut file).await.map_err(|error| {
+        log::error!("unable to copy file upload - {error}");
         tide::Error::from_str(500, "bad")
       })?;
 
-    async_std::io::copy(&mut bytes, &mut file).await.map_err(|error| {
-      log::error!("unable to copy file upload - {error}");
-      tide::Error::from_str(500, "bad")
-    })?;
+      let job = registrar::RegistrarJobKind::Renders(registrar::jobs::RegistrarRenderKinds::SendImage {
+        location: storage_dest.to_string_lossy().to_string(),
+        device_id,
+      });
+      let worker = request.state();
+      let id = worker.queue_job_kind(job).await?;
 
-    let job = registrar::RegistrarJobKind::Renders(registrar::jobs::RegistrarRenderKinds::SendImage {
-      location: storage_dest.to_string_lossy().to_string(),
-      device_id,
-    });
-    let worker = request.state();
-    let id = worker.queue_job_kind(job).await?;
-
-    return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
+      return tide::Body::from_json(&QueueResponse { id }).map(|body| tide::Response::builder(200).body(body).build());
+    }
+    other => {
+      log::warn!("strange content type - '{other}'");
+    }
   }
 
   let queue_payload = request.body_json::<QueuePayload>().await.map_err(|error| {

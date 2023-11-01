@@ -41,11 +41,11 @@ void draw_row(PNGDRAW *draw_context) {
     float l = lum(r, g, b);
 
     uint16_t color = GxEPD_WHITE;
-    if (l < lum(0x7b, 0x7d, 0x7b)) {
+    if (l < 64) {
       color = GxEPD_BLACK;
-    } else if (l < lum(0xc5, 0xc2, 0xc5)) {
+    } else if (l < 160) {
       color = GxEPD_DARKGREY;
-    } else if (l < lum(0xaa, 0xaa, 0xaa)) {
+    } else if (l < 223) {
       color = GxEPD_LIGHTGREY;
     }
 

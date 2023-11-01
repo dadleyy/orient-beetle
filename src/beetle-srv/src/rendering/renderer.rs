@@ -119,7 +119,7 @@ impl Worker {
         let queue_error = match self.send_layout(&mut c, &queue_id, queued_render.layout.clone()).await {
           Ok(_) => None,
           Err(error) => {
-            log::warn!("uanble to send layout - {error:}");
+            log::warn!("unable to send layout - {error:}");
             Some(format!("{error:?}"))
           }
         };

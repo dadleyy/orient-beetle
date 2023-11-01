@@ -40,12 +40,16 @@ void draw_row(PNGDRAW *draw_context) {
 
     float l = lum(r, g, b);
 
+    if (i == 0) {
+      log_i("row=%d, l=%f", draw_context->y, l);
+    }
+
     uint16_t color = GxEPD_WHITE;
-    if (l < lum(0x7b, 0x7d, 0x7b)) {
+    if (l < 64) {
       color = GxEPD_BLACK;
-    } else if (l < lum(0xc5, 0xc2, 0xc5)) {
+    } else if (l < 160) {
       color = GxEPD_DARKGREY;
-    } else if (l < lum(0xaa, 0xaa, 0xaa)) {
+    } else if (l < 223) {
       color = GxEPD_LIGHTGREY;
     }
 
@@ -94,9 +98,8 @@ void setup(void) {
   } while (display.nextPage());
 
   auto rc =
-      // png.openRAM((uint8_t *)square_start, square_end - square_start,
-      // draw_row);
-      png.openRAM((uint8_t *)dog_start, dog_end - dog_start, draw_row);
+      png.openRAM((uint8_t *)square_start, square_end - square_start, draw_row);
+  // png.openRAM((uint8_t *)dog_start, dog_end - dog_start, draw_row);
   if (rc == PNG_SUCCESS) {
     auto width = png.getWidth(), height = png.getHeight(), bpp = png.getBpp();
     log_i("image specs: (%d x %d) | %d bpp | alpha? %d | type %d", width,

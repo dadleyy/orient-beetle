@@ -105,11 +105,7 @@ where
           .map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
 
         raw_image = raw_image.resize(dimensions.0, dimensions.1, image::imageops::FilterType::CatmullRom);
-        image = raw_image
-          .grayscale()
-          .as_luma8()
-          .cloned()
-          .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "unable to create grayscale"))?;
+        image = raw_image.grayscale().to_luma8();
         log::info!("grayscale of '{}' successful", location.as_ref());
       }
 

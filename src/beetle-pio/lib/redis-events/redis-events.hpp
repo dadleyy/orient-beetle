@@ -149,6 +149,7 @@ class Events final {
                 // If we ready an array response but the length is -1 or 0,
                 // we're no longer expecting any messages
                 if (array_read.size == -1 || array_read.size == 0) {
+                  log_i("empty array received while waiting for message pop");
                   c.state = NotReceiving{true};
                   return std::make_pair(c, std::nullopt);
                 }
@@ -181,6 +182,16 @@ class Events final {
                   RedisEvent e = PayloadReceived{(uint32_t)read_result.size};
                   return std::make_pair(c, e);
                 }
+              }
+            }
+
+            if (std::holds_alternative<ReceivingPop>(c.state)) {
+              ReceivingPop *popping = std::get_if<ReceivingPop>(&c.state);
+              uint32_t time_diff = time - popping->timeout_start;
+
+              if (time_diff > 1000) {
+                log_i("timeout!");
+                popping->timeout_start = time;
               }
             }
 
@@ -270,7 +281,7 @@ class Events final {
                     context->device_id_len, context->device_id,
                     context->device_id_len, context->device_id);
             context->client.print(context->outbound);
-            log_i("wrote auth: '%s'", context->outbound);
+            log_d("wrote auth: '%s'", context->outbound);
             c.authorization_stage = AuthorizationStage::AuthorizationAttempted;
             return std::make_pair(c, IdentificationReceived{});
           }
@@ -298,6 +309,7 @@ class Events final {
   struct ReceivingPop final {
     int32_t payload_count = 0;
     int32_t payload_position = 0;
+    uint32_t timeout_start = 0;
   };
 
   struct NotReceiving final {

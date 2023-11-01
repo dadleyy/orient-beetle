@@ -197,7 +197,7 @@ view model env =
                     let
                         fileInputNode =
                             Html.input
-                                [ ATT.accept ".jpg,.jpeg"
+                                [ ATT.accept ".jpg,.jpeg,.png"
                                 , ATT.type_ "file"
                                 , EV.on "change" (D.map ReceivedFiles filesDecoder)
                                 ]
