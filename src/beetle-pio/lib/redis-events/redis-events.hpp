@@ -189,6 +189,9 @@ class Events final {
      */
     std::pair<std::variant<Disconnected, Connected>, std::optional<RedisEvent>>
     read_ok(Connected connected) {
+      bool pending_burnin_auth = connected.authorization_stage ==
+                                 AuthorizationStage::AuthorizationRequested;
+
       while (context->client.available()) {
         auto token = (char)context->client.read();
         auto event = reader->fill(token, buffer);
@@ -201,12 +204,15 @@ class Events final {
                   read_len.size);
 
             connected.authorization_stage =
-                connected.authorization_stage ==
-                        AuthorizationStage::AuthorizationRequested
-                    ? AuthorizationStage::AuthorizationReceived
-                    : AuthorizationStage::FullyAuthorized;
+                pending_burnin_auth ? AuthorizationStage::AuthorizationReceived
+                                    : AuthorizationStage::FullyAuthorized;
           }
         }
+      }
+
+      if (connected.authorization_stage ==
+          AuthorizationStage::FullyAuthorized) {
+        return std::make_pair(connected, Authorized{});
       }
 
       return std::make_pair(connected, std::nullopt);

@@ -10,9 +10,13 @@ constexpr static const uint32_t BUFFER_SIZE = 1024 * 80;
 
 struct Unknown final {};
 
+struct Idle final {};
+
 struct Connecting final {};
 
 struct Connected final {};
+
+struct Working final {};
 
 struct Configuring final {};
 
@@ -21,7 +25,8 @@ struct HoldingUpdate final {
   uint32_t size;
 };
 
-typedef std::variant<Unknown, HoldingUpdate, Connected, Connecting, Configuring>
+typedef std::variant<Idle, Working, Unknown, HoldingUpdate, Connected,
+                     Connecting, Configuring>
     State;
 }
 

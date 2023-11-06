@@ -167,7 +167,7 @@ void loop(void) {
     display_render_unknown(last_frame);
   }
 
-  state = states::Unknown{};
+  state = states::Idle{};
 
   last_frame = now;
 #ifndef RELEASE

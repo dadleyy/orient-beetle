@@ -4,15 +4,15 @@
 
 namespace redisevents {
 
-struct PayloadReceived {
+struct PayloadReceived final {
   uint32_t size;
 };
 
-struct IdentificationReceived {};
+struct IdentificationReceived final {};
 
-struct Authorized {};
+struct Authorized final {};
 
-struct FailedConnection {};
+struct FailedConnection final {};
 
 typedef std::variant<PayloadReceived, Authorized, FailedConnection,
                      IdentificationReceived>
