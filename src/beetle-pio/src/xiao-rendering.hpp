@@ -1,37 +1,68 @@
 #pragma once
 
-// TODO: Implement a better strategy for sharing the "rendering api" between the firebeetle and
+// TODO: Implement a better strategy for sharing the "rendering api" between the
+// firebeetle and
 //       seeduino xiao esp32c3 implementations of this project.
 
-#include "esp32-hal-log.h"
-#include "state.hpp"
-#include "GxEPD2_BW.h"
-#include "U8g2_for_Adafruit_GFX.h"
+#include "GxEPD2_4G_4G.h"
 #include "PNGdec.h"
+#include "U8g2_for_Adafruit_GFX.h"
+#include "esp32-hal-log.h"
 #include "message-constants.hpp"
+#include "state.hpp"
 
-#define DISPLAY_CHIP_SELECT_PIN  A0
+#define DISPLAY_CHIP_SELECT_PIN A0
 #define DISPLAY_DATA_COMMAND_PIN A1
-#define DISPLAY_RESET_PIN        A2
-#define DISPLAY_BUSY_PIN         A3
+#define DISPLAY_RESET_PIN A2
+#define DISPLAY_BUSY_PIN A3
 
 PNG png;
 U8G2_FOR_ADAFRUIT_GFX fonts;
-GxEPD2_BW<GxEPD2_420, GxEPD2_420::HEIGHT> display = GxEPD2_420(
-    DISPLAY_CHIP_SELECT_PIN,
-    DISPLAY_DATA_COMMAND_PIN,
-    DISPLAY_RESET_PIN,
-    DISPLAY_BUSY_PIN);
+GxEPD2_4G_4G_R<GxEPD2_420, GxEPD2_420::HEIGHT> display =
+    GxEPD2_420(DISPLAY_CHIP_SELECT_PIN, DISPLAY_DATA_COMMAND_PIN,
+               DISPLAY_RESET_PIN, DISPLAY_BUSY_PIN);
+
+float lum(uint8_t r, uint8_t g, uint8_t b) {
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b);
+}
+
+void draw_row(PNGDRAW *draw_context) {
+  for (uint16_t i = 0; i < draw_context->iWidth; i++) {
+    uint8_t r = *(draw_context->pPixels + (i * 4));
+    uint8_t g = *(draw_context->pPixels + (i * 4) + 1);
+    uint8_t b = *(draw_context->pPixels + (i * 4) + 2);
+
+    if (png.getPixelType() == 0 && png.hasAlpha()) {
+      r = g = b = *(draw_context->pPixels + (i * 2));
+    } else if (png.getPixelType() == 0 && !png.hasAlpha()) {
+      r = g = b = *(draw_context->pPixels + i);
+    }
+
+    float l = lum(r, g, b);
+
+    uint16_t color = GxEPD_WHITE;
+    if (l < 64) {
+      color = GxEPD_BLACK;
+    } else if (l < 160) {
+      color = GxEPD_DARKGREY;
+    } else if (l < 223) {
+      color = GxEPD_LIGHTGREY;
+    }
+
+    display.drawPixel(i, draw_context->y, color);
+  }
+}
 
 bool display_init() {
-  display.init();
+  display.init(115200, true, 2, false);
   display.setRotation(0);
   fonts.begin(display);
 
   uint16_t bg = GxEPD_WHITE;
   uint16_t fg = GxEPD_BLACK;
 
-  log_i("initializing display. white is %d (%d). black is %d (%d)", bg, GxEPD_WHITE, fg, GxEPD_BLACK);
+  log_i("initializing display. white is %d (%d). black is %d (%d)", bg,
+        GxEPD_WHITE, fg, GxEPD_BLACK);
 
   fonts.setFontMode(1);
   fonts.setFontDirection(0);
@@ -56,44 +87,26 @@ bool display_init() {
   return true;
 }
 
-void draw_row(PNGDRAW *draw_context) {
-  uint16_t rgb_565[400];
-  png.getLineAsRGB565(draw_context, rgb_565, PNG_RGB565_BIG_ENDIAN, 0xffffffff);
-
-  for (uint16_t i = 0; i < draw_context->iWidth; i++) {
-    auto corrected = *(rgb_565 + i);
-    display.drawPixel(i, draw_context->y, corrected);
+void display_render_state(const states::HoldingUpdate *state, uint32_t t) {
+  if (state->size <= 0) {
+    return;
   }
-}
 
-void display_render_state(const states::Working * working_state, uint32_t t) {
-  bool sent = false;
-  for (auto message = working_state->begin(); message != working_state->end(); message++) {
-    if (message->size == 0 || sent) {
-      continue;
-    }
+  log_i("parsing '%d' bytes as if they were png", state->size);
+  auto rc =
+      png.openRAM((uint8_t *)state->buffer->data(), state->size, draw_row);
 
-    if (strstr(message->content, LIGHTING_PREFIX) != nullptr) {
-      log_i("irrelevant message for layout rendering '%s'", message->content);
-      sent = true;
-      continue;
-    }
-
-    log_i("parsing '%d' bytes as if they were png", message->size);
-    auto rc = png.openRAM((uint8_t *) message->content, message->size, draw_row);
-
-    if (rc == PNG_SUCCESS) {
-      display.firstPage();
-      auto width = png.getWidth(), height = png.getHeight(), bpp = png.getBpp();
-      log_i("image specs: (%d x %d), %d bpp (start decode)", width, height, bpp);
-      png.decode(NULL, 0);
-      log_i("decode finished");
-      display.nextPage();
-      png.close();
-    } else {
-      log_e("unable to parse png");
-    }
-    sent = true;
+  if (rc == PNG_SUCCESS) {
+    display.firstPage();
+    auto width = png.getWidth(), height = png.getHeight(), bpp = png.getBpp();
+    log_i("image specs: (%d x %d) | %d bpp | %d type | %d alpha", width, height,
+          bpp, png.getPixelType(), png.hasAlpha());
+    png.decode(NULL, 0);
+    log_i("decode finished");
+    display.nextPage();
+    png.close();
+  } else {
+    log_e("unable to parse png");
   }
 }
 

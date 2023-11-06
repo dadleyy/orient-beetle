@@ -30,6 +30,8 @@ pub use worker::Worker;
 /// Web configuration.
 #[derive(Deserialize, Clone)]
 pub struct WebConfiguration {
+  /// The location on disc where files should be saved temporarily.
+  temp_file_storage: String,
   /// The domain to associated cookies with.
   cookie_domain: String,
   /// Where to send folks after the Oauth handshake has completed.
@@ -105,6 +107,11 @@ pub fn new(worker: worker::Worker) -> tide::Server<worker::Worker> {
   // devices. It is how we schedule lighting, messaging and calendar based modifications to
   // devices.
   app.at("/device-queue").post(jobs::queue);
+  // TODO: this was added to support file uploads since we cannot use the multipart http body
+  // format that elm would otherwise like to use.
+  //
+  // this should deprecate the non-scoped route, or make file uploading better.
+  app.at("/device-queue/:device_id").post(jobs::queue);
 
   app.at("/jobs").get(jobs::find);
   app.at("/device-schedules").get(schedules::find);

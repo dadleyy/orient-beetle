@@ -77,36 +77,6 @@ jobs:
       - name: "pio: check"
         run: pio check
 
-      - name: "pio(firebeetle): run firebeetle"
-        run: pio run -e firebeetle
-
-      - name: "bundle(firebeetle): prepare-dir"
-        run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle
-
-      - name: "bundle(firebeetle): copy-bin"
-        run: |
-          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
-            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/firmware.bin.pgp \
-            .pio/build/firebeetle/firmware.bin
-
-      - name: "bundle(firebeetle): copy-map"
-        run: |
-          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
-            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/firmware.map.pgp \
-            .pio/build/firebeetle/firmware.map
-
-      - name: "bundle(firebeetle): copy-elf"
-        run: |
-          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
-            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/firmware.elf.pgp \
-            .pio/build/firebeetle/firmware.elf
-
-      - name: "bundle(firebeetle): copy-partitions"
-        run: |
-          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
-            $DISTRIBUTABLE_DIRECTORY_NAME/firebeetle/partitions.bin.pgp \
-            .pio/build/firebeetle/partitions.bin
-
       - name: "pio(xiao): upgrade"
         run: pio upgrade
 

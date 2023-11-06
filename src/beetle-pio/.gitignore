@@ -1,4 +1,5 @@
 /.pio
+/env
 /*.log
 /embeds/*.pem
 .env

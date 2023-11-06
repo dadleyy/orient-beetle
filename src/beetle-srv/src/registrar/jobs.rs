@@ -15,6 +15,17 @@ pub enum RegistrarRenderKinds {
 
   /// Attempts to render the current device state.
   CurrentDeviceState(String),
+
+  /// Attempts to send a an image file to the device. This should probably be handled by the device
+  /// state transition job kind instead.
+  SendImage {
+    /// The location on our current filesystem where we can find the image. This will be deleted
+    /// after the job is finished with it.
+    location: String,
+
+    /// The id of the target device.
+    device_id: String,
+  },
 }
 
 /// The individual kinds of jobs.

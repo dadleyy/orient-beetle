@@ -45,130 +45,133 @@ where
   )
   .await?;
 
-  if let kramer::Response::Item(kramer::ResponseValue::String(id)) = taken {
-    log::trace!("found device push from '{id}' waiting in incoming queue");
+  let id = match taken {
+    kramer::Response::Item(kramer::ResponseValue::String(id)) => id,
+    kramer::Response::Item(kramer::ResponseValue::Empty) => return Ok(0),
+    other => {
+      log::error!("unrecognized inbound registrar queue item - '{other:?}'");
+      return Ok(0);
+    }
+  };
 
-    let super::worker::WorkerMongo {
-      client: mongo_client,
-      config: mongo_config,
-    } = &worker.mongo;
-    let collection = mongo_client
-      .database(&mongo_config.database)
-      .collection::<schema::DeviceDiagnostic>(&mongo_config.collections.device_diagnostics);
+  let super::worker::WorkerMongo {
+    client: mongo_client,
+    config: mongo_config,
+  } = &worker.mongo;
+  let collection = mongo_client
+    .database(&mongo_config.database)
+    .collection::<schema::DeviceDiagnostic>(&mongo_config.collections.device_diagnostics);
 
-    // Attempt to update the diagnostic information in mongo. We only really want to set `last_seen`
-    // on every message; to set `first_seen`, we'll take advantage of mongo's `$setOnInsert`
-    // operation.
-    let device_diagnostic = collection
-      .find_one_and_update(
-        bson::doc! { "id": &id },
-        bson::to_document(&DeviceDiagnosticUpsert {
-          id: &id,
-          last_seen: chrono::Utc::now(),
+  // Attempt to update the diagnostic information in mongo. We only really want to set `last_seen`
+  // on every message; to set `first_seen`, we'll take advantage of mongo's `$setOnInsert`
+  // operation.
+  let device_diagnostic = collection
+    .find_one_and_update(
+      bson::doc! { "id": &id },
+      bson::to_document(&DeviceDiagnosticUpsert {
+        id: &id,
+        last_seen: chrono::Utc::now(),
+      })
+      .and_then(|left| {
+        bson::to_document(&DeviceDiagnosticSetOnInsert {
+          first_seen: chrono::Utc::now(),
         })
-        .and_then(|left| {
-          bson::to_document(&DeviceDiagnosticSetOnInsert {
-            first_seen: chrono::Utc::now(),
-          })
-          .map(|right| (left, right))
-        })
-        .map(|(l, r)| {
-          bson::doc! {
-            "$set": l,
-            "$setOnInsert": r
-          }
-        })
-        .map_err(|error| {
-          log::warn!("unable to build upsert doc - {error}");
-          io::Error::new(io::ErrorKind::Other, format!("{error}"))
-        })?,
-        Some(
-          mongodb::options::FindOneAndUpdateOptions::builder()
-            .upsert(true)
-            .return_document(mongodb::options::ReturnDocument::After)
-            .build(),
-        ),
-      )
-      .await
+        .map(|right| (left, right))
+      })
+      .map(|(l, r)| {
+        bson::doc! {
+          "$set": l,
+          "$setOnInsert": r
+        }
+      })
       .map_err(|error| {
-        log::warn!("unable to upsert device diagnostic - {error}");
+        log::warn!("unable to build upsert doc - {error}");
         io::Error::new(io::ErrorKind::Other, format!("{error}"))
-      })?
-      .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "upsert failed"))?;
+      })?,
+      Some(
+        mongodb::options::FindOneAndUpdateOptions::builder()
+          .upsert(true)
+          .return_document(mongodb::options::ReturnDocument::After)
+          .build(),
+      ),
+    )
+    .await
+    .map_err(|error| {
+      log::warn!("unable to upsert device diagnostic - {error}");
+      io::Error::new(io::ErrorKind::Other, format!("{error}"))
+    })?
+    .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "upsert failed"))?;
 
-    match &device_diagnostic.registration_state {
-      Some(schema::DeviceDiagnosticRegistration::Initial) | None => {
+  match &device_diagnostic.registration_state {
+    Some(schema::DeviceDiagnosticRegistration::Initial) | None => {
+      log::info!(
+        "first message received by device '{}'! sending initial qr code",
+        device_diagnostic.id
+      );
+
+      let mut queue = crate::rendering::queue::Queue::new(stream, &worker.config.vendor_api_secret);
+      let mut initial_url = http_types::Url::parse(&worker.config.initial_scannable_addr).map_err(|error| {
+        log::warn!("unable to create initial url for device - {error}");
+        io::Error::new(io::ErrorKind::Other, format!("{error}"))
+      })?;
+
+      // scope our mutable borrow/mutation so it is dropped before we take ownship when we
+      // `to_string` it onto our layout.
+      {
+        let mut query = initial_url.query_pairs_mut();
+        query.append_pair("device_target_id", &device_diagnostic.id);
+      }
+
+      let layout = crate::rendering::RenderVariant::scannable(initial_url.to_string());
+      if let Err(error) = queue
+        .queue(
+          &device_diagnostic.id,
+          &crate::rendering::QueuedRenderAuthority::Registrar,
+          layout,
+        )
+        .await
+      {
+        log::warn!("unable to queue welcome message to device - {error}");
+      } else {
         log::info!(
-          "first message received by device '{}'! sending initial qr code",
+          "first render queued, updating diagnostic registration state for '{}'",
           device_diagnostic.id
         );
-
-        let mut queue = crate::rendering::queue::Queue::new(stream, &worker.config.vendor_api_secret);
-        let mut initial_url = http_types::Url::parse(&worker.config.initial_scannable_addr).map_err(|error| {
-          log::warn!("unable to create initial url for device - {error}");
+        let updated_reg = schema::DeviceDiagnosticRegistration::PendingRegistration;
+        let serialized_registration = bson::to_bson(&updated_reg).map_err(|error| {
+          log::warn!("unable to serialize registration_state: {error}");
           io::Error::new(io::ErrorKind::Other, format!("{error}"))
         })?;
 
-        // scope our mutable borrow/mutation so it is dropped before we take ownship when we
-        // `to_string` it onto our layout.
-        {
-          let mut query = initial_url.query_pairs_mut();
-          query.append_pair("device_target_id", &device_diagnostic.id);
-        }
-
-        let layout = crate::rendering::RenderVariant::scannable(initial_url.to_string());
-        if let Err(error) = queue
-          .queue(
-            &device_diagnostic.id,
-            &crate::rendering::QueuedRenderAuthority::Registrar,
-            layout,
+        if let Err(error) = collection
+          .find_one_and_update(
+            bson::doc! { "id": &device_diagnostic.id },
+            bson::doc! { "$set": { "registration_state": serialized_registration } },
+            mongodb::options::FindOneAndUpdateOptions::builder()
+              .upsert(true)
+              .return_document(mongodb::options::ReturnDocument::After)
+              .build(),
           )
           .await
         {
-          log::warn!("unable to queue welcome message to device - {error}");
-        } else {
-          log::info!(
-            "first render queued, updating diagnostic registration state for '{}'",
-            device_diagnostic.id
-          );
-          let updated_reg = schema::DeviceDiagnosticRegistration::PendingRegistration;
-          let serialized_registration = bson::to_bson(&updated_reg).map_err(|error| {
-            log::warn!("unable to serialize registration_state: {error}");
-            io::Error::new(io::ErrorKind::Other, format!("{error}"))
-          })?;
-
-          if let Err(error) = collection
-            .find_one_and_update(
-              bson::doc! { "id": &device_diagnostic.id },
-              bson::doc! { "$set": { "registration_state": serialized_registration } },
-              mongodb::options::FindOneAndUpdateOptions::builder()
-                .upsert(true)
-                .return_document(mongodb::options::ReturnDocument::After)
-                .build(),
-            )
-            .await
-          {
-            log::warn!("unable to update device registration state - {error}");
-          }
+          log::warn!("unable to update device registration state - {error}");
         }
       }
-      Some(other) => {
-        log::trace!("device '{}' has {other:?} previous registration", device_diagnostic.id);
-      }
     }
-
-    // Store the device identity in a set; this will allow us to iterate over the list of
-    // active ids more easily later.
-    let setter = kramer::Command::Sets(kramer::SetCommand::Add(
-      crate::constants::REGISTRAR_INDEX,
-      kramer::Arity::One(id.as_str()),
-    ));
-    kramer::execute(&mut stream, setter).await?;
-
-    log::info!("updated device '{}' diagnostics", device_diagnostic.id);
-
-    return Ok(1usize);
+    Some(other) => {
+      log::trace!("device '{}' has {other:?} previous registration", device_diagnostic.id);
+    }
   }
 
-  Ok(0usize)
+  // Store the device identity in a set; this will allow us to iterate over the list of
+  // active ids more easily later.
+  let setter = kramer::Command::Sets(kramer::SetCommand::Add(
+    crate::constants::REGISTRAR_INDEX,
+    kramer::Arity::One(id.as_str()),
+  ));
+  kramer::execute(&mut stream, setter).await?;
+
+  log::info!("updated device '{}' diagnostics", device_diagnostic.id);
+
+  Ok(1usize)
 }

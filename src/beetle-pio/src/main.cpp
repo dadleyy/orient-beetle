@@ -1,11 +1,13 @@
 #ifdef XIAO
 #ifdef FIREBEETLE
-static_assert(1=0, "Error! Either xiao OR firebeetle must be selected, not both.");
+static_assert(1 = 0,
+              "Error! Either xiao OR firebeetle must be selected, not both.");
 #endif
 #endif
 #ifndef XIAO
 #ifndef FIREBEETLE
-static_assert(1=0, "Error! Either xiao OR firebeetle must be selected, not both.");
+static_assert(1 = 0,
+              "Error! Either xiao OR firebeetle must be selected, not both.");
 #endif
 #endif
 
@@ -13,48 +15,49 @@ static_assert(1=0, "Error! Either xiao OR firebeetle must be selected, not both.
 #include "esp32-hal-log.h"
 
 #ifdef XIAO
-#include <Wire.h>
 #include <SPI.h>
+#include <Wire.h>
 #endif
 
 #ifdef FIREBEETLE
-#include "firebeetle-rendering.hpp"
 #include "Adafruit_VCNL4010.h"
+#include "firebeetle-rendering.hpp"
 #endif
 #ifdef XIAO
-#include "xiao-rendering.hpp"
 #include "xiao-lighting.hpp"
+#include "xiao-rendering.hpp"
 lighting::Lighting lights;
 #endif
 
 // Internal libraries
 #include "microtim.hpp"
-#include "wifi-events.hpp"
 #include "redis-events.hpp"
+#include "wifi-events.hpp"
 
 // Configuration files
-#include "wifi_config.hpp"
 #include "redis_config.hpp"
+#include "wifi_config.hpp"
 
 #include "engine.hpp"
 #include "state.hpp"
 
-extern const char * ap_ssid;
-extern const char * ap_password;
+extern const char* ap_ssid;
+extern const char* ap_password;
 
-extern const char * redis_host;
+extern const char* redis_host;
 extern const uint32_t redis_port;
-extern const char * redis_auth_username;
-extern const char * redis_auth_password;
+extern const char* redis_auth_username;
+extern const char* redis_auth_password;
 
-// TODO: explore constructing the wifi + redis managers here. Dealing with the copy
+// TODO: explore constructing the wifi + redis managers here. Dealing with the
+// copy
 // and/or movement semantics of their constructors is out of scope for now.
-Engine eng(
-  std::make_pair(ap_ssid, ap_password),
-  std::make_tuple(redis_host, redis_port, std::make_pair(redis_auth_username, redis_auth_password))
-);
+Engine eng(std::make_pair(ap_ssid, ap_password),
+           std::make_shared<redisevents::RedisConfig>(
+               redis_host, redis_port,
+               std::make_pair(redis_auth_username, redis_auth_password)));
 
-states::State state;
+states::State state = states::Unknown{};
 
 #ifdef FIREBEETLE
 Adafruit_VCNL4010 vcnl;
@@ -82,7 +85,6 @@ void setup(void) {
 
   unsigned char i = 0;
 
-
   while (i < 12) {
 #ifdef XIAO
     lights.boot(i);
@@ -106,7 +108,8 @@ void setup(void) {
   log_e("[notice] proximity functionality disabled at compile time");
 #endif
 
-  log_i("boot complete, redis-config. host: %s | port: %d", redis_host, redis_port);
+  // log_i("boot complete, redis-config. host: %s | port: %d", redis_host,
+  // redis_port);
   eng.begin();
 }
 
@@ -144,7 +147,8 @@ void loop(void) {
 #ifndef DISABLE_PROXIMITY
     log_d("proximity (enabled %d): %d", prox_ready, prox);
 #endif
-    log_d("free memory before update: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    log_d("free memory before update: %d (max %d)", ESP.getFreeHeap(),
+          ESP.getMaxAllocHeap());
   }
 #endif
 
@@ -155,19 +159,21 @@ void loop(void) {
   lights = std::move(std::move(lights).update(state));
 #endif
 
-  if (std::get_if<states::Working>(&state.active)) {
-    states::Working * working_state = std::get_if<states::Working>(&state.active);
+  if (std::get_if<states::HoldingUpdate>(&state)) {
+    states::HoldingUpdate* working_state =
+        std::get_if<states::HoldingUpdate>(&state);
     display_render_state(working_state, last_frame);
   } else {
     display_render_unknown(last_frame);
   }
 
-  state.freeze();
+  state = states::Idle{};
 
   last_frame = now;
 #ifndef RELEASE
   if (print_debug_info) {
-    log_d("free memory after update: %d (max %d)", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    log_d("free memory after update: %d (max %d)", ESP.getFreeHeap(),
+          ESP.getMaxAllocHeap());
   }
 #endif
 }

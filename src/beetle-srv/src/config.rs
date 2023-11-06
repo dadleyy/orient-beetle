@@ -98,6 +98,9 @@ pub struct RegistrarConfiguration {
   /// The max amount of devices to update during a iteration of checking device activity.
   pub active_device_chunk_size: u8,
 
+  /// Local rasterize storage directory
+  pub rasterize_storage: Option<String>,
+
   /// Where to send devices on their initial connection
   pub initial_scannable_addr: String,
 

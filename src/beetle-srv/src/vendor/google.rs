@@ -339,7 +339,7 @@ where
   chrono::format::parse(
     &mut parsed,
     input.as_ref(),
-    vec![
+    [
       chrono::format::Item::Numeric(chrono::format::Numeric::Year, chrono::format::Pad::None),
       chrono::format::Item::Literal("-"),
       chrono::format::Item::Numeric(chrono::format::Numeric::Month, chrono::format::Pad::Zero),

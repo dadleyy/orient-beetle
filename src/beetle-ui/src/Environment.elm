@@ -6,6 +6,7 @@ module Environment exposing
     , StatusResponse
     , apiRoute
     , boot
+    , buildLoginFlashPath
     , buildRoutePath
     , default
     , getId
@@ -28,6 +29,7 @@ import Iso8601 as Date
 import Json.Decode
 import Time
 import Url
+import Url.Builder
 
 
 type alias StatusResponse =
@@ -242,8 +244,20 @@ normalizeUrlPath env url =
 
 buildRoutePath : Environment -> String -> String
 buildRoutePath env path =
-    String.concat
-        [ env.configuration.root, path ]
+    let
+        relativePart =
+            Url.Builder.relative [ path ] []
+    in
+    String.concat [ env.configuration.root, relativePart ]
+
+
+buildLoginFlashPath : Environment -> List Url.Builder.QueryParameter -> String
+buildLoginFlashPath env parameters =
+    let
+        relativePart =
+            Url.Builder.relative [ "login" ] parameters
+    in
+    String.concat [ env.configuration.root, relativePart ]
 
 
 getLocalizedContent : Environment -> String -> Maybe String

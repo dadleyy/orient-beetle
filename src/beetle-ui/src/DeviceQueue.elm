@@ -1,6 +1,7 @@
 module DeviceQueue exposing (QueuePayloadKinds(..), postMessage)
 
 import Environment as Env
+import File
 import Http
 import Job
 import Json.Encode as Encode
@@ -11,6 +12,7 @@ type QueuePayloadKinds
     | LinkPayload String
     | LightPayload Bool
     | SchedulePayload Bool
+    | SendImage File.File
     | DeviceRenamePayload String
     | Refresh
     | Clear
@@ -39,6 +41,9 @@ postMessage env messageKind id payloadKind =
 
         payload =
             case payloadKind of
+                SendImage file ->
+                    Http.fileBody file
+
                 Refresh ->
                     Http.jsonBody
                         (Encode.object
@@ -111,7 +116,7 @@ postMessage env messageKind id payloadKind =
                     Http.jsonBody (encoder "message" (Encode.string str))
     in
     Http.post
-        { url = Env.apiRoute env "device-queue"
+        { url = Env.apiRoute env "device-queue" ++ "/" ++ id
         , body = payload
         , expect = Http.expectJson messageKind Job.handleDecoder
         }

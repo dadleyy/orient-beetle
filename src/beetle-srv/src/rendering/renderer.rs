@@ -118,7 +118,10 @@ impl Worker {
         // the device redis queue.
         let queue_error = match self.send_layout(&mut c, &queue_id, queued_render.layout.clone()).await {
           Ok(_) => None,
-          Err(error) => Some(format!("{error:?}")),
+          Err(error) => {
+            log::warn!("unable to send layout - {error:}");
+            Some(format!("{error:?}"))
+          }
         };
 
         let histories = self.histories_collection()?;
@@ -256,6 +259,25 @@ impl Worker {
       }
       super::RenderVariant::Layout(layout_container) => {
         let formatted_buffer = layout_container.layout.rasterize((400, 300))?;
+
+        if let Some(ref location) = self.config.0.registrar.rasterize_storage {
+          let mut path = std::path::PathBuf::new();
+          path.push(location);
+          async_std::fs::create_dir_all(&path).await?;
+
+          path.push(uuid::Uuid::new_v4().to_string());
+          log::info!(
+            "saving a copy of the raster ({} bytes) to '{path:?}'",
+            formatted_buffer.len()
+          );
+          let mut copied = async_std::io::Cursor::new(formatted_buffer.clone());
+          let mut file = async_std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&path)
+            .await?;
+          async_std::io::copy(&mut copied, &mut file).await?;
+        }
 
         let mut command = kramer::Command::Lists(kramer::ListCommand::Push(
           (kramer::Side::Left, kramer::Insertion::Always),

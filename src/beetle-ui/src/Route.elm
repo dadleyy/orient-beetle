@@ -10,6 +10,7 @@ import Route.Device
 import Route.DeviceRegistration
 import Route.Home
 import Url
+import Url.Builder as UrlBuilder
 import Url.Parser as UrlParser exposing ((</>))
 import Url.Parser.Query as QueryParser
 
@@ -25,7 +26,7 @@ type RouteInitialization
 
 
 type Route
-    = Login
+    = Login (Maybe String)
     | Account Route.Account.Model
     | Home Route.Home.Model
     | Device Route.Device.Model
@@ -34,6 +35,10 @@ type Route
 
 type RouteUrl
     = AccountUrl
+    | DeviceHomeUrl String
+    | HomeUrl
+    | LoginUrl
+    | DeviceRegistrationUrl
 
 
 type Message
@@ -59,9 +64,9 @@ subscriptions route =
 view : Environment.Environment -> Route -> Html.Html Message
 view env route =
     case route of
-        Login ->
+        Login returnState ->
             Html.div [ Html.Attributes.class "px-4 py-3 h-full w-full relative" ]
-                [ renderLogin env ]
+                [ renderLogin env returnState ]
 
         Home inner ->
             Route.Home.view inner env |> Html.map HomeMessage
@@ -114,32 +119,14 @@ justIfNotEmpty input =
             Just input
 
 
-deviceRouting : Environment.Environment -> String -> RouteInitialization
-deviceRouting env normalizedUrl =
-    let
-        maybeDeviceId =
-            normalizedUrl
-                |> String.split "/"
-                |> List.take 2
-                |> List.tail
-                |> Maybe.andThen List.head
-    in
-    case Maybe.map2 Tuple.pair (Environment.getId env) (maybeDeviceId |> Maybe.andThen justIfNotEmpty) of
-        Just matches ->
-            let
-                ( model, cmd ) =
-                    Route.Device.default env (Tuple.second matches)
-            in
-            Matched ( Just (Device model), cmd |> Cmd.map DeviceMessage )
-
-        Nothing ->
-            Redirect (Environment.buildRoutePath env "login")
-
-
 routeParser : UrlParser.Parser (RouteUrl -> a) a
 routeParser =
     UrlParser.oneOf
         [ UrlParser.map AccountUrl (UrlParser.s "account" </> UrlParser.top)
+        , UrlParser.map DeviceHomeUrl (UrlParser.s "devices" </> UrlParser.string)
+        , UrlParser.map HomeUrl (UrlParser.s "home" </> UrlParser.top)
+        , UrlParser.map LoginUrl (UrlParser.s "login" </> UrlParser.top)
+        , UrlParser.map DeviceRegistrationUrl (UrlParser.s "register-device" </> UrlParser.top)
         ]
 
 
@@ -182,52 +169,92 @@ routeLoadedEnv env url maybeId =
                 |> Maybe.map (\m -> Matched ( Just (Account m), cmd |> Cmd.map AccountMessage ))
                 |> Maybe.withDefault homeRedirect
 
-        Nothing ->
-            case String.startsWith "devices" normalizedUrl of
-                True ->
-                    deviceRouting env normalizedUrl
+        Just HomeUrl ->
+            let
+                ( route, cmd ) =
+                    Route.Home.default env
 
-                False ->
-                    case ( normalizedUrl, maybeId ) of
-                        ( "register-device", Just _ ) ->
-                            let
-                                parser =
-                                    UrlParser.query targetDeviceIdQueryParser
+                ifLoaded =
+                    Matched ( Just (Home route), cmd |> Cmd.map HomeMessage )
+            in
+            Maybe.map (always ifLoaded) maybeId
+                |> Maybe.withDefault (Redirect (Environment.buildRoutePath env "login"))
 
-                                -- Parse the quey, but pretend we're at the root, no matter where we are. This
-                                -- is a workaround to avoid having to deal with the path we're actually hosted
-                                -- under.
-                                parsedQuery =
-                                    UrlParser.parse parser { url | path = "" }
+        Just (DeviceHomeUrl id) ->
+            case Environment.getId env of
+                Just _ ->
+                    let
+                        ( model, cmd ) =
+                            Route.Device.default env id
+                    in
+                    Matched ( Just (Device model), cmd |> Cmd.map DeviceMessage )
 
-                                initialModel =
-                                    case parsedQuery of
-                                        Just (Just id) ->
-                                            Route.DeviceRegistration.withInitialId id
+                Nothing ->
+                    Redirect (Environment.buildRoutePath env "login")
 
-                                        _ ->
-                                            Route.DeviceRegistration.default
-                            in
-                            Matched ( Just (DeviceRegistration initialModel), Cmd.none )
+        Just DeviceRegistrationUrl ->
+            let
+                parser =
+                    UrlParser.query targetDeviceIdQueryParser
 
-                        ( "login", Just _ ) ->
-                            Redirect (Environment.buildRoutePath env "home")
+                -- Parse the quey, but pretend we're at the root, no matter where we are. This
+                -- is a workaround to avoid having to deal with the path we're actually hosted
+                -- under.
+                parsedQuery =
+                    UrlParser.parse parser { url | path = "" }
 
-                        ( "login", Nothing ) ->
-                            Matched ( Just Login, Cmd.none )
-
-                        ( "home", Nothing ) ->
-                            Redirect (Environment.buildRoutePath env "login")
-
-                        ( "home", Just _ ) ->
-                            let
-                                ( route, cmd ) =
-                                    Route.Home.default env
-                            in
-                            Matched ( Just (Home route), cmd |> Cmd.map HomeMessage )
+                initialModel =
+                    case parsedQuery of
+                        Just (Just id) ->
+                            Route.DeviceRegistration.withInitialId id
 
                         _ ->
-                            Redirect (Environment.buildRoutePath env "home")
+                            Route.DeviceRegistration.default
+
+                ifLoaded =
+                    Matched ( Just (DeviceRegistration initialModel), Cmd.none )
+
+                returnParameters =
+                    parsedQuery
+                        |> Maybe.andThen identity
+                        |> Maybe.map List.singleton
+                        |> Maybe.withDefault []
+                        |> List.map (UrlBuilder.string "return")
+
+                redirect =
+                    Environment.buildLoginFlashPath env returnParameters
+                        |> Redirect
+            in
+            Maybe.map (always ifLoaded) maybeId
+                |> Maybe.withDefault redirect
+
+        Just LoginUrl ->
+            let
+                parser =
+                    UrlParser.query (QueryParser.string "return")
+
+                parsedQuery =
+                    UrlParser.parse parser { url | path = "" }
+
+                ifLoaded =
+                    Redirect (Environment.buildRoutePath env "home")
+
+                loginReturn =
+                    parsedQuery
+                        |> Maybe.andThen identity
+
+                loginRoute =
+                    Login loginReturn
+                        |> Just
+
+                matched =
+                    Matched ( loginRoute, Cmd.none )
+            in
+            Maybe.map (always ifLoaded) maybeId
+                |> Maybe.withDefault matched
+
+        Nothing ->
+            Redirect (Environment.buildRoutePath env "home")
 
 
 fromUrl : Environment.Environment -> Url.Url -> RouteInitialization
@@ -236,9 +263,12 @@ fromUrl env url =
     let
         maybeLoadedId =
             Environment.getLoadedId env
+
+        out =
+            Maybe.map (routeLoadedEnv env url) maybeLoadedId
+                |> Maybe.withDefault (Matched ( Nothing, Cmd.none ))
     in
-    Maybe.map (routeLoadedEnv env url) maybeLoadedId
-        |> Maybe.withDefault (Matched ( Nothing, Cmd.none ))
+    out
 
 
 targetDeviceIdQueryParser : QueryParser.Parser (Maybe String)
@@ -246,8 +276,8 @@ targetDeviceIdQueryParser =
     QueryParser.string "device_target_id"
 
 
-renderLogin : Environment.Environment -> Html.Html Message
-renderLogin env =
+renderLogin : Environment.Environment -> Maybe String -> Html.Html Message
+renderLogin env returnState =
     let
         loginContentText =
             Maybe.withDefault "" (Environment.getLocalizedContent env "login_page")
