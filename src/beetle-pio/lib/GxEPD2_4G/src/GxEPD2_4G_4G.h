@@ -35,15 +35,7 @@
 #endif
 
 #include "GxEPD2_4G_EPD.h"
-#include "epd/GxEPD2_213_flex.h"
-#include "epd/GxEPD2_270.h"
-#include "epd/GxEPD2_290_I6FD.h"
-#include "epd/GxEPD2_290_T5.h"
-#include "epd/GxEPD2_290_T5D.h"
-#include "epd/GxEPD2_290_T94.h"
-#include "epd/GxEPD2_371.h"
 #include "epd/GxEPD2_420.h"
-#include "epd/GxEPD2_750_T7.h"
 
 template <typename GxEPD2_Type, const uint16_t page_height>
 class GxEPD2_4G_4G_R : public GxEPD2_4G_GFX_BASE_CLASS {
