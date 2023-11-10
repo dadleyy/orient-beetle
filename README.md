@@ -1,7 +1,9 @@
 # Orient-Beetle
 
-A project that incorporates a wifi-enabled microcontroller, a tft/lcd display and
-a proximity sensor.
+![orient-beetle](./.resources/project-images/orient-beetle.png)
+
+A project that incorporates a wifi-enabled microcontroller, an e-ink display and some nice
+RGB LEDs.
 
 For general platform architecture documentation, see [`.docs/architecture.md`][arch].
 
