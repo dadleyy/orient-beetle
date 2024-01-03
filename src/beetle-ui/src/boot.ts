@@ -13,6 +13,7 @@ type Environment = {
 };
 
 const REPO_URL = 'https://github.com/dadleyy/orient-beetle';
+const DEMO_URL = 'https://www.youtube.com/embed/Fgkh3P7V6Mo?si=eSraH7IkpJrTcb_x';
 
 // TODO: incorporate this into the project somewhere else. Would probably require some additional
 // build tooling. Skimping on that for now.
@@ -36,8 +37,8 @@ const LOCALIZATION = [
       <iframe
         height="100%"
         width="100%"
-        src="https://www.youtube.com/embed/SwGfOSLR5tA"
-        title="YouTube video player"
+        src="${DEMO_URL}"
+        title="Orient Beetle Latest Demo"
         frameborder="0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowfullscreen

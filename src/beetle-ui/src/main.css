@@ -39,6 +39,10 @@ button:disabled {
   @apply opacity-50;
 }
 
+.flex-2 {
+  flex: 2;
+}
+
 input {
   @apply flex-1;
 }
@@ -134,4 +138,11 @@ table.info-table {
 
 .dropdown-item:first-child {
   @apply border-t;
+}
+
+.google-login {
+  @apply border px-3 py-2 rounded inline-block border-white;
+  background-color: rgb(40,40,40);
+  color: rgb(225,225,225);
+  border-color: rgb(225,225,225);
 }

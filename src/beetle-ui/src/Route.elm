@@ -5,6 +5,7 @@ import Html
 import Html.Attributes
 import Html.Parser
 import Html.Parser.Util as HTP
+import Icon
 import Route.Account
 import Route.Device
 import Route.DeviceRegistration
@@ -292,10 +293,15 @@ renderLogin env returnState =
                     [ Html.Attributes.href env.configuration.loginUrl
                     , Html.Attributes.rel "noopener"
                     , Html.Attributes.target "_self"
+                    , Html.Attributes.class "google-login"
                     ]
-                    [ Html.text "Login" ]
+                    [ Html.div [ Html.Attributes.class "flex items-center" ]
+                        [ Icon.view Icon.Google
+                        , Html.span [ Html.Attributes.class "block ml-3" ] [ Html.text "Sign in with Google" ]
+                        ]
+                    ]
                 ]
             ]
-        , Html.div [ Html.Attributes.class "lg:flex-1 lg:pr-3 flex-1 flex flex-col h-full relative" ]
+        , Html.div [ Html.Attributes.class "lg:pr-3 flex-2 flex flex-col h-full relative" ]
             loginContentDom
         ]

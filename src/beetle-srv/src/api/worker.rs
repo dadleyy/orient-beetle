@@ -37,7 +37,9 @@ impl Worker {
     let mongo = mongodb::Client::with_options(mongo_options)
       .map_err(|error| Error::new(ErrorKind::Other, format!("failed mongodb connection - {error}")))?;
 
-    let redis = crate::redis::connect(&config.redis).await?;
+    let redis = crate::redis::connect(&config.redis)
+      .await
+      .map_err(|error| Error::new(ErrorKind::Other, format!("unable to connect to redis - {error}")))?;
 
     let redis_pool = Arc::new(Mutex::new(Some(redis)));
 
