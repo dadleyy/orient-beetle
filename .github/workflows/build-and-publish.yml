@@ -86,6 +86,9 @@ jobs:
       - name: "pio(xiao): run xiao"
         run: pio run -e xiao
 
+      - name: "pio(xiao): make merged"
+        run: make
+
       - name: "bundle(xiao): prepare-dir"
         run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/xiao
 
