@@ -29,7 +29,7 @@ pub async fn provision(config: &super::CommandLineConfig, command: ProvisionComm
   println!("provisioning redis environment with burn-in auth information (p: {password:?}, u: {user:?})");
 
   match (user, password) {
-    (Some(ref user), Some(ref pass)) if user.len() > 0 && pass.len() > 0 => {
+    (Some(ref user), Some(ref pass)) if !user.is_empty() && !pass.is_empty() => {
       let command = kramer::Command::Acl::<&str, &str>(kramer::acl::AclCommand::SetUser(kramer::acl::SetUser {
         name: user,
         password: Some(pass),

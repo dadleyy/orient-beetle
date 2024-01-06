@@ -69,7 +69,12 @@ fn main() -> Result<()> {
   log::info!("environment + logger ready.");
 
   let args = CommandLineArguments::parse();
-  let contents = std::fs::read_to_string(args.config)?;
+  let contents = std::fs::read_to_string(&args.config).map_err(|error| {
+    Error::new(
+      ErrorKind::Other,
+      format!("unable to load config '{}' - {error}", args.config),
+    )
+  })?;
 
   let config = toml::from_str::<beetle::registrar::Configuration>(&contents).map_err(|error| {
     log::warn!("invalid toml config file - {error}");

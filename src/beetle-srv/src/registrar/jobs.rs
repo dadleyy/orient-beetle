@@ -101,6 +101,21 @@ pub struct RegistrarJob {
 }
 
 impl RegistrarJob {
+  /// Returns a string that can be used to label what kind of job is being executed for logging
+  /// purposes. This could be handled as a macro instead, probably.
+  pub fn label(&self) -> &'static str {
+    match self.job {
+      RegistrarJobKind::MutateDeviceState(_) => "MutateDeviceState",
+      RegistrarJobKind::Ownership(_) => "Ownership",
+      RegistrarJobKind::OwnershipChange(_) => "OwnershipChange",
+      RegistrarJobKind::Rename(_) => "Rename",
+      RegistrarJobKind::Renders(_) => "Render",
+      RegistrarJobKind::RunDeviceSchedule { .. } => "RunDeviceSchedule",
+      RegistrarJobKind::ToggleDefaultSchedule { .. } => "ToggleDefaultSchedule",
+      RegistrarJobKind::UserAccessTokenRefresh { .. } => "UserAccessTokenRefresh",
+    }
+  }
+
   /// Serializes and encrypts a job.
   pub fn encrypt(self, config: &crate::config::RegistrarConfiguration) -> io::Result<String> {
     // TODO(job_encryption): using jwt here for ease, not the fact that it is the best. The
