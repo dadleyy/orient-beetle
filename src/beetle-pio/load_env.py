@@ -4,6 +4,7 @@ import os
 
 redis_port = None
 redis_host = None
+beetle_version = "dev"
 
 redis_auth_username = None
 redis_auth_password = None
@@ -39,6 +40,9 @@ if "REDIS_AUTH_USERNAME" in os.environ:
 if "REDIS_AUTH_PASSWORD" in os.environ:
     redis_auth_password = os.environ["REDIS_AUTH_PASSWORD"]
 
+if "BEETLE_VERSION" in os.environ:
+    beetle_version = os.environ["BEETLE_VERSION"]
+
 if "REDIS_PORT" in os.environ:
     redis_port = os.environ["REDIS_PORT"]
 
@@ -56,8 +60,10 @@ if redis_auth_password is None:
 
 flag_str = "-DREDIS_HOST='\"{redis_host}\"' \
             -DREDIS_PORT='{redis_port}' \
+            -DBEETLE_VERSION='\"{beetle_version}\"' \
             -DREDIS_AUTH_PASSWORD='\"{redis_auth_password}\"' \
             -DREDIS_AUTH_USERNAME='\"{redis_auth_username}\"'".format(redis_host = redis_host,
+                     beetle_version = beetle_version,
                      redis_port = redis_port,
                      redis_auth_username = redis_auth_username,
                      redis_auth_password = redis_auth_password);

@@ -1,5 +1,9 @@
 #include "engine.hpp"
 
+#ifndef BEETLE_VERSION
+#define BEETLE_VERSION "dev"
+#endif
+
 Engine::Engine(std::tuple<const char*, const char*> ap_config,
                std::shared_ptr<redisevents::RedisConfig> redis_config)
     : _buffer(std::make_shared<std::array<uint8_t, states::BUFFER_SIZE>>()),
@@ -42,7 +46,7 @@ states::State Engine::update(states::State&& current, uint32_t current_time) {
         break;
     }
   } else if (current_time - _last_time > 3000) {
-    log_i("no update from wifi events");
+    log_i("(v. %s) no update from wifi events", BEETLE_VERSION);
     _last_time = current_time;
   }
 

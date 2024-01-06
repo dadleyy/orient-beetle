@@ -58,6 +58,7 @@ jobs:
         id: vars
         run: |
           echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
+          echo "BEETLE_VERSION=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_ENV
 
       - name: "import gpg"
         run: |
@@ -91,6 +92,12 @@ jobs:
 
       - name: "bundle(xiao): prepare-dir"
         run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/xiao
+
+      - name: "bundle(xiao): copy-merged"
+        run: |
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/xiao/beetle-merged.bin.pgp \
+            beetle-merged-flash.bin
 
       - name: "bundle(xiao): copy-bin"
         run: |
