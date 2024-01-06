@@ -2,6 +2,7 @@
 #define _ENGINE_H 1
 
 #include <optional>
+
 #include "redis-config.hpp"
 #include "redis-events.hpp"
 #include "state.hpp"
@@ -26,6 +27,7 @@ class Engine final {
   std::shared_ptr<std::array<uint8_t, states::BUFFER_SIZE>> _buffer;
   wifievents::Events _wifi;
   redisevents::Events<states::BUFFER_SIZE> _redis;
+  uint32_t _last_time = 0;
 };
 
 #endif

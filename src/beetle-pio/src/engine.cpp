@@ -22,19 +22,28 @@ states::State Engine::update(states::State&& current, uint32_t current_time) {
 
   if (wifi_update != std::nullopt) {
     switch (*wifi_update) {
-      case wifievents::Events::EMessage::Connecting:
+      case wifievents::Events::EMessage::AttemptingConnection:
+        log_i("received connection attempt event from wifi");
         next = states::Connecting{};
         break;
       case wifievents::Events::EMessage::ConnectionResumed:
       case wifievents::Events::EMessage::Connected:
+        log_i("received connection established event from wifi");
         next = states::Connected{};
         break;
       case wifievents::Events::EMessage::FailedConnection:
       case wifievents::Events::EMessage::ConnectionInterruption:
       case wifievents::Events::EMessage::Disconnected:
+        log_i("received error event from wifi");
         next = states::Unknown{};
         break;
+      case wifievents::Events::EMessage::WaitingForCredentials:
+        log_i("acknowlegement of wifi waiting for credentials from user");
+        break;
     }
+  } else if (current_time - _last_time > 3000) {
+    log_i("no update from wifi events");
+    _last_time = current_time;
   }
 
   auto redis_update = _redis.update(wifi_update, _buffer, current_time);

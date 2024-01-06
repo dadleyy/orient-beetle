@@ -22,6 +22,9 @@ enum CommandLineCommand {
   /// re-authenticate from a fresh set of available ids.
   InvalidateAcls,
 
+  /// Prints out the acls found in redis.
+  ListAcls,
+
   /// Removes devices that have not been heard from within the amount of time that we consider
   /// active.
   CleanDisconnects,
@@ -105,6 +108,7 @@ async fn run(config: cli::CommandLineConfig, command: CommandLineCommand) -> io:
       Ok(())
     }
     CommandLineCommand::InvalidateAcls => cli::invalidate_acls(&config).await,
+    CommandLineCommand::ListAcls => cli::print_acls(&config).await,
     CommandLineCommand::CleanDisconnects => cli::clean_disconnects(&config).await,
     CommandLineCommand::Provision(command) => cli::provision(&config, command).await,
     CommandLineCommand::PrintConnected => cli::print_connected(&config).await,
@@ -166,7 +170,12 @@ fn main() -> io::Result<()> {
   log::info!("environment + logger ready.");
 
   let options = CommandLineOptions::parse();
-  let contents = std::fs::read_to_string(&options.config)?;
+  let contents = std::fs::read_to_string(&options.config).map_err(|error| {
+    io::Error::new(
+      io::ErrorKind::Other,
+      format!("unable to load config file - '{}' ({error})", options.config),
+    )
+  })?;
   let config = toml::from_str::<cli::CommandLineConfig>(&contents).map_err(|error| {
     log::warn!("invalid toml config file - {error}");
     io::Error::new(io::ErrorKind::Other, "bad-config")

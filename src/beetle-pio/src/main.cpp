@@ -12,6 +12,7 @@ static_assert(1 = 0,
 #endif
 
 #include <Arduino.h>
+
 #include "esp32-hal-log.h"
 
 #ifdef XIAO
@@ -35,17 +36,17 @@ lighting::Lighting lights;
 #include "wifi-events.hpp"
 
 // Configuration files
-#include "redis_config.hpp"
-#include "wifi_config.hpp"
-
 #include "engine.hpp"
+#include "redis_config.hpp"
 #include "state.hpp"
+#include "wifi_config.hpp"
 
 extern const char* ap_ssid;
 extern const char* ap_password;
 
 extern const char* redis_host;
 extern const uint32_t redis_port;
+
 extern const char* redis_auth_username;
 extern const char* redis_auth_password;
 
@@ -67,12 +68,16 @@ Adafruit_VCNL4010 vcnl;
 microtim::MicroTimer _debug_timer(5000);
 #endif
 
+// DEPRECATED: Proximity sensors were removed on the hardware migration to using
+// e-ink displays with the xiao esp32c3.
+#ifndef DISABLE_PROXIMITY
 microtim::MicroTimer _prox_timer(5000);
 bool _prox_state = true;
+bool prox_ready = false;
+#endif
 
 uint32_t last_frame = 0;
 bool failed = false;
-bool prox_ready = false;
 
 void setup(void) {
 #ifdef XIAO
@@ -104,12 +109,9 @@ void setup(void) {
     failed = true;
   }
 #else
-  prox_ready = false;
   log_e("[notice] proximity functionality disabled at compile time");
 #endif
 
-  // log_i("boot complete, redis-config. host: %s | port: %d", redis_host,
-  // redis_port);
   eng.begin();
 }
 

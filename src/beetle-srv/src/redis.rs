@@ -22,12 +22,14 @@ where
 #[cfg(not(feature = "redis-insecure"))]
 pub async fn connect(config: &crate::config::RedisConfiguration) -> Result<RedisConnection> {
   let connector = async_tls::TlsConnector::default();
+  log::debug!("attempting secure redis connection");
   let mut stream = connector
     .connect(
       &config.host,
       async_std::net::TcpStream::connect(format!("{}:{}", config.host, config.port)).await?,
     )
-    .await?;
+    .await
+    .map_err(|error| Error::new(ErrorKind::Other, format!("unable to connect to redis - {error}")))?;
 
   match &config.auth {
     Some(auth) => {
@@ -51,7 +53,10 @@ pub async fn connect(config: &crate::config::RedisConfiguration) -> Result<Redis
 
 #[cfg(feature = "redis-insecure")]
 pub async fn connect(config: &crate::config::RedisConfiguration) -> Result<RedisConnection> {
-  let mut stream = async_std::net::TcpStream::connect(format!("{}:{}", &config.host, &config.port)).await?;
+  log::warn!("redis connecting over unencrypted stream");
+  let mut stream = async_std::net::TcpStream::connect(format!("{}:{}", &config.host, &config.port))
+    .await
+    .map_err(|error| Error::new(ErrorKind::Other, format!("unable to connect to redis - {error}")))?;
 
   match &config.auth {
     Some(auth) => {

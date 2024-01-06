@@ -18,12 +18,10 @@ void listNetworks() {
   Serial.print("number of available networks:");
   Serial.println(numSsid);
   for (int thisNet = 0; thisNet < numSsid; thisNet++) {
-    Serial.print(thisNet);
-    Serial.print(") ");
     Serial.print(WiFi.SSID(thisNet));
     Serial.print("\tSignal: ");
     Serial.print(WiFi.RSSI(thisNet));
-    Serial.print(" dBm");
+    Serial.println(" dBm");
   }
 }
 

@@ -45,7 +45,7 @@ pub mod migrate;
 
 /// Commands associated with device permissions + authentication.
 mod acls;
-pub use acls::{invalidate_acls, provision, ProvisionCommand};
+pub use acls::{invalidate_acls, print_acls, provision, ProvisionCommand};
 
 /// Commands associated with device messaging.
 mod messages;
