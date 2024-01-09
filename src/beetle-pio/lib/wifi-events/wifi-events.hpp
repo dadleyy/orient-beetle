@@ -267,6 +267,17 @@ class Events final {
               memcpy(_ssid.get(), buffer + field_start, len);
               log_i("terminated SSID name value parsing: %d",
                     strlen((char *)_ssid.get()));
+
+              // HACK: url decoding
+              for (uint16_t i = 0; i < len; i++) {
+                if (_ssid->at(i) == '+') {
+                  std::array<char, MAX_NETWORK_CREDENTIAL_SIZE> *mem =
+                      _ssid.get();
+                  mem->at(i) = ' ';
+                  // _ssid.get()[i] = ' ';
+                }
+              }
+
               method = Configuring::ERequestParsingMode::PasswordStart;
             } else {
               log_e("parsed ssid name too long: %d", len);
@@ -309,7 +320,8 @@ class Events final {
       client.stop();
 
       if (fields_set == 2) {
-        log_i("wifi credentials ready, moving into connection attempt");
+        log_i("wifi credentials ready ('%s' '%s')", _ssid.get(),
+              _password.get());
 
         WiFi.softAPdisconnect(true);
         WiFi.disconnect(true, true);
