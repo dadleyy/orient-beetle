@@ -75,7 +75,8 @@ jobs:
 
       - name: "env prep: fill redis ca"
         run: |
-          echo -n $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
+          echo -n "$REDIS_HOST_ROOT_CA" > embeds/redis_host_root_ca.pem
+          echo -n "$REDIS_HOST_ROOT_CA" | wc -l
           wc -l embeds/redis_host_root_ca.pem
 
       - name: "pio: check"
