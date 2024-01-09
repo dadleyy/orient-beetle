@@ -47,6 +47,7 @@ jobs:
       REDIS_PORT: "${{ secrets.PIO_REDIS_PORT }}"
       REDIS_AUTH_USERNAME: "${{ secrets.PIO_REDIS_AUTH_USERNAME }}"
       REDIS_AUTH_PASSWORD: "${{ secrets.PIO_REDIS_AUTH_PASSWORD }}"
+      REDIS_HOST_ROOT_CA: "${{ secrets.REDIS_HOST_ROOT_CA }}"
       DISTRIBUTABLE_DIRECTORY_NAME: "beetle-pio-dist"
     defaults:
       run:
@@ -73,7 +74,9 @@ jobs:
         run: pip install --upgrade platformio
 
       - name: "env prep: fill redis ca"
-        run: echo $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
+        run: |
+          echo -n $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
+          wc -l embeds/redis_host_root_ca.pem
 
       - name: "pio: check"
         run: pio check
