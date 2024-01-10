@@ -1,4 +1,6 @@
 /.pio
+beetle-merged-flash.bin
+.ycm_extra_conf.py
 /env
 /*.log
 /embeds/*.pem

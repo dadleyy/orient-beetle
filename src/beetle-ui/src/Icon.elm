@@ -26,11 +26,15 @@ type Icon
     | Send
     | Refresh
     | EllipsisH
+    | Google
 
 
 view : Icon -> Html.Html a
 view icon =
     case icon of
+        Google ->
+            Html.i [ A.class "icon-google" ] []
+
         Refresh ->
             Html.i [ A.class "icon-refresh" ] []
 

@@ -37,7 +37,9 @@ impl Worker {
     let mongo = mongodb::Client::with_options(mongo_options)
       .map_err(|error| Error::new(ErrorKind::Other, format!("failed mongodb connection - {error}")))?;
 
-    let redis = crate::redis::connect(&config.redis).await?;
+    let redis = crate::redis::connect(&config.redis)
+      .await
+      .map_err(|error| Error::new(ErrorKind::Other, format!("unable to connect to redis - {error}")))?;
 
     let redis_pool = Arc::new(Mutex::new(Some(redis)));
 
@@ -63,6 +65,7 @@ impl Worker {
   async fn queue_job(&self, job: crate::registrar::RegistrarJob) -> Result<String> {
     // TODO: this is where id generation should happen, not in the job construction itself.
     let id = job.id.clone();
+    let label = job.label();
 
     let serialized = job.encrypt(&self.registrar_configuration)?;
 
@@ -71,6 +74,7 @@ impl Worker {
       Error::new(ErrorKind::Other, "job-serialize")
     })?;
 
+    let now = std::time::Instant::now();
     self
       .command(&kramer::Command::Hashes(kramer::HashCommand::Set(
         crate::constants::REGISTRAR_JOB_RESULTS,
@@ -86,6 +90,8 @@ impl Worker {
         kramer::Arity::One(serialized),
       )))
       .await?;
+
+    log::debug!("job '{label}' took {}ms to queue", now.elapsed().as_millis());
 
     Ok(id)
   }
@@ -149,66 +155,20 @@ impl Worker {
     S: std::fmt::Display,
     V: std::fmt::Display,
   {
-    let mut now = std::time::Instant::now();
-    let mut lock_result = self.redis_pool.lock().await;
-    log::trace!("redis 'pool' lock in in {}ms", now.elapsed().as_millis());
-    now = std::time::Instant::now();
+    let now = std::time::Instant::now();
+    log::debug!("attempting to aquire redis pool lock");
+    let mut redis_connection = self.get_redis_lock().await.map_err(|error| {
+      log::error!("redis connection lock failed - {error}");
+      error
+    })?;
+    log::debug!("redis 'pool' lock in in {}ms", now.elapsed().as_millis());
 
-    #[allow(unused_assignments)]
-    let mut result = Err(Error::new(ErrorKind::Other, "failed send"));
-
-    let mut retry_count = 0;
-
-    'retries: loop {
-      *lock_result = match lock_result.take() {
-        Some(mut connection) => {
-          log::trace!("redis lock taken in in {}ms", now.elapsed().as_millis());
-          result = kramer::execute(&mut connection, command).await;
-          Some(connection)
-        }
-        None => {
-          log::warn!("no existing redis connection, establishing now");
-
-          let mut connection = crate::redis::connect(&self.redis_configuration)
-            .await
-            .map_err(|error| {
-              log::warn!("unable to connect to redis from previous disconnect - {error}");
-              error
-            })?;
-
-          result = kramer::execute(&mut connection, command).await;
-          Some(connection)
-        }
-      };
-
-      // TODO: add a redis connection retry configuration value that can be used here.
-      if retry_count > 0 {
-        log::warn!("exceeded redis retry count, breaking with current result");
-        break;
-      }
-
-      match result {
-        // If we were successful, there is nothing more to do here, exit the loop
-        Ok(_) => break,
-
-        // If we failed due to a broken pipe, clear out our connection and try one more time.
-        Err(error) if error.kind() == ErrorKind::BrokenPipe => {
-          log::warn!("detected broken pipe, re-trying");
-          retry_count += 1;
-          lock_result.take();
-          continue 'retries;
-        }
-
-        Err(error) => {
-          log::warn!("redis command failed for ({:?}) ({:?}), no retry", error, error.kind());
-          retry_count += 1;
-          lock_result.take();
-          continue 'retries;
-        }
-      }
+    if let Some(ref mut connection) = *redis_connection {
+      return kramer::execute(connection, command).await;
     }
 
-    result
+    log::warn!("unable to aquire redis connection from lock!");
+    Err(Error::new(ErrorKind::Other, "unable to connect to redis"))
   }
 
   /// This is an associated, helper function for routes to require that a request has a valid user
@@ -293,7 +253,11 @@ impl Worker {
   /// Attempts to aquire a lock, filling the contents with either a new connection, or just
   /// re-using the existing one.
   async fn get_redis_lock(&self) -> Result<async_std::sync::MutexGuard<'_, Option<crate::redis::RedisConnection>>> {
-    let mut lock_result = self.redis_pool.lock().await;
+    let mut lock_result =
+      match async_std::future::timeout(std::time::Duration::from_secs(1), self.redis_pool.lock()).await {
+        Ok(r) => r,
+        Err(_error) => return Err(Error::new(ErrorKind::Other, "detected deadlock on redis connection!")),
+      };
 
     match lock_result.take() {
       Some(connection) => {

@@ -17,3 +17,9 @@ python esptool.py \
   0xe000 boot_app0.bin \
   0x10000 .pio/build/xiao/firmware.bin
 ```
+
+Alternatively, the merged binary has been included:
+
+```
+esptool.py --chip esp32c3 write_flash 0x0 ./beetle-merged.bin
+```

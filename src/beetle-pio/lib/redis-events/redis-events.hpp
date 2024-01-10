@@ -1,6 +1,7 @@
 #pragma once
 
 #include <WiFiClientSecure.h>
+
 #include "redis-config.hpp"
 #include "redis-event.hpp"
 #include "redis-reader.hpp"
@@ -32,7 +33,7 @@ class Events final {
       std::optional<wifievents::Events::EMessage> &wifi,
       std::shared_ptr<std::array<uint8_t, T>> buffer, uint32_t time) {
     auto visitor = StateVisitor{_context, &wifi, buffer, time, _reader};
-    auto[next, message] = std::visit(visitor, _state);
+    auto [next, message] = std::visit(visitor, _state);
     _state = next;
     return message;
   }
@@ -154,7 +155,7 @@ class Events final {
                   context->device_id_len, context->device_id,
                   context->device_id_len, context->device_id);
           context->client.print(context->outbound);
-          log_d("wrote auth: '%s'", context->outbound);
+          log_i("wrote auth: '%s'", context->outbound);
           connected.authorization_stage =
               AuthorizationStage::AuthorizationAttempted;
 
@@ -192,6 +193,10 @@ class Events final {
       bool pending_burnin_auth = connected.authorization_stage ==
                                  AuthorizationStage::AuthorizationRequested;
 
+      if (connected.last_read == 0) {
+        connected.last_read = time;
+      }
+
       while (context->client.available()) {
         auto token = (char)context->client.read();
         auto event = reader->fill(token, buffer);
@@ -208,11 +213,21 @@ class Events final {
                                     : AuthorizationStage::FullyAuthorized;
           }
         }
+
+        connected.last_read = time;
       }
 
       if (connected.authorization_stage ==
           AuthorizationStage::FullyAuthorized) {
         return std::make_pair(connected, Authorized{});
+      }
+
+      if (time - connected.last_read > 5000) {
+        log_e("expected OK from redis but none was received in time, aborting");
+        // important: explicitly stopping the client frees up internal memory
+        // used on the next connection attempt.
+        context->client.stop();
+        return std::make_pair(Connected{false}, FailedConnection{});
       }
 
       return std::make_pair(connected, std::nullopt);
@@ -232,7 +247,8 @@ class Events final {
 
       if (result != 1) {
         log_e("unable to establish connection - %d", result);
-        return std::make_pair(Disconnected{}, FailedConnection{});
+        context->client.stop();
+        return std::make_pair(Disconnected{time + 5000}, FailedConnection{});
       }
 
       log_i("redis connection established successfully");
@@ -256,7 +272,7 @@ class Events final {
                 context->device_id_len, context->device_id,
                 context->device_id_len, context->device_id);
         context->client.print(context->outbound);
-        log_d("wrote auth: '%s'", context->outbound);
+        log_d("wrote auth: '%s'; clearing internal buffer", context->outbound);
         connected.authorization_stage =
             AuthorizationStage::AuthorizationAttempted;
         return std::make_pair(connected, IdentificationReceived{});
@@ -392,7 +408,8 @@ class Events final {
                   context->device_id_len + 3, context->device_id);
         }
 
-        log_i("writing message (heartbeat? %d)", sending_heartbeat);
+        log_i("id[%s] writing message (heartbeat? %d)", context->device_id,
+              sending_heartbeat);
         context->client.print(context->outbound);
       }
 
@@ -402,6 +419,7 @@ class Events final {
     std::pair<std::variant<Disconnected, Connected>, std::optional<RedisEvent>>
     operator()(Connected connected) {
       if (*wifi_message == wifievents::Events::EMessage::Disconnected) {
+        context->client.stop();
         return std::make_pair(Disconnected{}, std::nullopt);
       }
 
@@ -413,6 +431,7 @@ class Events final {
 
       if (connected.paused) {
         if (*wifi_message == wifievents::Events::EMessage::ConnectionResumed) {
+          context->client.stop();
           return std::make_pair(Disconnected{}, std::nullopt);
         }
 
@@ -431,6 +450,9 @@ class Events final {
 
         case AuthorizationStage::AuthorizationRequested:
         case AuthorizationStage::AuthorizationAttempted:
+          // TODO: it is likely that we should be ensuring the buffer is cleared
+          // out _before_ moving into either of these authorization states.
+          buffer->fill('\0');
           return read_ok(connected);
 
         case AuthorizationStage::NotRequested:
@@ -442,16 +464,37 @@ class Events final {
 
     std::pair<std::variant<Disconnected, Connected>, std::optional<RedisEvent>>
     operator()(Disconnected d) {
-      if (*wifi_message == wifievents::Events::EMessage::Connected) {
+      bool reconnect =
+          *wifi_message == wifievents::Events::EMessage::Connected ||
+          *wifi_message == wifievents::Events::EMessage::ConnectionResumed;
+
+      if (d.reconnect_after > 0 && time > d.reconnect_after) {
+        log_i("explicit redis reconnection attempt");
+        return std::make_pair(Connected{false}, std::nullopt);
+      }
+
+      if (reconnect) {
         log_i("redis events moving into connection attempt");
         return std::make_pair(Connected{false}, std::nullopt);
       }
 
-      return std::make_pair(Disconnected{}, std::nullopt);
+      if (d.last_debug == 0) {
+        d.last_debug = time;
+      }
+
+      if (time - d.last_debug > 3000) {
+        log_e("redis events disconnected; no connected wifi events received");
+        d.last_debug = time;
+      }
+
+      return std::make_pair(d, std::nullopt);
     }
   };
 
-  struct Disconnected final {};
+  struct Disconnected final {
+    uint32_t reconnect_after = 0;
+    uint32_t last_debug = 0;
+  };
 
   struct ReceivingHeartbeatAck final {};
 
@@ -474,6 +517,7 @@ class Events final {
   struct Connected final {
     bool paused = false;
     uint32_t last_write = 0;
+    uint32_t last_read = 0;
     AuthorizationStage authorization_stage = AuthorizationStage::NotRequested;
     std::variant<ReceivingHeartbeatAck, ReceivingPop, NotReceiving> state =
         NotReceiving{true};
@@ -483,4 +527,4 @@ class Events final {
   std::variant<Disconnected, Connected> _state;
   std::shared_ptr<RedisReader<T>> _reader;
 };
-}
+}  // namespace redisevents

@@ -30,7 +30,12 @@ fn main() -> io::Result<()> {
   env_logger::init();
 
   let options = CommandLineOptions::parse();
-  let contents = std::fs::read_to_string(&options.config)?;
+  let contents = std::fs::read_to_string(&options.config).map_err(|error| {
+    io::Error::new(
+      io::ErrorKind::Other,
+      format!("unable to load config file '{}' - {error}", options.config),
+    )
+  })?;
   let config = toml::from_str::<beetle::api::Configuration>(&contents).map_err(|error| {
     log::warn!("invalid toml config file - {error}");
     io::Error::new(io::ErrorKind::Other, "bad-config")

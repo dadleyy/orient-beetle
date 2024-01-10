@@ -47,6 +47,7 @@ jobs:
       REDIS_PORT: "${{ secrets.PIO_REDIS_PORT }}"
       REDIS_AUTH_USERNAME: "${{ secrets.PIO_REDIS_AUTH_USERNAME }}"
       REDIS_AUTH_PASSWORD: "${{ secrets.PIO_REDIS_AUTH_PASSWORD }}"
+      REDIS_HOST_ROOT_CA: "${{ secrets.REDIS_HOST_ROOT_CA }}"
       DISTRIBUTABLE_DIRECTORY_NAME: "beetle-pio-dist"
     defaults:
       run:
@@ -58,6 +59,7 @@ jobs:
         id: vars
         run: |
           echo "SHORT_SHA=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_OUTPUT
+          echo "BEETLE_VERSION=$(echo $GITHUB_SHA | head -c 7)">>$GITHUB_ENV
 
       - name: "import gpg"
         run: |
@@ -72,7 +74,10 @@ jobs:
         run: pip install --upgrade platformio
 
       - name: "env prep: fill redis ca"
-        run: echo $REDIS_HOST_ROOT_CA > embeds/redis_host_root_ca.pem
+        run: |
+          echo -n "$REDIS_HOST_ROOT_CA" > embeds/redis_host_root_ca.pem
+          echo -n "$REDIS_HOST_ROOT_CA" | wc -l
+          wc -l embeds/redis_host_root_ca.pem
 
       - name: "pio: check"
         run: pio check
@@ -86,8 +91,17 @@ jobs:
       - name: "pio(xiao): run xiao"
         run: pio run -e xiao
 
+      - name: "pio(xiao): make merged"
+        run: make
+
       - name: "bundle(xiao): prepare-dir"
         run: mkdir -p $DISTRIBUTABLE_DIRECTORY_NAME/xiao
+
+      - name: "bundle(xiao): copy-merged"
+        run: |
+          gpg --trust-model always -e -r $BEETLE_GPG_KEY_ID -o \
+            $DISTRIBUTABLE_DIRECTORY_NAME/xiao/beetle-merged.bin.pgp \
+            beetle-merged-flash.bin
 
       - name: "bundle(xiao): copy-bin"
         run: |
