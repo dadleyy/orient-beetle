@@ -93,6 +93,11 @@ class Events final {
           _dns(std::make_unique<DNSServer>()) {}
 
     ~Configuring() {
+      if (!_initialized) {
+        log_e("wifi manager destructed before first update");
+        return;
+      }
+
       if (_server) {
         log_e("wifi manager terminating server state");
         _server->stop();
@@ -363,6 +368,7 @@ class Events final {
       }
 
       if (connecting.attempt > MAX_PENDING_CONNECTION_ATTEMPTS) {
+        log_e("wifi connection attempt exceeded max delay, aborting");
         WiFi.disconnect(true, true);
         return std::make_tuple(Configuring{}, EMessage::FailedConnection);
       }
@@ -377,8 +383,9 @@ class Events final {
         _last_debug = _time;
 
         if (still_connected) {
-          IPAddress address = WiFi.localIP();
-          log_i("wifi events still active: (%s)", address.toString());
+          auto addr = WiFi.localIP();
+          log_i("wifi events still active (%d:%d:%d:%d)", (uint8_t)addr[0],
+                (uint8_t)addr[1], (uint8_t)addr[2], (uint8_t)addr[3]);
         }
       }
 

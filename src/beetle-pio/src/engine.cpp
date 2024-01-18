@@ -43,6 +43,7 @@ states::State Engine::update(states::State&& current, uint32_t current_time) {
         break;
       case wifievents::Events::EMessage::WaitingForCredentials:
         log_i("acknowlegement of wifi waiting for credentials from user");
+        next = states::Configuring{};
         break;
     }
   } else if (current_time - _last_time > 3000) {
