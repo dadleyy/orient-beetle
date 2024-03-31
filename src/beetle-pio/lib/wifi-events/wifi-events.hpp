@@ -56,11 +56,12 @@ class Events final {
 
   std::optional<EMessage> update(uint32_t current_time) {
     _visitor._time = current_time;
+
+    log_d("checking wifi state");
     auto [next, update] = std::visit(_visitor, std::move(_mode));
-
     _mode = std::move(next);
+    log_d("wifi update complete");
 
-    // TODO
     return update;
   }
 
@@ -96,10 +97,17 @@ class Events final {
       if (_server) {
         log_e("wifi manager terminating server state");
         _server->stop();
+        log_i("wifi manager successfully terminated server state");
+      } else {
+        log_d("wifi manager has no wifi server to tear down");
       }
+
       if (_dns) {
         log_e("wifi manager terminating dns state");
         _dns->stop();
+        log_i("wifi manager successfully terminated DNS server state");
+      } else {
+        log_d("wifi manager has no DNS server to tear down");
       }
     }
 
@@ -323,8 +331,14 @@ class Events final {
         log_i("wifi credentials ready ('%s' '%s')", _ssid.get(),
               _password.get());
 
+        log_i("explicitly stopping ESP wifi server");
+        configuring._server->stop();
+        configuring._server = NULL;
+
+        log_i("performing ESP wifi disconnect");
         WiFi.softAPdisconnect(true);
         WiFi.disconnect(true, true);
+        log_i("successfully shut down wifi access point");
 
         return std::make_tuple(Connecting{}, EMessage::AttemptingConnection);
       }
