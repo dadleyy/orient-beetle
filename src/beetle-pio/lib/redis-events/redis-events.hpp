@@ -49,6 +49,9 @@ class Events final {
   constexpr static const char REDIS_REGISTRATION_POP[] =
       "*2\r\n$4\r\nLPOP\r\n$4\r\nob:r\r\n";
 
+  constexpr static const char REDIS_AUTH_FAILURE[] =
+      "WRONGPASS invalid username-password pair or user is disabled.";
+
   enum AuthorizationStage {
     NotRequested,             // <- connects + writes auth
     AuthorizationRequested,   // <- reads `+OK` (skipped if id is in
@@ -211,6 +214,11 @@ class Events final {
             connected.authorization_stage =
                 pending_burnin_auth ? AuthorizationStage::AuthorizationReceived
                                     : AuthorizationStage::FullyAuthorized;
+          } else if (strcmp((char *)buffer->data(), REDIS_AUTH_FAILURE) == 0) {
+            log_e("failed authenticating using current credentials");
+            context->preferences.remove("device-id");
+          } else {
+            log_e("unrecognized response from redis - %s", buffer->data());
           }
         }
 

@@ -164,9 +164,12 @@ class Events final {
       }
 
       if (!configuring._initialized) {
-        log_i("intializing configuration access point");
         const char *capture_ssid = std::get<0>(*_ap_config);
         const char *capture_pass = std::get<1>(*_ap_config);
+
+        log_i("intializing access point with ssid='%s' password='%s'",
+              capture_ssid, capture_pass);
+
         WiFi.softAP(capture_ssid, capture_pass, 7, 0, 1);
         IPAddress address = WiFi.softAPIP();
 
@@ -357,6 +360,16 @@ class Events final {
               strlen((char *)_ssid.get()), strlen((char *)_password.get()));
 
         WiFi.mode(WIFI_STA);
+
+        int network_count = WiFi.scanNetworks();
+        log_i("found %d networks", network_count);
+        for (int i = 0; i < network_count; ++i) {
+          auto ssid = WiFi.SSID(i);
+          char ssid_name[256] = {'\0'};
+          ssid.toCharArray(ssid_name, 256);
+          log_i("network: %s", ssid_name);
+        }
+
         WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
         WiFi.setHostname("orient-beetle");
         WiFi.begin(_ssid->data(), _password->data());
@@ -392,7 +405,10 @@ class Events final {
 
         if (still_connected) {
           IPAddress address = WiFi.localIP();
-          log_i("wifi events still active: (%s)", address.toString());
+          auto addr = address.toString();
+          char addr_str[256] = {'\0'};
+          addr.toCharArray(addr_str, 256);
+          log_i("wifi events still active: (%s)", addr_str);
         }
       }
 
