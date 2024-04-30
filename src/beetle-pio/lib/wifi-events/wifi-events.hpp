@@ -382,7 +382,9 @@ class Events final {
         return std::make_tuple(Active{true}, EMessage::Connected);
       }
 
-      if (_time - _last_connecting_inc > 1000) {
+      // TODO: currently this is just time based. It would be better to hook
+      // into the ESP32 wifi libraries directly.
+      if (_time - _last_connecting_inc > 500) {
         log_i("wifi events incrementing pending connection attempt %d",
               connecting.attempt);
         _last_connecting_inc = _time;

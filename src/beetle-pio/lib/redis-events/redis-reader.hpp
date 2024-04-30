@@ -5,6 +5,8 @@ namespace redisevents {
 
 struct RedisEmpty final {};
 
+struct RedisFailure final {};
+
 struct RedisInt final {
   int32_t value;
 };
@@ -17,7 +19,8 @@ struct RedisRead final {
   int32_t size;
 };
 
-typedef std::variant<RedisEmpty, RedisRead, RedisInt, RedisArray> ReadEvent;
+typedef std::variant<RedisEmpty, RedisRead, RedisInt, RedisArray, RedisFailure>
+    ReadEvent;
 
 template <std::size_t T>
 class RedisReader final {
@@ -31,7 +34,7 @@ class RedisReader final {
   RedisReader& operator=(const RedisReader&) = delete;
 
   ReadEvent fill(char token, std::shared_ptr<std::array<uint8_t, T>> buffer) {
-    auto[next_collector, read_event] =
+    auto [next_collector, read_event] =
         std::visit(Visitor(token, buffer), collector);
     collector = next_collector;
     return read_event;
@@ -136,6 +139,13 @@ class RedisReader final {
         }
 
         buffer->fill('\0');
+
+        if (collector.len < 0) {
+          log_e("received a negative string size '%d', ignoring",
+                collector.len);
+          return std::make_pair(EmptyCollector{}, RedisEmpty{});
+        }
+
         log_i("finished bulk string size collection: %d", collector.len);
         return std::make_pair(StringCollector(collector.len), RedisEmpty{});
       }
@@ -172,7 +182,7 @@ class RedisReader final {
         const StringCollector collector) const {
       if (T <= collector.seen) {
         log_e("not enough space for message!");
-        return std::make_pair(EmptyCollector{}, RedisEmpty{});
+        return std::make_pair(EmptyCollector{}, RedisFailure{});
       }
 
       buffer->at(collector.seen) = token;
@@ -194,6 +204,6 @@ class RedisReader final {
 
   Collector collector;
 };
-}
+}  // namespace redisevents
 
 #endif

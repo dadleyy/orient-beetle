@@ -349,6 +349,13 @@ class Events final {
             connected.state = ReceivingPop{array_read.size, 0};
           }
 
+          if (std::holds_alternative<RedisFailure>(event) &&
+              std::holds_alternative<ReceivingPop>(connected.state)) {
+            log_e("received failed redis read; moving on silently");
+            connected.state = NotReceiving{true};
+            return std::make_pair(connected, std::nullopt);
+          }
+
           if (std::holds_alternative<RedisRead>(event) &&
               std::holds_alternative<ReceivingPop>(connected.state)) {
             auto payload_count =
